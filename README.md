@@ -58,7 +58,10 @@ chmod +x mailclad
 ## Usage
 
 ```bash
-mailclad audit [path]                 # audit only, never writes (default preset: standard)
+mailclad                          # list commands (exit 2)
+mailclad help                     # same list (exit 0)
+mailclad audit --help             # flags for audit
+mailclad audit [path]             # audit only, never writes (default preset: standard)
 mailclad audit . --preset strict      # relaxed | standard | strict
 mailclad audit . --apply              # write settings fixes (clean git tree required)
 mailclad audit . --apply-advisories   # upgrade packages with known fixes (no major bumps)

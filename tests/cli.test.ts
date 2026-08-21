@@ -64,6 +64,8 @@ test("mailclad with no args prints usage and exits 2", async () => {
   });
   expect(result.exitCode).toBe(2);
   expect(stderr.join("")).toContain("Usage: mailclad");
+  expect(stderr.join("")).toContain("audit [path]");
+  expect(stderr.join("")).toContain("help [command]");
 });
 
 test("audit of a fixture repo with open npm scripts exits 1 and lists the finding", async () => {
