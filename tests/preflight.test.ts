@@ -146,8 +146,36 @@ test("missing composer primary emits pm.missing-binary for composer", () => {
   expect(result.missing).toEqual([{ binary: "composer", manager: "composer" }]);
 });
 
-test("missing yarn bun uv and cargo primaries each emit pm.missing-binary", () => {
-  for (const name of ["yarn", "bun", "uv", "cargo"] as const) {
+test("missing cargo-audit emits pm.missing-binary even when cargo is on PATH", () => {
+  const project: Project = {
+    gitRoot: "/rs",
+    managers: [
+      {
+        configPath: "/rs/.cargo/config.toml",
+        lockfilePath: "/rs/Cargo.lock",
+        manifestPath: "/rs/Cargo.toml",
+        name: "cargo",
+        role: "primary",
+      },
+    ],
+    root: "/rs",
+  };
+  const result = preflight(project, {
+    which: (binary) => (binary === "cargo" ? "/usr/bin/cargo" : null),
+  });
+  expect(result.missing).toEqual([{ binary: "cargo-audit", manager: "cargo" }]);
+  expect(result.warnings[0]).toEqual(
+    expect.objectContaining({
+      code: "pm.missing-binary",
+      kind: "missing-binary",
+      manager: "cargo",
+      message: "Missing cargo-audit binary for cargo",
+    })
+  );
+});
+
+test("missing yarn bun and uv primaries each emit pm.missing-binary", () => {
+  for (const name of ["yarn", "bun", "uv"] as const) {
     const project: Project = {
       gitRoot: "/p",
       managers: [
