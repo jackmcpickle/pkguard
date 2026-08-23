@@ -745,6 +745,41 @@ mod tests {
     }
 
     #[test]
+    fn cargo_workspace_members_are_separate_projects() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir(tmp.path().join(".git")).unwrap();
+        write(
+            tmp.path(),
+            "Cargo.toml",
+            "[workspace]\nresolver = \"2\"\nmembers = [\"crates/pkguard\"]\n",
+        );
+        write(tmp.path(), "Cargo.lock", "");
+        write(
+            tmp.path(),
+            "crates/pkguard/Cargo.toml",
+            "[package]\nname = \"pkguard\"\nversion = \"0.1.0\"\n",
+        );
+
+        let projects = discover(tmp.path());
+        assert_eq!(projects.len(), 2);
+        assert_eq!(projects[0].root, tmp.path());
+        assert_eq!(projects[1].root, tmp.path().join("crates/pkguard"));
+
+        let root = &projects[0].managers[0];
+        assert_eq!(root.manager, Manager::Cargo);
+        assert_eq!(root.role, Role::Primary);
+        assert_eq!(
+            root.lockfile_path.as_deref(),
+            Some(tmp.path().join("Cargo.lock").as_path())
+        );
+
+        let member = &projects[1].managers[0];
+        assert_eq!(member.manager, Manager::Cargo);
+        assert_eq!(member.role, Role::Primary);
+        assert_eq!(member.lockfile_path, None);
+    }
+
+    #[test]
     fn uv_lock_is_uv_primary_and_poetry_is_leftover() {
         let tmp = tempfile::tempdir().unwrap();
         fs::create_dir(tmp.path().join(".git")).unwrap();

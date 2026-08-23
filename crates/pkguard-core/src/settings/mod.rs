@@ -271,9 +271,107 @@ mod tests {
         .unwrap();
         fs::write(
             fx.root.join("pnpm-workspace.yaml"),
-            "allowBuilds:\n  esbuild: false\nminimumReleaseAge: 1440\naudit:\n  level: high\ntrustPolicyIgnoreAfter: 129600\ntrustPolicy: no-downgrade\nverifyDepsBeforeRun: error\nregistry: https://registry.npmjs.org/\n",
+            "allowBuilds:\n  esbuild: false\nminimumReleaseAge: 1440\nminimumReleaseAgeStrict: true\nminimumReleaseAgeIgnoreMissingTime: false\nblockExoticSubdeps: true\nstrictDepBuilds: true\naudit:\n  level: high\ntrustPolicyIgnoreAfter: 129600\ntrustPolicy: no-downgrade\nverifyDepsBeforeRun: error\nregistry: https://registry.npmjs.org/\n",
         )
         .unwrap();
+        assert_eq!(
+            audit_pnpm(&fx, "preset = \"standard\""),
+            Vec::<Finding>::new()
+        );
+    }
+
+    const PNPM_SITE_SUPPLY_CHAIN: &str = "\
+allowBuilds:
+  esbuild: false
+minimumReleaseAge: 1440
+minimumReleaseAgeStrict: true
+minimumReleaseAgeIgnoreMissingTime: false
+blockExoticSubdeps: true
+strictDepBuilds: true
+audit:
+  level: high
+trustPolicy: no-downgrade
+trustPolicyIgnoreAfter: 129600
+verifyDepsBeforeRun: error
+registry: https://registry.npmjs.org/
+";
+
+    fn write_pnpm_workspace(fx: &Fixture, yaml: &str) {
+        fs::write(fx.root.join("pnpm-workspace.yaml"), yaml).unwrap();
+    }
+
+    fn pin_pnpm(fx: &Fixture) {
+        fs::write(
+            fx.root.join("package.json"),
+            r#"{"packageManager": "pnpm@11.22.0"}"#,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn pnpm_weak_gates_are_findings() {
+        let fx = pnpm_fixture();
+        pin_pnpm(&fx);
+        write_pnpm_workspace(
+            &fx,
+            "allowBuilds:\n  esbuild: false\nminimumReleaseAge: 1440\nminimumReleaseAgeStrict: false\nblockExoticSubdeps: false\nstrictDepBuilds: false\naudit:\n  level: high\ntrustPolicy: no-downgrade\ntrustPolicyIgnoreAfter: 129600\nverifyDepsBeforeRun: error\nregistry: https://registry.npmjs.org/\n",
+        );
+        assert_eq!(
+            codes(&audit_pnpm(&fx, "preset = \"standard\"")),
+            vec![
+                "min-age.non-strict",
+                "scripts.non-strict",
+                "source.non-registry",
+            ]
+        );
+    }
+
+    #[test]
+    fn pnpm_ignore_missing_time_is_required_only_under_strict() {
+        let fx = pnpm_fixture();
+        pin_pnpm(&fx);
+        write_pnpm_workspace(
+            &fx,
+            "allowBuilds:\n  esbuild: false\nminimumReleaseAge: 20160\nminimumReleaseAgeStrict: true\nblockExoticSubdeps: true\nstrictDepBuilds: true\naudit:\n  level: moderate\ntrustPolicy: no-downgrade\ntrustPolicyIgnoreAfter: 129600\nverifyDepsBeforeRun: error\nregistry: https://registry.npmjs.org/\n",
+        );
+        assert!(!codes(&audit_pnpm(&fx, "preset = \"standard\""))
+            .contains(&"min-age.missing-time"));
+        assert!(codes(&audit_pnpm(&fx, "preset = \"strict\"")).contains(&"min-age.missing-time"));
+
+        write_pnpm_workspace(
+            &fx,
+            "allowBuilds:\n  esbuild: false\nminimumReleaseAge: 20160\nminimumReleaseAgeStrict: true\nminimumReleaseAgeIgnoreMissingTime: false\nblockExoticSubdeps: true\nstrictDepBuilds: true\naudit:\n  level: moderate\ntrustPolicy: no-downgrade\ntrustPolicyIgnoreAfter: 129600\nverifyDepsBeforeRun: error\nregistry: https://registry.npmjs.org/\n",
+        );
+        assert!(!codes(&audit_pnpm(&fx, "preset = \"strict\"")).contains(&"min-age.missing-time"));
+    }
+
+    #[test]
+    fn pnpm_site_style_config_is_clean_under_standard() {
+        let fx = pnpm_fixture();
+        pin_pnpm(&fx);
+        write_pnpm_workspace(&fx, PNPM_SITE_SUPPLY_CHAIN);
+        assert_eq!(
+            audit_pnpm(&fx, "preset = \"standard\""),
+            Vec::<Finding>::new()
+        );
+        let strict_findings = audit_pnpm(&fx, "preset = \"strict\"");
+        let strict = codes(&strict_findings);
+        assert!(strict.contains(&"min-age.disabled"));
+        assert!(!strict.contains(&"min-age.non-strict"));
+        assert!(!strict.contains(&"min-age.missing-time"));
+        assert!(!strict.contains(&"scripts.non-strict"));
+        assert!(!strict.contains(&"source.non-registry"));
+    }
+
+    #[test]
+    fn committed_site_pnpm_workspace_yaml_is_clean_under_standard() {
+        let yaml = fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../site/pnpm-workspace.yaml"),
+        )
+        .unwrap();
+        let fx = pnpm_fixture();
+        pin_pnpm(&fx);
+        write_pnpm_workspace(&fx, &yaml);
         assert_eq!(
             audit_pnpm(&fx, "preset = \"standard\""),
             Vec::<Finding>::new()

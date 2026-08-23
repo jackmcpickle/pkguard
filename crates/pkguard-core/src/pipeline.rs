@@ -518,7 +518,7 @@ mod tests {
         fs::write(dir.join("pnpm-lock.yaml"), format!("lock-{name}")).unwrap();
         fs::write(
             dir.join("pnpm-workspace.yaml"),
-            "allowBuilds:\n  esbuild: false\nminimumReleaseAge: 1440\naudit:\n  level: high\ntrustPolicyIgnoreAfter: 129600\ntrustPolicy: no-downgrade\nverifyDepsBeforeRun: error\nregistry: https://registry.npmjs.org/\n",
+            "allowBuilds:\n  esbuild: false\nminimumReleaseAge: 1440\nminimumReleaseAgeStrict: true\nminimumReleaseAgeIgnoreMissingTime: false\nblockExoticSubdeps: true\nstrictDepBuilds: true\naudit:\n  level: high\ntrustPolicyIgnoreAfter: 129600\ntrustPolicy: no-downgrade\nverifyDepsBeforeRun: error\nregistry: https://registry.npmjs.org/\n",
         )
         .unwrap();
     }
