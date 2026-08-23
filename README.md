@@ -1,12 +1,12 @@
 # mailclad
 
-mailclad walks a folder of repos, finds each package-manager root, and audits it. It does not write files unless you pass an apply flag.
+mailclad walks a folder of repos, finds each package-manager root, and audits it. `scan` is read-only and never writes files.
 
-Docs and the product page live at [mailclad.dev](https://mailclad.dev). Command flags on that site are generated from the CLI catalog in this repo.
+Docs and the product page live at [mailclad.dev](https://mailclad.dev).
 
-npm, pnpm, yarn Berry, bun, uv, cargo, bundler, and composer all go through the same path. Yarn v1 and Poetry, pip, or Pipenv projects get flagged. They do not get a live audit.
+As of 1.0.0 mailclad is a Rust binary (workspace in `crates/`). The previous Bun/TypeScript CLI still lives in `src/` until the cutover is complete, but the Rust build is the one described here.
 
-## How an audit runs
+## How a scan runs
 
 Each project gets a binary check, a settings read, then a vulnerability scan if the binary is there. Settings never call the package manager. The scan does.
 
@@ -23,209 +23,121 @@ flowchart TD
   preflight -->|found| live
 ```
 
-Discovery finds the roots. Preflight looks for `npm`, `pnpm`, `yarn`, `bun`, `uv`, `cargo`, `bundle-audit`, or `composer` on `PATH`. Settings then read that manager's committed config file.
+Discovery streams results as it walks: projects are audited concurrently while the walk is still running. It detects npm, pnpm, yarn Berry, bun, uv, cargo, bundler, and composer roots; Yarn v1 and Poetry, pip, or Pipenv projects get flagged rather than a live audit.
 
-A missing binary does not skip settings. You still get the file findings plus a `pm.missing-binary` warning. Only that manager's live `audit` command is skipped.
+A missing binary does not skip settings. You still get the file findings plus a `pm.missing-binary` warning. Only that manager's live audit command is skipped.
 
-Leftover lockfiles and Poetry, pip, or Pipenv never need a binary for this step.
+**Port status:** the settings checks and native advisory audit are live for **npm**. The other managers are detected and reported, and their checks are being ported family by family.
 
 ## Install
 
-### From npm (requires [Bun](https://bun.sh))
+Build from source (requires a Rust toolchain):
 
 ```bash
-bun install -g mailclad
-# or
-npm install -g mailclad
+cargo install --path crates/mailclad
 ```
 
-The CLI runs on Bun, so Bun must be on your `PATH` either way.
-
-### Standalone binary (no Bun needed)
-
-Grab the binary for your platform from the [releases page](https://github.com/jackmcpickle/package-manager-security/releases):
-
-- `mailclad-linux-x64` / `mailclad-linux-arm64`
-- `mailclad-darwin-x64` / `mailclad-darwin-arm64` (macOS)
-- `mailclad-windows-x64.exe`
-
-Fair warning: they're about 100 MB each, since Bun's runtime is baked in.
-
-```bash
-curl -fsSL -o mailclad https://github.com/jackmcpickle/package-manager-security/releases/latest/download/mailclad-darwin-arm64
-chmod +x mailclad
-./mailclad audit .
-```
+Homebrew tap and prebuilt release binaries are coming with the distribution cutover. The old npm package (`mailclad` ≤ 0.1.x) is the Bun build and does not match these docs.
 
 ## Usage
 
 ```bash
-mailclad audit [path]                 # audit only, never writes (default preset: standard)
-mailclad audit . --preset strict      # relaxed | standard | strict
-mailclad audit . --apply              # write settings fixes (clean git tree required)
-mailclad audit . --fix                # same as --apply
-mailclad audit . --apply-agentic      # write safe agentic edits only
-mailclad audit . --apply-advisories   # upgrade packages with known fixes (no major bumps)
-mailclad audit . -i                   # interactive: consent per repo
-mailclad audit . --json               # machine-readable output
-mailclad audit . --sarif              # SARIF output
-mailclad audit . --report out.md      # markdown report
+mailclad scan [path]                # read-only audit, defaults to the current directory
+mailclad scan . --preset strict     # relaxed | standard | strict
+mailclad scan . --format json       # machine-readable output (schemaVersion 2)
+mailclad scan . --jobs 4            # max concurrent audits (default: min(cpus*2, 16))
+mailclad scan . --refresh           # ignore cached advisory results, re-fetch
+mailclad scan . --no-cache          # disable the advisory cache entirely
+mailclad scan . -q                  # suppress progress output
 ```
 
-Exit code `0` means every project passed. `1` means a policy failure, either settings drift or an advisory at or above the preset's gate. `2` means the run was incomplete: a missing binary, a dirty tree blocked an apply, an audit subprocess died, or no projects were found.
+Exit code `0` means every project passed. `1` means a policy failure, either settings drift or an advisory at or above the preset's gate. `2` means the run was incomplete: a missing binary, an audit subprocess died, or no projects were found.
 
-Configuration lives in `~/.config/mailclad/config.toml`, plus `.mailclad.toml` at the scan root or in any repo. The closer file wins, and flags win over files.
+Advisory results are cached by lockfile digest in the platform cache dir (override with `MAILCLAD_CACHE_DIR`).
 
-Set `registry` when installs should go through a company proxy. `--apply` then writes that URL. A committed pin that does not match emits `registry.mismatch`. Leave it unset and any pinned registry still passes; apply writes `https://registry.npmjs.org/`.
+## Configuration
+
+Config is TOML, layered field by field. Later layers win, and flags win over files:
+
+1. user config: `config.toml` in the platform config dir (`~/.config/mailclad/` on Linux, `~/Library/Application Support/dev.mailclad.mailclad/` on macOS)
+2. `.mailclad.toml` at the scan root
+3. `.mailclad.toml` in an individual repo
 
 ```toml
-# ~/.config/mailclad/config.toml or .mailclad.toml
+preset = "standard"          # relaxed | standard | strict
+managers = ["npm", "cargo"]  # limit which managers are audited
+jobs = 8
+
+[policy]                     # overrides the preset's defaults
+ignore_scripts = true
+min_release_age_days = 3
+require_lockfile = true
+require_pm_pin = true
+audit_level = "high"         # advisory gate: info | low | moderate | high | critical
 registry = "https://npm.corp.example/"
 
-[yarn]
-registry = "https://yarn.corp.example/"
+[agentic]
+enabled = true               # report agentic-hygiene findings (default: true)
+apply = false                # let a future fix command write them (default: false)
+
+[manager.npm]                # per-manager override, beats [policy]
+audit_level = "critical"
 ```
 
-This applies to npm, pnpm (`registry` or `registries.default`), yarn (`npmRegistryServer`), and bun (`install.registry`).
+Unknown keys are rejected, so typos fail loudly instead of being ignored.
 
-The default **standard** preset requires a **1-day** release-age gate (`minReleaseAgeDays: 1`); **strict** requires 14 days, **relaxed** turns the gate off (0 days).
+Set `registry` when installs should go through a company proxy; a committed pin that does not match emits `registry.mismatch`. Leave it unset and any pinned registry still passes.
+
+### Presets
+
+| | relaxed | standard (default) | strict |
+|---|---|---|---|
+| advisory gate | critical | high | moderate |
+| install scripts restricted | no | yes | yes |
+| release-age gate | off | 1 day | 14 days |
+| lockfile required | yes | yes | yes |
+| packageManager pin required | no | yes | yes |
 
 ## What it checks
 
-Every manager gets the same four questions: are install scripts restricted, is
-there a release-age gate, is the lockfile present, and is the registry pinned.
-The settings behind those answers differ per manager:
+Checks are organized by **check family**, not by manager: one deep module per question (scripts, release-age gate, lockfile, registry pin, audit gate, source restrictions, packageManager pin), with per-manager variation passed in as data.
 
-| | install scripts | release-age gate | lockfile |
-|---|---|---|---|
-| npm | `ignore-scripts`, or `allowScripts` + `strict-allow-scripts` | `min-release-age` (days) | `package-lock.json` |
-| pnpm | `allowBuilds`, `dangerouslyAllowAllBuilds`, `strictDepBuilds` | `minimumReleaseAge` (minutes) | `pnpm-lock.yaml` |
-| yarn | `enableScripts` | `npmMinimalAgeGate` (minutes or `7d`) | `yarn.lock` |
-| bun | `trustedDependencies` | `minimumReleaseAge` (seconds) | `bun.lock` |
-| uv | n/a | `exclude-newer` (date or `"1 day"`) | `uv.lock` |
-| cargo | n/a | `minimum-release-age` in `.cargo/config.toml` | `Cargo.lock` |
-| bundler | n/a | `BUNDLE_COOLDOWN` in `.bundle/config` | `Gemfile.lock` |
-| composer | `allow-plugins` must not be `true` | n/a (Composer has no cooldown yet) | `composer.lock` |
+For npm today that means, read from `.npmrc` and `package.json`:
 
-Also checked: pnpm `blockExoticSubdeps`, npm `allow-git` / `allow-remote`, yarn
-`checksumBehavior`, `enableStrictSsl` and `enableHardenedMode`, and exclude
-lists (`minimumReleaseAgeExclude`, `npmPreapprovedPackages`,
-`exclude-newer-package`) that use a bare `*` and so void the gate.
+| Family | Settings |
+|---|---|
+| install scripts | `ignore-scripts`, or `allowScripts` + `strict-allow-scripts`; `dangerously-allow-all-scripts` must not be `true` |
+| source restrictions | `allow-git` / `allow-remote`; `allow-file` / `allow-directory` must not be `all` |
+| release-age gate | `min-release-age` (days) |
+| audit gate | `audit-level` must meet the preset's gate |
+| lockfile | `package-lock.json` must be present |
+| registry pin | `registry` in `.npmrc` |
+| manager pin | `packageManager` in `package.json` must start with `npm@` |
 
-Manager-specific checks beyond the baseline:
-
-| Manager | Setting | What it enforces |
-|---|---|---|
-| npm | `allow-file`, `allow-directory` | must not be `all` (blocks local-path deps) |
-| npm | `allow-scripts-pin` | must be `true` when scripts are restricted |
-| npm | `dangerously-allow-all-scripts` | must not be `true` |
-| pnpm | `audit.level` | must meet the preset gate (pnpm ≥ 11.16; not boolean `audit: true`) |
-| pnpm | `trust-policy` | must be `no-downgrade` (pnpm ≥ 10.21) |
-| pnpm | `trustPolicyIgnoreAfter` | at least 90 days / 129600 minutes (pnpm ≥ 10.27) |
-| pnpm | `trust-lockfile` | must not be `true` |
-| pnpm | `verify-deps-before-run` | must be `error` (pnpm ≥ 10.12) |
-| yarn | `approvedGitRepositories` | must block git-sourced deps (yarn ≥ 4.14) |
-| uv | `audit.malware-check` | must be `true` (uv ≥ 0.11.31) |
-| cargo | `install.minimum-release-age` | duration string meeting the preset (e.g. `"1d"`) |
-| bundler | `BUNDLE_COOLDOWN` | days ≥ preset minimum |
-| composer | `config.policy` | advisories/malware blocking on; `policy.advisories.audit` must not be `ignore` |
-| composer | `secure-http` / `disable-tls` | TLS required; HTTP repository URLs are reported but not rewritten |
-| composer | `source-fallback` | must not be `true` (dist must not fall back to source) |
-
-Checks are version-aware. pnpm 11 turns `minimumReleaseAge` on at 1440 minutes
-and yarn defaults `npmMinimalAgeGate` to `1w` and `enableScripts` to `false`, so
-a missing key on those versions is reported as `info` ("you're relying on a safe
-default") rather than `high`. mailclad reads the version from the `packageManager`
-field in `package.json`; with no pin it assumes a current release.
-
-## Agentic checks
-
-By default mailclad also warns (`info`) about settings that confuse coding
-agents: a committed store or cache path, version overrides, pnpm shameful hoist,
-and Yarn or pnpm Plug'n'Play. These never fail the standard gate. `--apply`
-does not write them unless `applyAgentic = true` in config. Pass
-`--apply-agentic` to write only the safe edits (unset an in-repo cache path,
-turn hoist off, set yarn `nodeLinker` to `node-modules`). It never writes a
-home-dir store or deletes an override.
-
-`mailclad audit --help` lists each code, what it means, and the caveat.
+Relying on a safe default instead of pinning it is reported as `info` (`moderate` under strict) rather than a failure. Finding codes are unchanged from the previous build, so anything keying off codes keeps working.
 
 ## Advisory audits
 
-When settings pass, mailclad also scans lockfiles for known vulnerabilities at or
-above the preset's advisory gate (`high` for standard, `moderate` for strict,
-`critical` for relaxed). It shells out to each manager's native audit where
-available:
-
-| Manager | Command |
-|---|---|
-| npm | `npm audit --json` |
-| pnpm | `pnpm audit --json` |
-| yarn | `yarn npm audit --json` |
-| bun | `bun audit --json` |
-| uv | `uv audit --output-format json --frozen` |
-| cargo | `cargo audit` |
-| bundler | `bundle-audit` |
-| composer | `composer audit --format json --locked` |
-
-Poetry, pip, and Pipenv use OSV lookups instead of a native audit command.
-Results are cached by lockfile digest; pass `--refresh` or `--no-cache` to bypass.
+When the manager binary is present, mailclad shells out to the native audit (`npm audit --json` for npm) and reports advisories at or above the preset's gate. Results are cached by lockfile digest; pass `--refresh` or `--no-cache` to bypass.
 
 ## Development
 
-Requires [Bun](https://bun.sh) >= 1.2.
+Requires a stable Rust toolchain.
 
 ```bash
-bun install        # install dependencies
-bun test           # run the test suite
+cargo test              # run the test suite
+cargo clippy            # lint
+cargo fmt               # format
+cargo run -p mailclad -- scan .
 ```
 
-CI runs on GitHub Actions (`.github/workflows/ci.yml`): tests with coverage, lint, and the coverage ratchet.
+The workspace is two crates: `mailclad-core` (discovery, config, checks, advisory pipeline) and `mailclad` (the CLI: clap, rendering, progress).
 
-### Build
-
-```bash
-bun run build          # bundle to dist/mailclad.js (the npm bin, runs on Bun)
-bun run build:binary   # compile a standalone binary to dist/mailclad for this machine
-```
-
-To cross-compile for another platform:
-
-```bash
-bun build ./src/main.ts --compile --target=bun-linux-x64 --outfile dist/mailclad-linux-x64
-```
-
-Targets: `bun-linux-x64`, `bun-linux-arm64`, `bun-darwin-x64`, `bun-darwin-arm64`, `bun-windows-x64`.
+The legacy Bun toolchain (`bun install`, `bun test`) still covers the TypeScript CLI in `src/` until the cutover PR removes it.
 
 ## Releasing
 
-Releases are automated from conventional commits on `main`.
-
-1. **`.github/workflows/publish.yml`** — on push to `main` (when `src/` or `package.json` changes), runs tests, then `commit-and-tag-version` to bump the version, update `CHANGELOG.md`, and push the release commit + tag. Release commits use `[skip ci]` so they don't re-trigger the workflow.
-2. **`.github/workflows/release.yml`** — on tag push (`v*`), creates the GitHub release (notes from `CHANGELOG.md`), attaches standalone binaries for all five platforms, and publishes `mailclad` to npm.
-
-Use [Conventional Commits](https://www.conventionalcommits.org/) so release notes are generated correctly:
-
-```text
-feat: add uv exclude-newer check
-fix(cli): handle missing lockfile in monorepos
-feat!: drop yarn v1 support        # major bump
-```
-
-To cut a release manually:
-
-```bash
-bun run release              # or: bun run release -- --release-as minor
-git push --follow-tags
-```
-
-### Repository secrets
-
-| Secret | Used by | Purpose |
-|---|---|---|
-| `DEPLOY_KEY` | publish | SSH deploy key with bypass so the release commit/tag can push to protected `main` |
-
-npm publishing uses [OIDC trusted publishing](https://docs.npmjs.com/trusted-publishers) — no `NPM_TOKEN` secret required. Ensure `jackmcpickle/package-manager-security` → `.github/workflows/release.yml` is configured as a trusted publisher for `mailclad` on npmjs.com.
+The Rust build will be released via release-plz and cargo-dist (GitHub release binaries plus a Homebrew tap). The existing GitHub Actions release workflows (`publish.yml`, `release.yml`) still serve the legacy npm package and will be replaced at cutover.
 
 ## License
 

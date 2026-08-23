@@ -16,6 +16,19 @@ jobs:
       - run: bun lint
       - run: bun run coverage:check
 
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy, llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - run: cargo fmt --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo llvm-cov --workspace --summary-only
+
   site:
     runs-on: ubuntu-latest
     steps:
