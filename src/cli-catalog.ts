@@ -22,6 +22,13 @@ export const HELP_FLAG: HelpFlag = {
   names: ["-h", "--help"],
 };
 
+export const VERSION_FLAG: HelpFlag = {
+  description: "Print the version",
+  names: ["-V", "--version"],
+};
+
+export const GLOBAL_FLAGS: readonly HelpFlag[] = [HELP_FLAG, VERSION_FLAG];
+
 export const COMMANDS: readonly CommandHelp[] = [
   {
     arguments: [
