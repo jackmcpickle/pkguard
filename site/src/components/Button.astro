@@ -1,25 +1,27 @@
 ---
 interface Props {
-  href: string;
-  variant?: "primary" | "outline";
-  external?: boolean;
+    href: string;
+    variant?: "primary" | "outline";
+    size?: "sm" | "md" | "lg";
+    external?: boolean;
 }
 
-const { href, variant = "outline", external = false } = Astro.props;
+const { href, variant = "outline", size = "md", external = false } = Astro.props;
 const isPrimary = variant === "primary";
 ---
 
 <a
-  href={href}
-  class:list={[
-    "inline-flex min-h-11 items-center justify-center rounded-full border px-3 py-2 text-[14px] leading-5 whitespace-nowrap",
-    isPrimary
-      ? "border-primary bg-primary text-on-primary"
-      : "border-white/25 bg-transparent text-ink",
-  ]}
-  {...(external
-    ? { rel: "noopener", target: "_blank" }
-    : {})}
+    href={href}
+    class:list={[
+        "inline-flex items-center justify-center rounded-full border text-[14px] leading-5 whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
+        size === "sm" && "px-3 py-1",
+        size === "md" && "px-4 py-2",
+        size === "lg" && "px-6 py-3",
+        isPrimary
+            ? "border-primary bg-primary text-on-primary hover:text-on-primary"
+            : "border-white/25 bg-transparent text-ink",
+    ]}
+    {...(external ? { rel: "noopener", target: "_blank" } : {})}
 >
-  <slot />
+    <slot />
 </a>

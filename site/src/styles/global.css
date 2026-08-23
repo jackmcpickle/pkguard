@@ -1,4 +1,4 @@
-@import "@fontsource/geist-sans/400.css";
+@import "@fontsource/inter/400.css";
 @import "@fontsource/geist-mono/400.css";
 @import "tailwindcss";
 
@@ -9,13 +9,13 @@
   --color-canvas-mid: #363a3f;
   --color-hairline: #212327;
   --color-ink: #ffffff;
-  --color-ink-hover: #fafaf7;
+  --color-ink-hover: #dadbdf;
   --color-body: #dadbdf;
   --color-body-mid: #7d8187;
   --color-primary: #ffffff;
   --color-on-primary: #0a0a0a;
   --color-accent-sunset: #ff7a17;
-  --font-sans: "Geist Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", Helvetica, Arial, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, monospace;
   --radius-sm: 8px;
   --radius-pill: 9999px;
@@ -31,6 +31,21 @@ body {
   color: var(--color-ink);
   font-family: var(--font-sans);
   font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--color-ink);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--color-ink-hover);
+}
+
+::selection {
+  background: var(--color-accent-sunset);
+  color: var(--color-canvas);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -3,22 +3,31 @@ import Button from "@/components/Button.astro";
 import { RELEASES_URL } from "@/lib/site";
 ---
 
-<section class="border-t border-hairline px-6 py-16 md:px-8">
-  <div class="mx-auto max-w-[1200px]">
-    <p class="font-mono text-[14px] leading-5 tracking-[1.4px] text-ink uppercase">
-      Install
-    </p>
-    <h2
-      class="mt-4 max-w-[14ch] text-[32px] leading-9 tracking-[-0.6px] md:text-[48px] md:leading-[48px] md:tracking-[-1.2px]"
+<section class="border-t border-hairline">
+    <div
+        class="mx-auto flex max-w-[1200px] flex-wrap items-end justify-between gap-12 px-6 py-16"
     >
-      bun install -g mailclad
-    </h2>
-    <p class="mt-6 max-w-[48ch] text-[16px] leading-6 text-body">
-      The CLI runs on Bun. Standalone binaries are on the releases page if you do not want Bun on&nbsp;PATH.
-    </p>
-    <div class="mt-8 flex flex-wrap gap-3">
-      <Button href="/docs/install" variant="primary">Install guide</Button>
-      <Button href={RELEASES_URL} external>Releases</Button>
+        <div class="max-w-[640px]">
+            <p
+                class="font-mono text-[14px] leading-5 tracking-[1.4px] text-body-mid uppercase"
+            >
+                Install
+            </p>
+            <h2
+                class="mt-4 text-[48px] leading-[48px] font-normal tracking-[-1.2px] md:text-[72px] md:leading-[72px] md:tracking-[-1.8px]"
+            >
+                Runs on Bun.
+            </h2>
+            <p class="mt-6 text-[16px] leading-6 text-body">
+                Standalone binaries are on the releases page if you would rather not have
+                Bun on&nbsp;PATH.
+            </p>
+        </div>
+        <div class="flex flex-wrap gap-3">
+            <Button href="/docs/install" variant="primary" size="lg">
+                Install guide
+            </Button>
+            <Button href={RELEASES_URL} size="lg" external>Releases</Button>
+        </div>
     </div>
-  </div>
 </section>

@@ -1,0 +1,26 @@
+---
+interface Props {
+    eyebrow: string;
+    title: string;
+    lead: string;
+}
+
+const { eyebrow, title, lead } = Astro.props;
+---
+
+<div>
+    <p
+        class="flex items-center gap-2 font-mono text-[12px] leading-4 tracking-[1.2px] text-body-mid uppercase"
+    >
+        <a href="/docs" class="text-body-mid hover:text-ink">Docs</a>
+        <span>/</span>
+        <span class="text-body">{eyebrow}</span>
+    </p>
+    <h1
+        class="mt-6 text-[32px] leading-9 font-normal tracking-[-0.6px] md:text-[48px] md:leading-[48px] md:tracking-[-1.2px]"
+    >
+        {title}
+    </h1>
+    <p class="mt-6 max-w-[640px] text-[18px] leading-7 text-body">{lead}</p>
+    <div class="mt-12 mb-12 h-px bg-hairline"></div>
+</div>
