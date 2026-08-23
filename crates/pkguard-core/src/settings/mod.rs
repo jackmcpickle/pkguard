@@ -334,8 +334,7 @@ registry: https://registry.npmjs.org/
             &fx,
             "allowBuilds:\n  esbuild: false\nminimumReleaseAge: 20160\nminimumReleaseAgeStrict: true\nblockExoticSubdeps: true\nstrictDepBuilds: true\naudit:\n  level: moderate\ntrustPolicy: no-downgrade\ntrustPolicyIgnoreAfter: 129600\nverifyDepsBeforeRun: error\nregistry: https://registry.npmjs.org/\n",
         );
-        assert!(!codes(&audit_pnpm(&fx, "preset = \"standard\""))
-            .contains(&"min-age.missing-time"));
+        assert!(!codes(&audit_pnpm(&fx, "preset = \"standard\"")).contains(&"min-age.missing-time"));
         assert!(codes(&audit_pnpm(&fx, "preset = \"strict\"")).contains(&"min-age.missing-time"));
 
         write_pnpm_workspace(
