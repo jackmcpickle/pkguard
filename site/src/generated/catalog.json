@@ -141,7 +141,7 @@
         "pnpm-lock.yaml"
       ],
       "name": "pnpm",
-      "ported": false,
+      "ported": true,
       "writeConfigName": "pnpm-workspace.yaml"
     },
     {
@@ -160,7 +160,7 @@
         "yarn.lock"
       ],
       "name": "yarn",
-      "ported": false,
+      "ported": true,
       "writeConfigName": ".yarnrc.yml"
     },
     {
@@ -179,7 +179,7 @@
         "bun.lockb"
       ],
       "name": "bun",
-      "ported": false,
+      "ported": true,
       "writeConfigName": "bunfig.toml"
     },
     {
@@ -200,7 +200,7 @@
         "uv.lock"
       ],
       "name": "uv",
-      "ported": false,
+      "ported": true,
       "writeConfigName": null
     },
     {
@@ -219,7 +219,7 @@
         "Cargo.lock"
       ],
       "name": "cargo",
-      "ported": false,
+      "ported": true,
       "writeConfigName": ".cargo/config.toml"
     },
     {
@@ -239,7 +239,7 @@
         "composer.lock"
       ],
       "name": "composer",
-      "ported": false,
+      "ported": true,
       "writeConfigName": "composer.json"
     },
     {
@@ -288,7 +288,7 @@
         "Gemfile.lock"
       ],
       "name": "bundler",
-      "ported": false,
+      "ported": true,
       "writeConfigName": ".bundle/config"
     }
   ],
