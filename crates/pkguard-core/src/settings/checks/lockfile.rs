@@ -1,6 +1,7 @@
 use super::setting_finding;
-use crate::findings::{Finding, Severity};
-use crate::manager::Manager;
+use crate::findings::{Finding, FindingKind, Severity};
+use crate::format::yaml::{self, Yaml};
+use crate::manager::{Manager, PackageManagerPin};
 use std::path::Path;
 
 pub fn check(
@@ -20,5 +21,75 @@ pub fn check(
         )]
     } else {
         Vec::new()
+    }
+}
+
+pub fn leftover(path: &Path, manager: Manager) -> Finding {
+    Finding {
+        kind: FindingKind::LeftoverLockfile,
+        code: "lockfile.leftover".into(),
+        message: format!(
+            "Leftover {} lockfile is not an apply target",
+            manager.name()
+        ),
+        severity: Severity::High,
+        path: path.to_string_lossy().into_owned(),
+        fixable: false,
+        manager: Some(manager),
+        package: None,
+        current_version: None,
+        fix_version: None,
+    }
+}
+
+pub fn unsupported(path: &Path, manager: Manager) -> Finding {
+    Finding {
+        kind: FindingKind::UnsupportedPm,
+        code: "pm.unsupported".into(),
+        message: format!("{} is unsupported", manager.name()),
+        severity: Severity::High,
+        path: path.to_string_lossy().into_owned(),
+        fixable: false,
+        manager: Some(manager),
+        package: None,
+        current_version: None,
+        fix_version: None,
+    }
+}
+
+pub fn pnpm_trust_bypass(yaml: &Yaml, yaml_path: &Path) -> Vec<Finding> {
+    if yaml::is_true(yaml::first(yaml, &["trustLockfile", "trust-lockfile"])) {
+        vec![setting_finding(
+            "lockfile.trust-bypass",
+            "pnpm trustLockfile must not be true",
+            Severity::High,
+            yaml_path,
+            Manager::Pnpm,
+        )]
+    } else {
+        Vec::new()
+    }
+}
+
+pub fn pnpm_run_verify(
+    yaml: &Yaml,
+    yaml_path: &Path,
+    pin: Option<&PackageManagerPin>,
+) -> Vec<Finding> {
+    if !PackageManagerPin::at_least_or_unknown(pin, 10, 12) {
+        return Vec::new();
+    }
+    let verify = yaml::first(yaml, &["verifyDepsBeforeRun", "verify-deps-before-run"])
+        .and_then(yaml::as_str);
+    if verify.is_some_and(|value| value.eq_ignore_ascii_case("error")) {
+        Vec::new()
+    } else {
+        vec![setting_finding(
+            "lockfile.run-verify",
+            "pnpm verifyDepsBeforeRun must be error",
+            Severity::High,
+            yaml_path,
+            Manager::Pnpm,
+        )]
     }
 }

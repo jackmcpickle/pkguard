@@ -5,10 +5,20 @@
 ## Install
 
 ```
-cargo install --git https://github.com/jackmcpickle/pkguard pkguard
+brew install jackmcpickle/pkguard/pkguard
 ```
 
-Requires a stable Rust toolchain. Homebrew and prebuilt binaries are not published yet. The old npm package was named mailclad and shipped as 0.1.x. That was the Bun build. It does not match these docs.
+```
+brew tap jackmcpickle/pkguard
+brew trust jackmcpickle/pkguard
+brew install pkguard
+```
+
+Cargo is the fallback if you already have a Rust toolchain:
+
+```
+cargo install --git https://github.com/jackmcpickle/pkguard pkguard
+```
 
 ## Commands
 

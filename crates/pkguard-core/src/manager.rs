@@ -25,6 +25,17 @@ pub enum Manager {
 pub struct PackageManagerPin {
     pub name: String,
     pub major: i64,
+    pub minor: i64,
+    pub patch: i64,
+}
+
+fn int_prefix(part: &str) -> Option<i64> {
+    let digits: String = part.chars().take_while(|c| c.is_ascii_digit()).collect();
+    if digits.is_empty() {
+        None
+    } else {
+        digits.parse().ok()
+    }
 }
 
 impl PackageManagerPin {
@@ -33,11 +44,44 @@ impl PackageManagerPin {
         if at == 0 {
             return None;
         }
-        let major: i64 = field[at + 1..].split('.').next()?.parse().ok()?;
+        let mut parts = field[at + 1..].split('.');
+        let major = int_prefix(parts.next()?)?;
         Some(Self {
             name: field[..at].to_string(),
             major,
+            minor: parts.next().and_then(int_prefix).unwrap_or(0),
+            patch: parts.next().and_then(int_prefix).unwrap_or(0),
         })
+    }
+
+    /// True when this pin is at least `major.minor`.
+    pub fn at_least(&self, major: i64, minor: i64) -> bool {
+        self.major > major || (self.major == major && self.minor >= minor)
+    }
+
+    /// Unpinned (or a pin for a different manager) is treated as a current
+    /// release — `pm.unpinned` already covers the missing pin itself.
+    pub fn at_least_or_unknown(pin: Option<&Self>, major: i64, minor: i64) -> bool {
+        pin.is_none_or(|p| p.at_least(major, minor))
+    }
+
+    pub fn at_least_patch(&self, major: i64, minor: i64, patch: i64) -> bool {
+        if self.major != major {
+            return self.major > major;
+        }
+        if self.minor != minor {
+            return self.minor > minor;
+        }
+        self.patch >= patch
+    }
+
+    pub fn at_least_patch_or_unknown(
+        pin: Option<&Self>,
+        major: i64,
+        minor: i64,
+        patch: i64,
+    ) -> bool {
+        pin.is_none_or(|p| p.at_least_patch(major, minor, patch))
     }
 
     pub fn from_manifest(dir: &std::path::Path) -> Option<Self> {
@@ -157,7 +201,17 @@ impl Manager {
     /// `dump-catalog` reads it so the docs site cannot claim support the
     /// binary does not have.
     pub fn ported(self) -> bool {
-        matches!(self, Manager::Npm)
+        matches!(
+            self,
+            Manager::Npm
+                | Manager::Pnpm
+                | Manager::Yarn
+                | Manager::Bun
+                | Manager::Uv
+                | Manager::Cargo
+                | Manager::Composer
+                | Manager::Bundler
+        )
     }
 
     pub fn write_config_name(self) -> Option<&'static str> {
@@ -185,6 +239,10 @@ mod tests {
         let pin = PackageManagerPin::parse("pnpm@9.12.1").unwrap();
         assert_eq!(pin.name, "pnpm");
         assert_eq!(pin.major, 9);
+        assert_eq!(pin.minor, 12);
+        assert_eq!(pin.patch, 1);
+        assert!(pin.at_least(9, 12));
+        assert!(!pin.at_least(9, 13));
         assert_eq!(pin.manager(), Some(Manager::Pnpm));
         assert_eq!(PackageManagerPin::parse("@9.0.0"), None);
         assert_eq!(PackageManagerPin::parse("pnpm"), None);

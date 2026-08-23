@@ -8,14 +8,20 @@ import {
     Note,
     SectionHeading,
 } from "@/modules/docs";
-import { GITHUB_URL, RELEASES_URL } from "@/lib/site";
+import {
+    BREW_INSTALL,
+    BREW_TAP_AND_INSTALL,
+    GITHUB_URL,
+    RELEASES_URL,
+} from "@/lib/site";
 ---
 
 <DocsLayout
     title={`Install - ${APP_NAME}`}
-    description="pkguard is a Rust binary. Install it with cargo. Homebrew and prebuilt binaries are not published yet."
+    description="Install pkguard with Homebrew, or build it with cargo."
     current="/docs/install"
     toc={[
+        { id: "homebrew", label: "Homebrew" },
         { id: "cargo", label: "Cargo" },
         { id: "from-source", label: "From source" },
         { id: "binaries", label: "Prebuilt binaries" },
@@ -24,8 +30,16 @@ import { GITHUB_URL, RELEASES_URL } from "@/lib/site";
     <DocsHeader
         eyebrow="Install"
         title="Install"
-        lead="Install from the repo with cargo. Homebrew and prebuilt binaries are not published yet."
+        lead="Homebrew is the short path on macOS and Linux. Cargo works if you already have a Rust toolchain."
     />
+    <SectionHeading id="homebrew">Homebrew</SectionHeading>
+    <DocsBody>
+        Use the fully qualified formula name. That taps and trusts in one
+        step. Homebrew 6 will not load a third-party tap until it is trusted,
+        so <code>brew tap</code> alone is not enough.
+    </DocsBody>
+    <CodeBlock code={BREW_INSTALL} />
+    <CodeBlock label="tap then trust" code={BREW_TAP_AND_INSTALL} />
     <SectionHeading id="cargo">Cargo</SectionHeading>
     <DocsBody>Requires a stable Rust toolchain.</DocsBody>
     <CodeBlock
@@ -37,15 +51,15 @@ import { GITHUB_URL, RELEASES_URL } from "@/lib/site";
     />
     <SectionHeading id="binaries">Prebuilt binaries</SectionHeading>
     <DocsBody>
-        Use cargo until Homebrew and per-platform binaries show up on the
+        Per-platform binaries are on the
         <a href={RELEASES_URL} class="text-ink underline" rel="noopener" target="_blank">
             releases page
-        </a>.
+        </a>
+        if you prefer a download over Homebrew or cargo.
     </DocsBody>
     <Note>
-        The old npm package was named mailclad and shipped as 0.1.x. That was the Bun
-        build. It does not match these docs. Settings are parsed from committed config
-        files whether or not the manager binary is installed. A missing binary only
-        skips the live advisory step.
+        Settings are parsed from committed config files whether or not
+        the manager binary is installed; a missing binary only skips the live advisory
+        step.
     </Note>
 </DocsLayout>

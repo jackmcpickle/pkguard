@@ -242,6 +242,8 @@ mod tests {
             .collect();
         assert!(!names.contains(&"dump-catalog"));
         assert!(!names.contains(&"help"));
+        assert!(names.contains(&"init"));
+        assert!(names.contains(&"scan"));
     }
 
     #[test]
@@ -265,9 +267,17 @@ mod tests {
         let npm = managers.iter().find(|m| m["name"] == "npm").unwrap();
         assert_eq!(npm["auditArgv"], json!(["npm", "audit", "--json"]));
         assert_eq!(npm["ported"], true);
+        let pnpm = managers.iter().find(|m| m["name"] == "pnpm").unwrap();
+        assert_eq!(pnpm["auditArgv"], json!(["pnpm", "audit", "--json"]));
+        assert_eq!(pnpm["ported"], true);
+        for name in ["yarn", "bun", "uv", "cargo", "composer", "bundler"] {
+            let manager = managers.iter().find(|m| m["name"] == name).unwrap();
+            assert_eq!(manager["ported"], true, "{name}");
+        }
         let poetry = managers.iter().find(|m| m["name"] == "poetry").unwrap();
         assert_eq!(poetry["kind"], "python-legacy");
         assert_eq!(poetry["binary"], Value::Null);
+        assert_eq!(poetry["ported"], false);
     }
 
     #[test]

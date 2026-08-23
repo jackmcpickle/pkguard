@@ -1,4 +1,5 @@
 use crate::manager::{Manager, PackageManagerPin};
+use ignore::{IncrementalIgnore, WalkBuilder};
 use serde::Serialize;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -26,11 +27,12 @@ pub struct Project {
     pub managers: Vec<DetectedManager>,
 }
 
-const SKIP_DIRS: [&str; 8] = [
+const SKIP_DIRS: [&str; 9] = [
     "node_modules",
     ".git",
     "dist",
     "build",
+    "target",
     ".venv",
     "vendor",
     "__pycache__",
@@ -137,12 +139,39 @@ fn has_nested_config(dir: &Path, names: &BTreeSet<String>) -> bool {
         || has_project_table(dir)
 }
 
-fn find_nested_git_repos(dir: &Path, found: &mut Vec<PathBuf>) {
+fn ignore_matcher(root: &Path) -> IncrementalIgnore {
+    WalkBuilder::new(root)
+        .hidden(false)
+        .parents(false)
+        .ignore(false)
+        .git_global(false)
+        .git_ignore(true)
+        .git_exclude(true)
+        .require_git(false)
+        .follow_links(false)
+        .build_matchers()
+        .remove(0)
+}
+
+fn skip_dir(root: &Path, child: &Path, name: &str, ignore: &mut IncrementalIgnore) -> bool {
+    if SKIP_DIRS.contains(&name) {
+        return true;
+    }
+    let rel = child.strip_prefix(root).unwrap_or(child);
+    ignore.matched(rel, true).is_ignore()
+}
+
+fn find_nested_git_repos(
+    dir: &Path,
+    root: &Path,
+    ignore: &mut IncrementalIgnore,
+    found: &mut Vec<PathBuf>,
+) {
     for name in dir_names(dir) {
-        if SKIP_DIRS.contains(&name.as_str()) {
+        let child = dir.join(&name);
+        if skip_dir(root, &child, &name, ignore) {
             continue;
         }
-        let child = dir.join(&name);
         // Never follow directory symlinks: a repo-controlled link can form a cycle.
         if child.is_symlink() || !child.is_dir() {
             continue;
@@ -150,7 +179,7 @@ fn find_nested_git_repos(dir: &Path, found: &mut Vec<PathBuf>) {
         if has_git(&child) {
             found.push(child.clone());
         }
-        find_nested_git_repos(&child, found);
+        find_nested_git_repos(&child, root, ignore, found);
     }
 }
 
@@ -158,8 +187,9 @@ fn find_repo_trees(root: &Path) -> Vec<(PathBuf, bool)> {
     if has_git(root) {
         return vec![(root.to_path_buf(), true)];
     }
+    let mut ignore = ignore_matcher(root);
     let mut nested = Vec::new();
-    find_nested_git_repos(root, &mut nested);
+    find_nested_git_repos(root, root, &mut ignore, &mut nested);
     if nested.is_empty() {
         return vec![(root.to_path_buf(), false)];
     }
@@ -170,7 +200,13 @@ fn find_repo_trees(root: &Path) -> Vec<(PathBuf, bool)> {
     trees
 }
 
-fn walk_pm_roots(dir: &Path, repo: &Path, is_repo_root: bool, roots: &mut Vec<PathBuf>) {
+fn walk_pm_roots(
+    dir: &Path,
+    repo: &Path,
+    is_repo_root: bool,
+    ignore: &mut IncrementalIgnore,
+    roots: &mut Vec<PathBuf>,
+) {
     let names = dir_names(dir);
     if is_repo_root {
         if has_root_pm_markers(dir, &names) {
@@ -180,14 +216,14 @@ fn walk_pm_roots(dir: &Path, repo: &Path, is_repo_root: bool, roots: &mut Vec<Pa
         roots.push(dir.to_path_buf());
     }
     for name in names {
-        if SKIP_DIRS.contains(&name.as_str()) {
+        let child = dir.join(&name);
+        if skip_dir(repo, &child, &name, ignore) {
             continue;
         }
-        let child = dir.join(&name);
         if child.is_symlink() || !child.is_dir() || (has_git(&child) && child != repo) {
             continue;
         }
-        walk_pm_roots(&child, repo, false, roots);
+        walk_pm_roots(&child, repo, false, ignore, roots);
     }
 }
 
@@ -358,26 +394,217 @@ fn detect_npm(
     })
 }
 
+fn cargo_config_path(dir: &Path) -> Option<PathBuf> {
+    let toml = dir.join(".cargo/config.toml");
+    if toml.is_file() {
+        return Some(toml);
+    }
+    let legacy = dir.join(".cargo/config");
+    legacy.is_file().then_some(legacy)
+}
+
+fn detect_uv(
+    dir: &Path,
+    names: &BTreeSet<String>,
+    js_primary: Option<Manager>,
+) -> Option<DetectedManager> {
+    let tool_uv = has_tool_table(dir, "uv");
+    if !names.contains("uv.lock") && !tool_uv {
+        return None;
+    }
+    let python_project = tool_uv || has_project_table(dir);
+    let role = if js_primary.is_some() && !python_project {
+        Role::Leftover
+    } else {
+        Role::Primary
+    };
+    let config_path =
+        existing(dir, names, "uv.toml").or_else(|| tool_uv.then(|| dir.join("pyproject.toml")));
+    Some(DetectedManager {
+        manager: Manager::Uv,
+        role,
+        lockfile_path: existing(dir, names, "uv.lock"),
+        config_path,
+    })
+}
+
+fn detect_poetry(
+    dir: &Path,
+    names: &BTreeSet<String>,
+    uv_present: bool,
+) -> Option<DetectedManager> {
+    if !names.contains("poetry.lock") && !has_tool_table(dir, "poetry") {
+        return None;
+    }
+    Some(DetectedManager {
+        manager: Manager::Poetry,
+        role: if uv_present {
+            Role::Leftover
+        } else {
+            Role::Primary
+        },
+        lockfile_path: existing(dir, names, "poetry.lock"),
+        config_path: dir
+            .join("pyproject.toml")
+            .is_file()
+            .then(|| dir.join("pyproject.toml")),
+    })
+}
+
+fn detect_pipenv(dir: &Path, names: &BTreeSet<String>) -> Option<DetectedManager> {
+    if !names.contains("Pipfile") && !names.contains("Pipfile.lock") {
+        return None;
+    }
+    Some(DetectedManager {
+        manager: Manager::Pipenv,
+        role: Role::Primary,
+        lockfile_path: existing(dir, names, "Pipfile.lock"),
+        config_path: existing(dir, names, "Pipfile"),
+    })
+}
+
+fn detect_pip(
+    dir: &Path,
+    names: &BTreeSet<String>,
+    uv_present: bool,
+    poetry_present: bool,
+    pipenv_present: bool,
+) -> Option<DetectedManager> {
+    if uv_present {
+        return None;
+    }
+    let reqs: Vec<&String> = names
+        .iter()
+        .filter(|name| {
+            *name == "requirements.txt"
+                || name
+                    .strip_prefix("requirements-")
+                    .and_then(|rest| rest.strip_suffix(".txt"))
+                    .is_some_and(|middle| !middle.is_empty())
+        })
+        .collect();
+    let from_project =
+        !poetry_present && !pipenv_present && !has_tool_table(dir, "uv") && has_project_table(dir);
+    if reqs.is_empty() && !from_project {
+        return None;
+    }
+    Some(DetectedManager {
+        manager: Manager::Pip,
+        role: Role::Primary,
+        lockfile_path: None,
+        config_path: None,
+    })
+}
+
+fn detect_bundler(dir: &Path, names: &BTreeSet<String>) -> Option<DetectedManager> {
+    if !names.contains("Gemfile") {
+        return None;
+    }
+    let config = dir.join(".bundle/config");
+    Some(DetectedManager {
+        manager: Manager::Bundler,
+        role: Role::Primary,
+        lockfile_path: existing(dir, names, "Gemfile.lock"),
+        config_path: config.is_file().then_some(config),
+    })
+}
+
+fn detect_composer(
+    dir: &Path,
+    names: &BTreeSet<String>,
+    js_primary: Option<Manager>,
+) -> Option<DetectedManager> {
+    let has_json = names.contains("composer.json");
+    if !has_json && !names.contains("composer.lock") {
+        return None;
+    }
+    let role = if has_json || js_primary.is_none() {
+        Role::Primary
+    } else {
+        Role::Leftover
+    };
+    Some(DetectedManager {
+        manager: Manager::Composer,
+        role,
+        lockfile_path: existing(dir, names, "composer.lock"),
+        config_path: has_json.then(|| dir.join("composer.json")),
+    })
+}
+
+fn detect_cargo(
+    dir: &Path,
+    names: &BTreeSet<String>,
+    js_primary: Option<Manager>,
+) -> Option<DetectedManager> {
+    let has_toml = names.contains("Cargo.toml");
+    if !has_toml && !names.contains("Cargo.lock") {
+        return None;
+    }
+    let role = if has_toml || js_primary.is_none() {
+        Role::Primary
+    } else {
+        Role::Leftover
+    };
+    Some(DetectedManager {
+        manager: Manager::Cargo,
+        role,
+        lockfile_path: existing(dir, names, "Cargo.lock"),
+        config_path: cargo_config_path(dir),
+    })
+}
+
 fn detect_managers(dir: &Path) -> Vec<DetectedManager> {
     let names = dir_names(dir);
     let pin = PackageManagerPin::from_manifest(dir);
-    let primary = pick_js_primary(&names, pin.as_ref());
-    [
-        detect_pnpm(dir, &names, primary),
-        detect_yarn(dir, &names, pin.as_ref(), primary),
-        detect_bun(dir, &names, primary),
-        detect_npm(dir, &names, pin.as_ref(), primary),
+    let js_primary = pick_js_primary(&names, pin.as_ref());
+    let mut managers = Vec::new();
+    for detected in [
+        detect_pnpm(dir, &names, js_primary),
+        detect_yarn(dir, &names, pin.as_ref(), js_primary),
+        detect_bun(dir, &names, js_primary),
+        detect_npm(dir, &names, pin.as_ref(), js_primary),
     ]
     .into_iter()
     .flatten()
-    .collect()
+    {
+        managers.push(detected);
+    }
+    let uv = detect_uv(dir, &names, js_primary);
+    let uv_present = uv.is_some();
+    if let Some(detected) = uv {
+        managers.push(detected);
+    }
+    let poetry = detect_poetry(dir, &names, uv_present);
+    let poetry_present = poetry.is_some();
+    if let Some(detected) = poetry {
+        managers.push(detected);
+    }
+    let pipenv = detect_pipenv(dir, &names);
+    let pipenv_present = pipenv.is_some();
+    if let Some(detected) = pipenv {
+        managers.push(detected);
+    }
+    if let Some(detected) = detect_pip(dir, &names, uv_present, poetry_present, pipenv_present) {
+        managers.push(detected);
+    }
+    if let Some(detected) = detect_bundler(dir, &names) {
+        managers.push(detected);
+    }
+    if let Some(detected) = detect_composer(dir, &names, js_primary) {
+        managers.push(detected);
+    }
+    if let Some(detected) = detect_cargo(dir, &names, js_primary) {
+        managers.push(detected);
+    }
+    managers
 }
 
 /// Walks `root`, streaming each discovered project into `sink` as it is found.
 pub fn discover_projects(root: &Path, sink: &mut dyn FnMut(Project)) {
     for (tree, is_git) in find_repo_trees(root) {
+        let mut ignore = ignore_matcher(&tree);
         let mut roots = Vec::new();
-        walk_pm_roots(&tree, &tree, true, &mut roots);
+        walk_pm_roots(&tree, &tree, true, &mut ignore, &mut roots);
         for pm_root in roots {
             sink(Project {
                 managers: detect_managers(&pm_root),
@@ -446,6 +673,57 @@ mod tests {
         assert_eq!(projects[1].root, tmp.path().join("b"));
         assert_eq!(projects[1].managers[0].manager, Manager::Yarn);
         assert_eq!(projects[1].managers[0].role, Role::Primary);
+    }
+
+    fn project_roots(root: &Path) -> Vec<PathBuf> {
+        discover(root).into_iter().map(|p| p.root).collect()
+    }
+
+    #[test]
+    fn gitignore_skips_ignored_branches_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir(tmp.path().join(".git")).unwrap();
+        write(tmp.path(), ".gitignore", "branches/\n");
+        write(tmp.path(), "package.json", "{}");
+        write(tmp.path(), "package-lock.json", "{}");
+        write(tmp.path(), "branches/worktree/package.json", "{}");
+        write(tmp.path(), "branches/worktree/.npmrc", "");
+        write(tmp.path(), "apps/api/package.json", "{}");
+        write(tmp.path(), "apps/api/.npmrc", "");
+
+        assert_eq!(
+            project_roots(tmp.path()),
+            vec![tmp.path().to_path_buf(), tmp.path().join("apps/api")]
+        );
+    }
+
+    #[test]
+    fn gitignore_skips_ignored_nested_git_repos() {
+        let tmp = tempfile::tempdir().unwrap();
+        write(tmp.path(), ".gitignore", "branches/\n");
+        fs::create_dir_all(tmp.path().join("app/.git")).unwrap();
+        write(tmp.path(), "app/package.json", "{}");
+        fs::create_dir_all(tmp.path().join("branches/other/.git")).unwrap();
+        write(tmp.path(), "branches/other/package.json", "{}");
+
+        assert_eq!(project_roots(tmp.path()), vec![tmp.path().join("app")]);
+    }
+
+    #[test]
+    fn branches_folder_is_scanned_when_not_gitignored() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir(tmp.path().join(".git")).unwrap();
+        write(tmp.path(), "package.json", "{}");
+        write(tmp.path(), "branches/worktree/package.json", "{}");
+        write(tmp.path(), "branches/worktree/.npmrc", "");
+
+        assert_eq!(
+            project_roots(tmp.path()),
+            vec![
+                tmp.path().to_path_buf(),
+                tmp.path().join("branches/worktree")
+            ]
+        );
     }
 
     #[test]
@@ -533,5 +811,87 @@ mod tests {
         let m = &projects[0].managers[0];
         assert_eq!(m.manager, Manager::Yarn);
         assert_eq!(m.role, Role::Unsupported);
+    }
+
+    fn roles(projects: &[Project]) -> Vec<(Manager, Role)> {
+        projects[0]
+            .managers
+            .iter()
+            .map(|m| (m.manager, m.role))
+            .collect()
+    }
+
+    #[test]
+    fn cargo_toml_is_cargo_primary() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir(tmp.path().join(".git")).unwrap();
+        write(tmp.path(), "Cargo.toml", "[package]\nname=\"x\"\n");
+        write(tmp.path(), "Cargo.lock", "");
+        let found = roles(&discover(tmp.path()));
+        assert!(found.contains(&(Manager::Cargo, Role::Primary)));
+    }
+
+    #[test]
+    fn cargo_workspace_members_are_separate_projects() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir(tmp.path().join(".git")).unwrap();
+        write(
+            tmp.path(),
+            "Cargo.toml",
+            "[workspace]\nresolver = \"2\"\nmembers = [\"crates/pkguard\"]\n",
+        );
+        write(tmp.path(), "Cargo.lock", "");
+        write(
+            tmp.path(),
+            "crates/pkguard/Cargo.toml",
+            "[package]\nname = \"pkguard\"\nversion = \"0.1.0\"\n",
+        );
+
+        let projects = discover(tmp.path());
+        assert_eq!(projects.len(), 2);
+        assert_eq!(projects[0].root, tmp.path());
+        assert_eq!(projects[1].root, tmp.path().join("crates/pkguard"));
+
+        let root = &projects[0].managers[0];
+        assert_eq!(root.manager, Manager::Cargo);
+        assert_eq!(root.role, Role::Primary);
+        assert_eq!(
+            root.lockfile_path.as_deref(),
+            Some(tmp.path().join("Cargo.lock").as_path())
+        );
+
+        let member = &projects[1].managers[0];
+        assert_eq!(member.manager, Manager::Cargo);
+        assert_eq!(member.role, Role::Primary);
+        assert_eq!(member.lockfile_path, None);
+    }
+
+    #[test]
+    fn uv_lock_is_uv_primary_and_poetry_is_leftover() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir(tmp.path().join(".git")).unwrap();
+        write(tmp.path(), "uv.lock", "");
+        write(
+            tmp.path(),
+            "pyproject.toml",
+            "[tool.uv]\n\n[tool.poetry]\nname=\"x\"\n",
+        );
+        write(tmp.path(), "poetry.lock", "");
+        let found = roles(&discover(tmp.path()));
+        assert!(found.contains(&(Manager::Uv, Role::Primary)));
+        assert!(found.contains(&(Manager::Poetry, Role::Leftover)));
+    }
+
+    #[test]
+    fn composer_and_bundler_and_pip_are_detected() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir(tmp.path().join(".git")).unwrap();
+        write(tmp.path(), "composer.json", "{}");
+        write(tmp.path(), "Gemfile", "source 'https://rubygems.org'");
+        write(tmp.path(), "requirements.txt", "requests\n");
+        let found = roles(&discover(tmp.path()));
+        assert!(found.contains(&(Manager::Composer, Role::Primary)));
+        assert!(found.contains(&(Manager::Bundler, Role::Primary)));
+        assert!(found.contains(&(Manager::Pip, Role::Primary)));
     }
 }

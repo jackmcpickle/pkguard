@@ -1,0 +1,74 @@
+name: Publish
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".versionrc.json"
+      - "scripts/cargo-version-updater.cjs"
+      - "scripts/cargo-lock-updater.cjs"
+      - ".github/workflows/publish.yml"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    if: ${{ !contains(github.event.head_commit.message, '[skip publish]') && !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      released: ${{ steps.release.outputs.released }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      # Deploy key (ruleset bypass) so the release commit/tag can push to main.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ssh-key: ${{ secrets.DEPLOY_KEY }}
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Test
+        run: cargo test --workspace
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version, changelog, and tag
+        id: release
+        run: |
+          set -euo pipefail
+          if ! npx --yes commit-and-tag-version@13; then
+            echo "No releasable commits since last tag; skipping release."
+            exit 0
+          fi
+          version="$(node -e "const fs=require('fs'); const u=require('./scripts/cargo-version-updater.cjs'); process.stdout.write(u.readVersion(fs.readFileSync('Cargo.toml','utf8')))")"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "released=true" >> "$GITHUB_OUTPUT"
+
+      - name: Push release commit and tag
+        if: steps.release.outputs.released == 'true'
+        run: git push --follow-tags origin HEAD:main
+
+  cut-release:
+    needs: bump
+    if: needs.bump.outputs.released == 'true'
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: v${{ needs.bump.outputs.version }}
+    permissions:
+      contents: write

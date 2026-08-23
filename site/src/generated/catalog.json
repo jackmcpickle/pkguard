@@ -103,6 +103,35 @@
       ],
       "name": "scan",
       "summary": "Read-only audit of one directory tree (never mutates anything)"
+    },
+    {
+      "arguments": [],
+      "flags": [
+        {
+          "description": "Write `.pkguard.toml` in the current directory instead of the user config",
+          "names": [
+            "--local"
+          ],
+          "value": null
+        },
+        {
+          "description": "Overwrite an existing file",
+          "names": [
+            "--force"
+          ],
+          "value": null
+        },
+        {
+          "description": "Print help",
+          "names": [
+            "-h",
+            "--help"
+          ],
+          "value": null
+        }
+      ],
+      "name": "init",
+      "summary": "Write a starter config file"
     }
   ],
   "configFileName": ".pkguard.toml",
@@ -141,7 +170,7 @@
         "pnpm-lock.yaml"
       ],
       "name": "pnpm",
-      "ported": false,
+      "ported": true,
       "writeConfigName": "pnpm-workspace.yaml"
     },
     {
@@ -160,7 +189,7 @@
         "yarn.lock"
       ],
       "name": "yarn",
-      "ported": false,
+      "ported": true,
       "writeConfigName": ".yarnrc.yml"
     },
     {
@@ -179,7 +208,7 @@
         "bun.lockb"
       ],
       "name": "bun",
-      "ported": false,
+      "ported": true,
       "writeConfigName": "bunfig.toml"
     },
     {
@@ -200,7 +229,7 @@
         "uv.lock"
       ],
       "name": "uv",
-      "ported": false,
+      "ported": true,
       "writeConfigName": null
     },
     {
@@ -219,7 +248,7 @@
         "Cargo.lock"
       ],
       "name": "cargo",
-      "ported": false,
+      "ported": true,
       "writeConfigName": ".cargo/config.toml"
     },
     {
@@ -239,7 +268,7 @@
         "composer.lock"
       ],
       "name": "composer",
-      "ported": false,
+      "ported": true,
       "writeConfigName": "composer.json"
     },
     {
@@ -288,7 +317,7 @@
         "Gemfile.lock"
       ],
       "name": "bundler",
-      "ported": false,
+      "ported": true,
       "writeConfigName": ".bundle/config"
     }
   ],

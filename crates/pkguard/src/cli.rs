@@ -13,9 +13,23 @@ pub enum Command {
     /// Read-only audit of one directory tree (never mutates anything)
     Scan(ScanArgs),
 
+    /// Write a starter config file
+    Init(InitArgs),
+
     /// Emit the docs-site catalog as JSON (builds the docs site)
     #[command(hide = true, name = "dump-catalog")]
     DumpCatalog,
+}
+
+#[derive(clap::Args)]
+pub struct InitArgs {
+    /// Write `.pkguard.toml` in the current directory instead of the user config
+    #[arg(long)]
+    pub local: bool,
+
+    /// Overwrite an existing file
+    #[arg(long)]
+    pub force: bool,
 }
 
 #[derive(clap::Args)]

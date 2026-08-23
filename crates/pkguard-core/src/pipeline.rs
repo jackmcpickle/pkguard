@@ -119,7 +119,7 @@ async fn audit_project(
         config.preset = Some(preset);
     }
 
-    let mut findings = Vec::new();
+    let mut findings = crate::settings::checks::multiple_pm_findings(project);
     let mut incomplete = false;
     let advisory_opts = AdvisoryOptions {
         refresh: opts.refresh,
@@ -127,14 +127,16 @@ async fn audit_project(
     };
 
     for manager in &project.managers {
-        // M1 runs live audits for npm only; the other dialect parsers land in M2.
-        if manager.role != Role::Primary || manager.manager != Manager::Npm {
-            continue;
-        }
         let settings = resolve_settings(&config, manager.manager.name());
         let settings_findings =
             crate::settings::audit_manager_settings(&project.root, manager, &settings);
         findings.extend(settings_findings);
+
+        // Live advisory audits run for ported primaries only. Leftover and
+        // unsupported managers still contribute the settings finding above.
+        if manager.role != Role::Primary || !manager.manager.ported() {
+            continue;
+        }
         let binary = manager.manager.binary().unwrap_or_default();
         if !runner.which(binary) {
             let finding = missing_binary_finding(&project.root, manager.manager, binary);
@@ -503,5 +505,221 @@ mod tests {
             .unwrap();
         assert_eq!(preset, Preset::Relaxed);
         assert_eq!(sources, vec![tmp.path().join("a/.pkguard.toml")]);
+    }
+
+    fn compliant_pnpm_repo(root: &Path, name: &str) {
+        let dir = root.join(name);
+        fs::create_dir_all(dir.join(".git")).unwrap();
+        fs::write(
+            dir.join("package.json"),
+            r#"{"packageManager": "pnpm@11.7.0"}"#,
+        )
+        .unwrap();
+        fs::write(dir.join("pnpm-lock.yaml"), format!("lock-{name}")).unwrap();
+        fs::write(
+            dir.join("pnpm-workspace.yaml"),
+            "allowBuilds:\n  esbuild: false\nminimumReleaseAge: 1440\nminimumReleaseAgeStrict: true\nminimumReleaseAgeIgnoreMissingTime: false\nblockExoticSubdeps: true\nstrictDepBuilds: true\naudit:\n  level: high\ntrustPolicyIgnoreAfter: 129600\ntrustPolicy: no-downgrade\nverifyDepsBeforeRun: error\nregistry: https://registry.npmjs.org/\n",
+        )
+        .unwrap();
+    }
+
+    const PNPM_HIGH: &str = r#"{
+        "advisories": {
+            "1": {
+                "findings": [{"version": "1.0.0"}],
+                "fixAvailable": {"name": "left-pad", "version": "1.3.0"},
+                "github_advisory_id": "GHSA-pnpm",
+                "module_name": "left-pad",
+                "severity": "high",
+                "title": "pnpm high advisory"
+            }
+        }
+    }"#;
+
+    #[tokio::test]
+    async fn scans_pnpm_settings_and_live_audit() {
+        let tmp = tempfile::tempdir().unwrap();
+        compliant_pnpm_repo(tmp.path(), "app");
+        let runner = CannedRunner::new().with(
+            &["pnpm", "audit", "--json"],
+            CommandOutput {
+                code: 1,
+                stdout: PNPM_HIGH.into(),
+                stderr: String::new(),
+            },
+        );
+        let events = run_scan(tmp.path(), runner).await;
+        let findings: Vec<String> = events
+            .iter()
+            .filter_map(|e| match e {
+                AuditEvent::ProjectFinished { findings, .. } => {
+                    Some(findings.iter().map(|f| f.code.clone()).collect::<Vec<_>>())
+                }
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        assert!(
+            findings.contains(&"GHSA-pnpm".to_string()),
+            "findings: {findings:?}"
+        );
+        assert_eq!(summary(&events).exit, ExitCode::PolicyFailure);
+    }
+
+    #[tokio::test]
+    async fn leftover_npm_beside_pnpm_is_reported() {
+        let tmp = tempfile::tempdir().unwrap();
+        compliant_pnpm_repo(tmp.path(), "app");
+        fs::write(tmp.path().join("app/package-lock.json"), "leftover").unwrap();
+        let runner = CannedRunner::new().with(
+            &["pnpm", "audit", "--json"],
+            CommandOutput {
+                code: 0,
+                stdout: r#"{"advisories":{}}"#.into(),
+                stderr: String::new(),
+            },
+        );
+        let events = run_scan(tmp.path(), runner).await;
+        let findings: Vec<String> = events
+            .iter()
+            .filter_map(|e| match e {
+                AuditEvent::ProjectFinished { findings, .. } => {
+                    Some(findings.iter().map(|f| f.code.clone()).collect::<Vec<_>>())
+                }
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        assert!(
+            findings.contains(&"lockfile.leftover".to_string()),
+            "findings: {findings:?}"
+        );
+        assert_eq!(summary(&events).exit, ExitCode::PolicyFailure);
+    }
+
+    fn compliant_yarn_repo(root: &Path, name: &str) {
+        let dir = root.join(name);
+        fs::create_dir_all(dir.join(".git")).unwrap();
+        fs::write(
+            dir.join("package.json"),
+            r#"{"packageManager": "yarn@4.14.0"}"#,
+        )
+        .unwrap();
+        fs::write(dir.join("yarn.lock"), format!("lock-{name}")).unwrap();
+        fs::write(
+            dir.join(".yarnrc.yml"),
+            "enableScripts: false\napprovedGitRepositories: []\nnpmRegistryServer: https://registry.npmjs.org/\n",
+        )
+        .unwrap();
+    }
+
+    const YARN_HIGH: &str = r#"{"value":"left-pad","children":{"ID":"GHSA-yarn","Severity":"high","Issue":"yarn high advisory","Tree Versions":["1.0.0"]}}"#;
+
+    #[tokio::test]
+    async fn scans_yarn_settings_and_live_audit() {
+        let tmp = tempfile::tempdir().unwrap();
+        compliant_yarn_repo(tmp.path(), "app");
+        let runner = CannedRunner::new().with(
+            &["yarn", "npm", "audit", "--json"],
+            CommandOutput {
+                code: 1,
+                stdout: YARN_HIGH.into(),
+                stderr: String::new(),
+            },
+        );
+        let events = run_scan(tmp.path(), runner).await;
+        let findings: Vec<String> = events
+            .iter()
+            .filter_map(|e| match e {
+                AuditEvent::ProjectFinished { findings, .. } => {
+                    Some(findings.iter().map(|f| f.code.clone()).collect::<Vec<_>>())
+                }
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        assert!(
+            findings.contains(&"GHSA-yarn".to_string()),
+            "findings: {findings:?}"
+        );
+        assert_eq!(summary(&events).exit, ExitCode::PolicyFailure);
+    }
+
+    fn compliant_cargo_repo(root: &Path, name: &str) {
+        let dir = root.join(name);
+        fs::create_dir_all(dir.join(".git")).unwrap();
+        fs::create_dir_all(dir.join(".cargo")).unwrap();
+        fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        fs::write(dir.join("Cargo.lock"), format!("lock-{name}")).unwrap();
+        fs::write(
+            dir.join(".cargo/config.toml"),
+            "[install]\nminimum-release-age = 1440\n",
+        )
+        .unwrap();
+    }
+
+    const CARGO_HIGH: &str = r#"{"vulnerabilities":{"list":[{"advisory":{"id":"RUSTSEC-2024-0001","title":"cargo issue","package":"foo"},"severity":"high"}]}}"#;
+
+    #[tokio::test]
+    async fn scans_cargo_settings_and_live_audit() {
+        let tmp = tempfile::tempdir().unwrap();
+        compliant_cargo_repo(tmp.path(), "app");
+        let runner = CannedRunner::new().with(
+            &["cargo", "audit", "--json"],
+            CommandOutput {
+                code: 1,
+                stdout: CARGO_HIGH.into(),
+                stderr: String::new(),
+            },
+        );
+        let events = run_scan(tmp.path(), runner).await;
+        let findings: Vec<String> = events
+            .iter()
+            .filter_map(|e| match e {
+                AuditEvent::ProjectFinished { findings, .. } => {
+                    Some(findings.iter().map(|f| f.code.clone()).collect::<Vec<_>>())
+                }
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        assert!(
+            findings.contains(&"RUSTSEC-2024-0001".to_string()),
+            "findings: {findings:?}"
+        );
+        assert_eq!(summary(&events).exit, ExitCode::PolicyFailure);
+    }
+
+    #[tokio::test]
+    async fn poetry_reports_python_not_uv() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("app");
+        fs::create_dir_all(dir.join(".git")).unwrap();
+        fs::write(
+            dir.join("pyproject.toml"),
+            "[tool.poetry]\nname = \"app\"\n",
+        )
+        .unwrap();
+        fs::write(dir.join("poetry.lock"), "").unwrap();
+        let events = run_scan(tmp.path(), CannedRunner::new()).await;
+        let findings: Vec<String> = events
+            .iter()
+            .filter_map(|e| match e {
+                AuditEvent::ProjectFinished { findings, .. } => {
+                    Some(findings.iter().map(|f| f.code.clone()).collect::<Vec<_>>())
+                }
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        assert!(
+            findings.contains(&"python.not-uv".to_string()),
+            "findings: {findings:?}"
+        );
+        assert_eq!(summary(&events).exit, ExitCode::PolicyFailure);
     }
 }
