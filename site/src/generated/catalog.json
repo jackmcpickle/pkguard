@@ -103,6 +103,35 @@
       ],
       "name": "scan",
       "summary": "Read-only audit of one directory tree (never mutates anything)"
+    },
+    {
+      "arguments": [],
+      "flags": [
+        {
+          "description": "Write `.pkguard.toml` in the current directory instead of the user config",
+          "names": [
+            "--local"
+          ],
+          "value": null
+        },
+        {
+          "description": "Overwrite an existing file",
+          "names": [
+            "--force"
+          ],
+          "value": null
+        },
+        {
+          "description": "Print help",
+          "names": [
+            "-h",
+            "--help"
+          ],
+          "value": null
+        }
+      ],
+      "name": "init",
+      "summary": "Write a starter config file"
     }
   ],
   "configFileName": ".pkguard.toml",

@@ -42,6 +42,9 @@ Homebrew tap and prebuilt release binaries are coming with the distribution cuto
 ## Usage
 
 ```bash
+pkguard init                       # write the user config (refuses to overwrite)
+pkguard init --local               # write .pkguard.toml in the current directory
+pkguard init --force               # overwrite an existing file
 pkguard scan [path]                # read-only audit, defaults to the current directory
 pkguard scan . --preset strict     # relaxed | standard | strict
 pkguard scan . --format json       # machine-readable output (schemaVersion 2)
@@ -59,8 +62,8 @@ Advisory results are cached by lockfile digest in the platform cache dir (overri
 
 Config is TOML, layered field by field. Later layers win, and flags win over files:
 
-1. user config: `config.toml` in the platform config dir (`~/.config/pkguard/` on Linux, `~/Library/Application Support/dev.pkguard.pkguard/` on macOS)
-2. `.pkguard.toml` at the scan root
+1. user config: `config.toml` in the platform config dir (`~/.config/pkguard/` on Linux, `~/Library/Application Support/dev.pkguard.pkguard/` on macOS). `pkguard init` writes this; `PKGUARD_CONFIG_DIR` overrides the directory.
+2. `.pkguard.toml` at the scan root (`pkguard init --local`)
 3. `.pkguard.toml` in an individual repo
 
 ```toml
@@ -207,7 +210,11 @@ The docs site (`site/`, Astro) builds from a checked-in catalog dumped from the 
 
 ## Releasing
 
-Pushing a `v*` tag runs `.github/workflows/release.yml`: tests, a GitHub release, and per-platform binaries built on a runner matrix. cargo-dist and release-plz (plus the Homebrew tap) replace this at the distribution cutover.
+Pushes to `main` that change the crates (or **Publish** → *Run workflow*) run `.github/workflows/publish.yml`. That job bumps `[workspace.package]` from conventional commits, writes `CHANGELOG.md`, tags, and pushes. Commits whose message contains `[skip publish]` or `[skip ci]` are skipped; the release commit itself is `chore(release): vX.Y.Z [skip publish]`.
+
+Publish then calls `.github/workflows/release.yml`: tests, a GitHub release whose notes come from the matching `CHANGELOG.md` section (or generated notes if that section is empty), and per-platform binaries. A `v*` tag that is not from that auto-release commit, or **Release** → *Run workflow*, does the same.
+
+The publish job needs `DEPLOY_KEY` so the release commit can land on `main` under branch rulesets. There is no npm publish; cargo-dist, release-plz, and the Homebrew tap still come later.
 
 ## License
 

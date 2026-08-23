@@ -22,6 +22,12 @@ jobs:
         run: |
           cargo run -q -p pkguard -- dump-catalog > site/src/generated/catalog.json
           git diff --exit-code site/src/generated/catalog.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Release helper scripts
+        run: |
+          node --test scripts/release-notes.test.mjs scripts/cargo-version-updater.test.cjs
 
   site:
     runs-on: ubuntu-latest
