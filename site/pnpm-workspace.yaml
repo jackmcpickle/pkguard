@@ -9,6 +9,10 @@ allowBuilds:
 
 # Supply-chain settings pkguard itself recommends (standard preset).
 minimumReleaseAge: 1440
+minimumReleaseAgeStrict: true
+minimumReleaseAgeIgnoreMissingTime: false
+blockExoticSubdeps: true
+strictDepBuilds: true
 audit:
   level: high
 trustPolicy: no-downgrade

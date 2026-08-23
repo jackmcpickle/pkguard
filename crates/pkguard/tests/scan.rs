@@ -119,6 +119,40 @@ fn fake_pnpm(root: &Path, audit_json: &str) -> std::path::PathBuf {
 }
 
 #[test]
+fn scan_site_style_pnpm_config_exits_zero() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("app");
+    fs::create_dir_all(dir.join(".git")).unwrap();
+    fs::write(
+        dir.join("package.json"),
+        r#"{"packageManager": "pnpm@11.22.0"}"#,
+    )
+    .unwrap();
+    fs::write(dir.join("pnpm-lock.yaml"), "lock-app").unwrap();
+    fs::write(
+        dir.join("pnpm-workspace.yaml"),
+        "\
+allowBuilds:
+  esbuild: false
+minimumReleaseAge: 1440
+minimumReleaseAgeStrict: true
+minimumReleaseAgeIgnoreMissingTime: false
+blockExoticSubdeps: true
+strictDepBuilds: true
+audit:
+  level: high
+trustPolicy: no-downgrade
+trustPolicyIgnoreAfter: 129600
+verifyDepsBeforeRun: error
+registry: https://registry.npmjs.org/
+",
+    )
+    .unwrap();
+    let bin = fake_pnpm(tmp.path(), r#"{"advisories":{}}"#);
+    scan_cmd(tmp.path(), &bin).assert().code(0);
+}
+
+#[test]
 fn scan_reports_pnpm_settings_and_advisories() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("app");

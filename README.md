@@ -123,7 +123,7 @@ For pnpm, the same families are read from `pnpm-workspace.yaml` (not `.npmrc`):
 |---|---|
 | install scripts | `dangerouslyAllowAllBuilds` must not be true; prefer an explicit `allowBuilds` map; `strictDepBuilds` must not be false |
 | source restrictions | `blockExoticSubdeps` must not be false |
-| release-age gate | `minimumReleaseAge` in minutes (pnpm 11 defaults to 1440); `minimumReleaseAgeStrict` must not be false |
+| release-age gate | `minimumReleaseAge` in minutes (pnpm 11 defaults to 1440); `minimumReleaseAgeStrict` must not be false; under strict, `minimumReleaseAgeIgnoreMissingTime` must be false |
 | audit gate | `audit.level` (or `auditLevel`) must meet the preset's gate |
 | lockfile | `pnpm-lock.yaml` must be present; `trustLockfile` must not be true; `verifyDepsBeforeRun` must be `error` |
 | provenance | `trustPolicy` must be `no-downgrade`; `trustPolicyIgnoreAfter` at least 90 days |
