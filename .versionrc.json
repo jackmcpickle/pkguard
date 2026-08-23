@@ -1,0 +1,19 @@
+{
+  "releaseCommitMessageFormat": "chore(release): {{currentTag}} [skip publish]",
+  "packageFiles": [
+    {
+      "filename": "Cargo.toml",
+      "updater": "scripts/cargo-version-updater.cjs"
+    }
+  ],
+  "bumpFiles": [
+    {
+      "filename": "Cargo.toml",
+      "updater": "scripts/cargo-version-updater.cjs"
+    },
+    {
+      "filename": "Cargo.lock",
+      "updater": "scripts/cargo-lock-updater.cjs"
+    }
+  ]
+}

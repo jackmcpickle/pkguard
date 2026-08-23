@@ -1,10 +1,12 @@
 name: Release
 
-# Tag-triggered release of the Rust binary. cargo-dist + release-plz will
-# replace this at the distribution cutover; until then this is the whole
-# release path.
-
 on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Git tag to release (e.g. v1.0.0)
+        required: true
+        type: string
   push:
     tags: ["v*"]
   workflow_dispatch:
@@ -21,8 +23,11 @@ concurrency:
 permissions:
   contents: write
 
+# Tag pushes from publish.yml already call this workflow. Those release
+# commits include [skip publish]; skip the duplicate tag-triggered run.
 jobs:
   test:
+    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip publish]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,16 +42,33 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG already exists"
+          version="${TAG#v}"
+          notes_file="$(mktemp)"
+          changelog_file="$(mktemp)"
+          if git show HEAD:CHANGELOG.md > "$changelog_file" && node scripts/release-notes.mjs "$version" "$changelog_file" > "$notes_file"; then
+            echo "Using CHANGELOG.md for release notes"
           else
-            gh release create "$TAG" --title "$TAG" --generate-notes
+            echo "No CHANGELOG entry for ${TAG}; falling back to generated notes" > "$notes_file"
+            gh api "repos/${{ github.repository }}/releases/generate-notes" \
+              -f tag_name="$TAG" \
+              -f target_commitish="$TAG" \
+              --jq .body >> "$notes_file"
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --notes-file "$notes_file"
+          else
+            gh release create "$TAG" --title "$TAG" --notes-file "$notes_file"
           fi
 
   binaries:

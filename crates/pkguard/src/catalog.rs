@@ -242,6 +242,8 @@ mod tests {
             .collect();
         assert!(!names.contains(&"dump-catalog"));
         assert!(!names.contains(&"help"));
+        assert!(names.contains(&"init"));
+        assert!(names.contains(&"scan"));
     }
 
     #[test]

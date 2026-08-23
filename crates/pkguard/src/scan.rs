@@ -17,9 +17,7 @@ fn cache_dir() -> PathBuf {
 }
 
 fn user_config_path() -> Option<PathBuf> {
-    directories::ProjectDirs::from("dev", "pkguard", "pkguard")
-        .map(|dirs| dirs.config_dir().join("config.toml"))
-        .filter(|p| p.is_file())
+    crate::paths::user_config_if_present()
 }
 
 fn preset_of(arg: PresetArg) -> Preset {

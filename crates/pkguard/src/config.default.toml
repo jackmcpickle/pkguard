@@ -1,0 +1,19 @@
+preset = "standard"
+
+# [policy]                       # overrides the preset's defaults
+# ignore_scripts = true
+# min_release_age_days = 1
+# require_lockfile = true
+# require_pm_pin = true
+# audit_level = "high"           # info | low | moderate | high | critical
+# registry = "https://npm.corp.example/"
+
+# [agentic]
+# enabled = true                 # report agentic-hygiene findings
+# apply = false                  # reserved for a future fix command
+
+# managers = ["npm", "pnpm", "yarn", "bun", "uv", "cargo", "composer", "bundler"]
+# jobs = 8
+
+# [manager.npm]                  # per-manager override, beats [policy]
+# audit_level = "critical"
