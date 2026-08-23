@@ -16,16 +16,6 @@ fn paint(text: &str, style: Style, opts: &RenderOptions) -> String {
     }
 }
 
-fn severity_word(severity: Severity) -> &'static str {
-    match severity {
-        Severity::Critical => "critical",
-        Severity::High => "high",
-        Severity::Moderate => "moderate",
-        Severity::Low => "low",
-        Severity::Info => "info",
-    }
-}
-
 fn severity_style(severity: Severity) -> Style {
     match severity {
         Severity::Critical => Style::new().red().bold(),
@@ -33,14 +23,6 @@ fn severity_style(severity: Severity) -> Style {
         Severity::Moderate => Style::new().yellow(),
         Severity::Low => Style::new().cyan(),
         Severity::Info => Style::new().dimmed(),
-    }
-}
-
-fn preset_word(preset: Preset) -> &'static str {
-    match preset {
-        Preset::Relaxed => "relaxed",
-        Preset::Standard => "standard",
-        Preset::Strict => "strict",
     }
 }
 
@@ -67,7 +49,7 @@ fn package_cell(finding: &Finding) -> String {
 }
 
 fn config_line(preset: Preset, config_sources: &[PathBuf], opts: &RenderOptions) -> String {
-    let mut line = format!("preset {}", preset_word(preset));
+    let mut line = format!("preset {}", preset.as_str());
     if !config_sources.is_empty() {
         let names: Vec<String> = config_sources
             .iter()
@@ -96,7 +78,7 @@ pub fn project_block(
             paint("ok", Style::new().green(), opts),
             paint(&name, Style::new().bold(), opts),
             paint(
-                &format!("preset {}", preset_word(preset)),
+                &format!("preset {}", preset.as_str()),
                 Style::new().dimmed(),
                 opts
             ),
@@ -123,7 +105,7 @@ pub fn project_block(
         .iter()
         .map(|f| {
             (
-                severity_word(f.severity).to_string(),
+                f.severity.as_str().to_string(),
                 f.manager.map(|m| m.name()).unwrap_or("-").to_string(),
                 f.code.clone(),
                 package_cell(f),
@@ -190,7 +172,7 @@ impl SeverityCounts {
         .filter(|(count, _)| *count > 0)
         .map(|(count, severity)| {
             paint(
-                &format!("{count} {}", severity_word(severity)),
+                &format!("{count} {}", severity.as_str()),
                 severity_style(severity),
                 opts,
             )

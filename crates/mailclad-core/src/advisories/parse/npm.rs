@@ -124,7 +124,7 @@ pub fn parse_npm_audit(
             format!(
                 "{} {} advisory",
                 name.as_deref().unwrap_or("unknown"),
-                severity_word(severity)
+                severity.as_str()
             )
         });
         let fix = fix_from_available(&advisory.fix_available);
@@ -166,7 +166,7 @@ pub fn parse_npm_audit(
                 None,
                 severity,
                 String::new(),
-                format!("{} {} advisory", key, severity_word(severity)),
+                format!("{} {} advisory", key, severity.as_str()),
                 item_fix.clone(),
                 lockfile_path,
             ));
@@ -184,7 +184,7 @@ pub fn parse_npm_audit(
                 .title
                 .clone()
                 .or_else(|| via.summary.clone())
-                .unwrap_or_else(|| format!("{} {} advisory", key, severity_word(severity)));
+                .unwrap_or_else(|| format!("{} {} advisory", key, severity.as_str()));
             findings.push(finding(
                 name.clone(),
                 via.version.as_deref(),
@@ -198,16 +198,6 @@ pub fn parse_npm_audit(
     }
 
     Ok(findings)
-}
-
-fn severity_word(severity: crate::findings::Severity) -> &'static str {
-    match severity {
-        crate::findings::Severity::Critical => "critical",
-        crate::findings::Severity::High => "high",
-        crate::findings::Severity::Moderate => "moderate",
-        crate::findings::Severity::Low => "low",
-        crate::findings::Severity::Info => "info",
-    }
 }
 
 #[cfg(test)]

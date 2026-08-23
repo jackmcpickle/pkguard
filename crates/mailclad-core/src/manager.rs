@@ -19,6 +19,41 @@ pub enum Manager {
     Bundler,
 }
 
+/// Parsed `package.json#packageManager` pin, e.g. `pnpm@9.0.0`. This is the
+/// single parser of that field — discovery, settings, and doctor all use it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PackageManagerPin {
+    pub name: String,
+    pub major: i64,
+}
+
+impl PackageManagerPin {
+    pub fn parse(field: &str) -> Option<Self> {
+        let at = field.find('@')?;
+        if at == 0 {
+            return None;
+        }
+        let major: i64 = field[at + 1..].split('.').next()?.parse().ok()?;
+        Some(Self {
+            name: field[..at].to_string(),
+            major,
+        })
+    }
+
+    pub fn from_manifest(dir: &std::path::Path) -> Option<Self> {
+        let raw = std::fs::read_to_string(dir.join("package.json")).ok()?;
+        let parsed: serde_json::Value = serde_json::from_str(&raw).ok()?;
+        parsed
+            .get("packageManager")
+            .and_then(|v| v.as_str())
+            .and_then(Self::parse)
+    }
+
+    pub fn manager(&self) -> Option<Manager> {
+        Manager::from_name(&self.name)
+    }
+}
+
 impl Manager {
     pub const ALL: [Manager; 11] = [
         Manager::Npm,
@@ -135,6 +170,17 @@ impl Manager {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn package_manager_pin_parses_name_and_major() {
+        let pin = PackageManagerPin::parse("pnpm@9.12.1").unwrap();
+        assert_eq!(pin.name, "pnpm");
+        assert_eq!(pin.major, 9);
+        assert_eq!(pin.manager(), Some(Manager::Pnpm));
+        assert_eq!(PackageManagerPin::parse("@9.0.0"), None);
+        assert_eq!(PackageManagerPin::parse("pnpm"), None);
+        assert_eq!(PackageManagerPin::parse("pnpm@x"), None);
+    }
 
     #[test]
     fn all_managers_roundtrip_by_name() {

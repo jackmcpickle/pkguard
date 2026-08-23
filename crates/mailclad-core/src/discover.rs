@@ -1,4 +1,4 @@
-use crate::manager::Manager;
+use crate::manager::{Manager, PackageManagerPin};
 use serde::Serialize;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -190,32 +190,6 @@ fn walk_pm_roots(dir: &Path, repo: &Path, is_repo_root: bool, roots: &mut Vec<Pa
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct PmPin<'a> {
-    name: &'a str,
-    major: i64,
-}
-
-fn parse_package_manager(field: Option<&str>) -> Option<PmPin<'_>> {
-    let field = field?;
-    let at = field.find('@')?;
-    if at == 0 {
-        return None;
-    }
-    let name = &field[..at];
-    let major: i64 = field[at + 1..].split('.').next()?.parse().ok()?;
-    Some(PmPin { name, major })
-}
-
-fn package_manager_field(dir: &Path) -> Option<String> {
-    let raw = std::fs::read_to_string(dir.join("package.json")).ok()?;
-    let parsed: serde_json::Value = serde_json::from_str(&raw).ok()?;
-    parsed
-        .get("packageManager")
-        .and_then(|v| v.as_str())
-        .map(str::to_owned)
-}
-
 const JS_PRIMARY_ORDER: [Manager; 4] = [Manager::Pnpm, Manager::Yarn, Manager::Bun, Manager::Npm];
 
 fn has_bun_lock(names: &BTreeSet<String>) -> bool {
@@ -230,11 +204,11 @@ fn is_js_manager(name: &str) -> bool {
     matches!(name, "npm" | "pnpm" | "yarn" | "bun")
 }
 
-fn is_pinned_other_js(pin: Option<&PmPin<'_>>) -> bool {
-    pin.is_some_and(|p| p.name != "npm" && is_js_manager(p.name))
+fn is_pinned_other_js(pin: Option<&PackageManagerPin>) -> bool {
+    pin.is_some_and(|p| p.name != "npm" && is_js_manager(&p.name))
 }
 
-fn should_include_npm(names: &BTreeSet<String>, pin: Option<&PmPin<'_>>) -> bool {
+fn should_include_npm(names: &BTreeSet<String>, pin: Option<&PackageManagerPin>) -> bool {
     if names.contains("package-lock.json") {
         return true;
     }
@@ -244,7 +218,10 @@ fn should_include_npm(names: &BTreeSet<String>, pin: Option<&PmPin<'_>>) -> bool
     !has_other_js_lock(names) && !is_pinned_other_js(pin)
 }
 
-fn collect_js_candidates(names: &BTreeSet<String>, pin: Option<&PmPin<'_>>) -> Vec<Manager> {
+fn collect_js_candidates(
+    names: &BTreeSet<String>,
+    pin: Option<&PackageManagerPin>,
+) -> Vec<Manager> {
     let mut candidates = Vec::new();
     if names.contains("pnpm-lock.yaml") || names.contains("pnpm-workspace.yaml") {
         candidates.push(Manager::Pnpm);
@@ -261,14 +238,14 @@ fn collect_js_candidates(names: &BTreeSet<String>, pin: Option<&PmPin<'_>>) -> V
     candidates
 }
 
-fn pick_js_primary(names: &BTreeSet<String>, pin: Option<&PmPin<'_>>) -> Option<Manager> {
+fn pick_js_primary(names: &BTreeSet<String>, pin: Option<&PackageManagerPin>) -> Option<Manager> {
     let candidates = collect_js_candidates(names, pin);
     if candidates.is_empty() {
         return None;
     }
     if let Some(p) = pin {
-        if let Some(m) = Manager::from_name(p.name) {
-            if is_js_manager(p.name) && candidates.contains(&m) {
+        if let Some(m) = p.manager() {
+            if is_js_manager(&p.name) && candidates.contains(&m) {
                 return Some(m);
             }
         }
@@ -310,7 +287,7 @@ fn detect_pnpm(
 fn detect_yarn(
     dir: &Path,
     names: &BTreeSet<String>,
-    pin: Option<&PmPin<'_>>,
+    pin: Option<&PackageManagerPin>,
     primary: Option<Manager>,
 ) -> Option<DetectedManager> {
     if !names.contains("yarn.lock") {
@@ -353,7 +330,7 @@ fn detect_bun(
 fn detect_npm(
     dir: &Path,
     names: &BTreeSet<String>,
-    pin: Option<&PmPin<'_>>,
+    pin: Option<&PackageManagerPin>,
     primary: Option<Manager>,
 ) -> Option<DetectedManager> {
     let config_path = existing(dir, names, ".npmrc");
@@ -382,8 +359,7 @@ fn detect_npm(
 
 fn detect_managers(dir: &Path) -> Vec<DetectedManager> {
     let names = dir_names(dir);
-    let field = package_manager_field(dir);
-    let pin = parse_package_manager(field.as_deref());
+    let pin = PackageManagerPin::from_manifest(dir);
     let primary = pick_js_primary(&names, pin.as_ref());
     [
         detect_pnpm(dir, &names, primary),

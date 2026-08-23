@@ -10,6 +10,14 @@ pub enum Preset {
 }
 
 impl Preset {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Preset::Relaxed => "relaxed",
+            Preset::Standard => "standard",
+            Preset::Strict => "strict",
+        }
+    }
+
     /// Findings at or above this severity fail the run (exit 1).
     pub fn gate(self) -> Severity {
         match self {
@@ -17,6 +25,12 @@ impl Preset {
             Preset::Standard => Severity::High,
             Preset::Strict => Severity::Moderate,
         }
+    }
+}
+
+impl std::fmt::Display for Preset {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
