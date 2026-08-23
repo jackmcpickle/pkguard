@@ -1,5 +1,6 @@
 ---
 import BaseLayout from "@/layouts/BaseLayout.astro";
+import { docsEditUrl } from "@/lib/site";
 import { DocsEdit, DocsNav, DocsToc, type DocsTocItem } from "@/modules/docs";
 
 interface Props {
@@ -21,7 +22,7 @@ const { title, description, current, toc = [] } = Astro.props;
         </aside>
         <article class="min-w-0">
             <slot />
-            <DocsEdit />
+            <DocsEdit href={docsEditUrl(current)} />
         </article>
         {
             toc.length > 0 && (
