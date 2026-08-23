@@ -5,9 +5,10 @@ import {
 } from "@cli/config-paths";
 
 export const SITE_NAME = APP_NAME;
-export const SITE_URL = "https://mailclad.dev";
-export const GITHUB_URL = "https://github.com/jackmcpickle/mailclad";
-export const NPM_URL = "https://www.npmjs.com/package/mailclad";
+export const SITE_URL = "https://pkguard.dev";
+export const SITE_HOST = "pkguard.dev";
+export const GITHUB_URL = "https://github.com/jackmcpickle/pkguard";
+export const NPM_URL = `https://www.npmjs.com/package/${APP_NAME}`;
 export const RELEASES_URL = `${GITHUB_URL}/releases`;
 export const CONFIG_NAME = CONFIG_FILE_NAME;
 export { USER_CONFIG_PATH_DOCS, USER_CONFIG_PATH_FALLBACK };

@@ -1,4 +1,4 @@
-# mailclad Test-Gap Plan
+# pkguard Test-Gap Plan
 
 **Goal:** Close the test-coverage gaps between `PLAN.md` (the spec) and the current implementation. All production code exists; these tasks add tests. If a new test exposes a real bug (behavior contradicting PLAN.md), fix the production code minimally so the test passes — the spec (PLAN.md in repo root) is the authority.
 

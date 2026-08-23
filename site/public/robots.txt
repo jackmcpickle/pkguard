@@ -10,4 +10,4 @@ Allow: /
 User-agent: PerplexityBot
 Allow: /
 
-Sitemap: https://mailclad.dev/sitemap-index.xml
+Sitemap: https://pkguard.dev/sitemap-index.xml

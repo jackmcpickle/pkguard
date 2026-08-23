@@ -74,7 +74,7 @@ const pnpmFiles = (version: string, yaml: string): Record<string, string> => ({
   "/p/pnpm-workspace.yaml": `registry: "https://registry.npmjs.org/"\naudit:\n  level: high\n${pnpmSecureBaseline}${yaml}`,
 });
 
-/** Like pnpmFiles but without the mailclad security baseline — for gap tests. */
+/** Like pnpmFiles but without the pkguard security baseline — for gap tests. */
 const pnpmFilesInsecure = (
   version: string,
   yaml: string
@@ -166,7 +166,7 @@ test("pnpm blockExoticSubdeps: false is flagged", () => {
   expect(codes("pnpm", files)).toContain("source.non-registry");
 });
 
-// --- pnpm mailclad security gaps -----------------------------------------------
+// --- pnpm pkguard security gaps -----------------------------------------------
 
 test("pnpm 11 flags missing trustPolicy", () => {
   const files = pnpmFilesInsecure("11.7.0", "");
@@ -211,7 +211,7 @@ test("pnpm 10.11 skips verifyDepsBeforeRun check", () => {
   expect(codes("pnpm", files)).not.toContain("lockfile.run-verify");
 });
 
-test("apply writes pnpm mailclad security keys", () => {
+test("apply writes pnpm pkguard security keys", () => {
   const files = pnpmFilesInsecure("11.7.0", "trustLockfile: true\n");
   const target = project("pnpm");
   const findings = auditSettings(target, loadPolicy({}), {

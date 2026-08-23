@@ -1,5 +1,5 @@
 {
-  "name": "mailclad",
+  "name": "pkguard",
   "version": "0.1.10",
   "description": "Audit package-manager security settings and advisories across monorepos and folders of projects. Supports npm, pnpm, yarn, bun, uv, cargo, and bundler.",
   "keywords": [
@@ -17,16 +17,17 @@
     "uv",
     "yarn"
   ],
+  "homepage": "https://pkguard.dev",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jackmcpickle/package-manager-security.git"
+    "url": "git+https://github.com/jackmcpickle/pkguard.git"
   },
   "bin": {
-    "mailclad": "./dist/mailclad.js"
+    "pkguard": "./dist/pkguard.js"
   },
   "files": [
-    "dist/mailclad.js",
+    "dist/pkguard.js",
     "README.md"
   ],
   "type": "module",
@@ -39,8 +40,8 @@
     "coverage:check": "bun scripts/check-coverage.ts",
     "coverage:write": "bun scripts/check-coverage.ts --write",
     "typecheck": "tsc --noEmit",
-    "build": "bun build ./src/main.ts --target=bun --banner '#!/usr/bin/env bun' --outfile dist/mailclad.js",
-    "build:binary": "bun build ./src/main.ts --compile --outfile dist/mailclad",
+    "build": "bun build ./src/main.ts --target=bun --banner '#!/usr/bin/env bun' --outfile dist/pkguard.js",
+    "build:binary": "bun build ./src/main.ts --compile --outfile dist/pkguard",
     "prepublishOnly": "bun test && bun run build",
     "check": "ultracite check",
     "check:type-aware": "ultracite check --type-aware",

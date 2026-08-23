@@ -1,10 +1,10 @@
 ---
 import Button from "@/components/Button.astro";
 import BaseLayout from "@/layouts/BaseLayout.astro";
-import { SITE_NAME } from "@/lib/site";
+import { SITE_HOST, SITE_NAME } from "@/lib/site";
 ---
 
-<BaseLayout title={`Not found — ${SITE_NAME}`} description="That page is not on mailclad.dev.">
+<BaseLayout title={`Not found — ${SITE_NAME}`} description={`That page is not on ${SITE_HOST}.`}>
     <main class="px-6 py-24">
         <div class="mx-auto max-w-[1200px]">
             <p

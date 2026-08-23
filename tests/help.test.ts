@@ -60,26 +60,26 @@ const capture = async (argv: string[], extras: FakeHostOverrides = {}) => {
 };
 
 const expectRootCatalog = (text: string): void => {
-  expect(text).toContain("Usage: mailclad");
+  expect(text).toContain("Usage: pkguard");
   expect(text).toContain("audit [path]");
   expect(text).toContain("init");
   expect(text).toContain("help [command]");
 };
 
 const SEARCH_ORDER =
-  "Looks for a user/tool config, then .mailclad.toml in the scan directory and each project. Closer wins; flags win over files.";
+  "Looks for a user/tool config, then .pkguard.toml in the scan directory and each project. Closer wins; flags win over files.";
 
 const expectHelpConfig = (text: string): void => {
   expect(text).toContain("Configuration:");
   expect(text).toContain(SEARCH_ORDER);
-  expect(text).toContain("/home/.config/mailclad/config.toml");
-  expect(text).toContain("/p/.mailclad.toml");
+  expect(text).toContain("/home/.config/pkguard/config.toml");
+  expect(text).toContain("/p/.pkguard.toml");
   expect(text).toContain("missing");
 };
 
 const helpHome = { HOME: "/home" } as const;
 
-test("mailclad with no args prints the command catalog on stderr and exits 2", async () => {
+test("pkguard with no args prints the command catalog on stderr and exits 2", async () => {
   const result = await capture([]);
   expect(result.exitCode).toBe(2);
   expect(result.stdout).toBe("");
@@ -137,7 +137,7 @@ test("help audit and audit --help describe audit arguments and flags without run
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
     expect(result.ran).toBe(0);
-    expect(result.stdout).toContain("Usage: mailclad audit");
+    expect(result.stdout).toContain("Usage: pkguard audit");
     expect(result.stdout).toContain("path");
     for (const flag of AUDIT_FLAGS) {
       expect(result.stdout).toContain(flag);
@@ -149,21 +149,21 @@ test("audit --json --help still prints help and does not run an audit", async ()
   const result = await capture(["audit", "--json", "--help"]);
   expect(result.exitCode).toBe(0);
   expect(result.ran).toBe(0);
-  expect(result.stdout).toContain("Usage: mailclad audit");
+  expect(result.stdout).toContain("Usage: pkguard audit");
   expect(result.stdout).toContain("--json");
 });
 
 test("help help documents the help command", async () => {
   const result = await capture(["help", "help"]);
   expect(result.exitCode).toBe(0);
-  expect(result.stdout).toContain("Usage: mailclad help");
+  expect(result.stdout).toContain("Usage: pkguard help");
   expect(result.stdout).toContain("help [command]");
 });
 
 test("help --help describes the help command", async () => {
   const result = await capture(["help", "--help"]);
   expect(result.exitCode).toBe(0);
-  expect(result.stdout).toContain("Usage: mailclad help");
+  expect(result.stdout).toContain("Usage: pkguard help");
   expect(result.stdout).toContain("[command]");
 });
 
@@ -183,7 +183,7 @@ test("help uses ANSI colors when stdout is a TTY", async () => {
   const result = await capture(["help"], { isTTY: true });
   expect(result.exitCode).toBe(0);
   expect(result.stdout).toContain("\u001B[");
-  expect(result.stdout).toContain("Usage: mailclad");
+  expect(result.stdout).toContain("Usage: pkguard");
   expect(result.stdout).toContain("audit");
 });
 
@@ -225,7 +225,7 @@ test("audit help includes search order and resolved user and cwd paths", async (
   );
   for (const result of results) {
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("Usage: mailclad audit");
+    expect(result.stdout).toContain("Usage: pkguard audit");
     expectHelpConfig(result.stdout);
   }
 });
@@ -241,7 +241,7 @@ test("help init and init --help document --local and --force", async () => {
   for (const result of results) {
     expect(result.exitCode).toBe(0);
     expect(result.ran).toBe(0);
-    expect(result.stdout).toContain("Usage: mailclad init");
+    expect(result.stdout).toContain("Usage: pkguard init");
     expect(result.stdout).toContain("--local");
     expect(result.stdout).toContain("--force");
     expect(result.stdout).toContain("-h");

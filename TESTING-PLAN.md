@@ -1,4 +1,4 @@
-# mailclad Testing Plan
+# pkguard Testing Plan
 
 > Audit of the current suite (2026-08-20, `feat/mailclad`, 220 tests / 13 files). Waves 1–4 are done. Tests stay at the eight seams in `PLAN.md`. Do not mock our own modules. Inject filesystem, PATH, runners, time, and cache dir.
 

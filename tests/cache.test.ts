@@ -7,7 +7,7 @@ import { createFsCache } from "../src/cache";
 import type { AdvisoryResult } from "../src/cache";
 import { createMemoryCache } from "../src/memory-cache";
 
-const cacheDir = mkdtempSync(path.join(tmpdir(), "mailclad-cache-unit-"));
+const cacheDir = mkdtempSync(path.join(tmpdir(), "pkguard-cache-unit-"));
 
 afterAll(() => {
   rmSync(cacheDir, { force: true, recursive: true });

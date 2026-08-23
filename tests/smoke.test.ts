@@ -13,7 +13,7 @@ import pkg from "../package.json" with { type: "json" };
 
 const ROOT = path.join(import.meta.dir, "..");
 const FIXTURE = path.join(import.meta.dir, "fixtures/discover/many-repos");
-const BINARY = path.join(ROOT, "dist/mailclad");
+const BINARY = path.join(ROOT, "dist/pkguard");
 
 const compileBinary = (): void => {
   const build = Bun.spawnSync(["bun", "run", "build:binary"], {
@@ -25,14 +25,14 @@ const compileBinary = (): void => {
 };
 
 test(
-  "compiled mailclad binary audits the many-repos fixture",
+  "compiled pkguard binary audits the many-repos fixture",
   () => {
     mkdirSync(path.join(FIXTURE, "alpha/.git"), { recursive: true });
     mkdirSync(path.join(FIXTURE, "beta/.git"), { recursive: true });
 
     compileBinary();
 
-    const bin = mkdtempSync(path.join(tmpdir(), "mailclad-smoke-bin-"));
+    const bin = mkdtempSync(path.join(tmpdir(), "pkguard-smoke-bin-"));
     writeFileSync(
       path.join(bin, "npm"),
       `#!/bin/sh\necho '{"advisories":{}}'\n`
@@ -64,7 +64,7 @@ test(
 );
 
 test(
-  "compiled mailclad binary --version prints the package.json version",
+  "compiled pkguard binary --version prints the package.json version",
   () => {
     compileBinary();
     const proc = Bun.spawnSync([BINARY, "--version"], {

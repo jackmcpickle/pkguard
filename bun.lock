@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "mailclad",
+      "name": "pkguard",
       "dependencies": {
         "smol-toml": "^1.8.0",
       },
