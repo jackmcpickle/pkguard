@@ -5,10 +5,20 @@
 ## Install
 
 ```
-cargo install --git https://github.com/jackmcpickle/pkguard pkguard
+brew install jackmcpickle/pkguard/pkguard
 ```
 
-Requires a stable Rust toolchain. A Homebrew tap and prebuilt binaries land with the distribution cutover.
+```
+brew tap jackmcpickle/pkguard
+brew trust jackmcpickle/pkguard
+brew install pkguard
+```
+
+Cargo is the fallback if you already have a Rust toolchain:
+
+```
+cargo install --git https://github.com/jackmcpickle/pkguard pkguard
+```
 
 ## Commands
 

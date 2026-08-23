@@ -1,6 +1,7 @@
 ---
 import Button from "@/components/Button.astro";
-import { RELEASES_URL } from "@/lib/site";
+import CopyCommand from "@/components/CopyCommand.astro";
+import { BREW_INSTALL, RELEASES_URL } from "@/lib/site";
 ---
 
 <section class="border-t border-hairline bg-canvas-soft">
@@ -22,11 +23,15 @@ import { RELEASES_URL } from "@/lib/site";
             <h2
                 class="text-3xl leading-tight font-normal tracking-tight md:text-5xl md:leading-[1.1]"
             >
-                Install with cargo
+                Install with Homebrew
             </h2>
             <p class="mt-6 text-base leading-6 text-body">
-                Homebrew and release binaries are not published yet.
+                macOS and Linux. Cargo works if you already have a Rust
+                toolchain.
             </p>
+            <div class="mt-8">
+                <CopyCommand command={BREW_INSTALL} />
+            </div>
             <div class="mt-10 flex flex-wrap gap-3">
                 <Button href="/docs/install" variant="primary" size="lg">
                     Install guide

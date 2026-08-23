@@ -1,6 +1,7 @@
 ---
 import CopyCommand from "@/components/CopyCommand.astro";
 import { APP_NAME } from "@/lib/catalog";
+import { BREW_INSTALL } from "@/lib/site";
 ---
 
 <section class="px-4 pt-16 pb-12 sm:px-6">
@@ -15,7 +16,8 @@ import { APP_NAME } from "@/lib/catalog";
                 Finds each package-manager root, reads committed settings, and runs that
                 manager's own&nbsp;audit.
             </p>
-            <div class="mt-10">
+            <div class="mt-10 flex flex-col gap-3">
+                <CopyCommand command={BREW_INSTALL} />
                 <CopyCommand command={`${APP_NAME} scan ~/code`} />
             </div>
         </div>

@@ -5,6 +5,9 @@ export const SITE_URL = "https://pkguard.dev";
 export const SITE_HOST = new URL(SITE_URL).host;
 export const GITHUB_URL = "https://github.com/jackmcpickle/pkguard";
 export const RELEASES_URL = `${GITHUB_URL}/releases`;
+export const HOMEBREW_TAP = "jackmcpickle/pkguard";
+export const BREW_INSTALL = `brew install ${HOMEBREW_TAP}/${APP_NAME}`;
+export const BREW_TAP_AND_INSTALL = `brew tap ${HOMEBREW_TAP}\nbrew trust ${HOMEBREW_TAP}\nbrew install ${APP_NAME}`;
 export const CONFIG_NAME = CONFIG_FILE_NAME;
 
 export const SITE_DESCRIPTION =

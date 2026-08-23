@@ -31,13 +31,15 @@ A missing binary does not skip settings. You still get the file findings plus a 
 
 ## Install
 
-Build from source (requires a Rust toolchain):
+```bash
+brew install jackmcpickle/pkguard/pkguard
+```
+
+Or build from source (requires a Rust toolchain):
 
 ```bash
 cargo install --path crates/pkguard
 ```
-
-Homebrew tap and prebuilt release binaries are coming with the distribution cutover.
 
 ## Usage
 
@@ -214,7 +216,7 @@ Pushes to `main` that change the crates (or **Publish** → *Run workflow*) run 
 
 Publish then calls `.github/workflows/release.yml`: tests, a GitHub release whose notes come from the matching `CHANGELOG.md` section (or generated notes if that section is empty), and per-platform binaries. A `v*` tag that is not from that auto-release commit, or **Release** → *Run workflow*, does the same.
 
-The publish job needs `DEPLOY_KEY` so the release commit can land on `main` under branch rulesets. There is no npm publish; cargo-dist, release-plz, and the Homebrew tap still come later.
+The publish job needs `DEPLOY_KEY` so the release commit can land on `main` under branch rulesets. There is no npm publish. Homebrew installs from [jackmcpickle/homebrew-pkguard](https://github.com/jackmcpickle/homebrew-pkguard); bump that formula when a release ships new binaries.
 
 ## License
 
