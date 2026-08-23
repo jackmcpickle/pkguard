@@ -58,7 +58,7 @@ jobs:
             artifact: pkguard-linux-x64
           - runner: ubuntu-24.04-arm
             artifact: pkguard-linux-arm64
-          - runner: macos-13
+          - runner: macos-15-intel
             artifact: pkguard-darwin-x64
           - runner: macos-latest
             artifact: pkguard-darwin-arm64
