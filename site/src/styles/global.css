@@ -39,10 +39,10 @@ body {
     color: var(--color-ink);
     text-decoration: none;
   }
+}
 
-  a:hover {
-    color: var(--color-ink-hover);
-  }
+a:hover:not(.bg-primary) {
+  color: var(--color-ink-hover);
 }
 
 ::selection {
