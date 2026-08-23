@@ -1,8 +1,6 @@
 ---
-import Button from "@/components/Button.astro";
 import CopyCommand from "@/components/CopyCommand.astro";
 import { APP_NAME } from "@cli/app-name";
-import { GITHUB_URL } from "@/lib/site";
 ---
 
 <section class="px-6 pt-24 pb-16">
@@ -19,11 +17,6 @@ import { GITHUB_URL } from "@/lib/site";
             Walk a folder of repos, read committed settings, and run each manager's native
             audit. One command, eight ecosystems, one&nbsp;report.
         </p>
-        <div class="mt-12 flex flex-wrap gap-3">
-            <Button href="/docs/install" variant="primary" size="lg">Install</Button>
-            <Button href="/docs" size="lg">Read the docs</Button>
-            <Button href={GITHUB_URL} size="lg" external>GitHub</Button>
-        </div>
         <div class="mt-12">
             <CopyCommand command={`bun install -g ${APP_NAME}`} />
         </div>

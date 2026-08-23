@@ -34,13 +34,15 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-a {
-  color: var(--color-ink);
-  text-decoration: none;
-}
+@layer base {
+  a {
+    color: var(--color-ink);
+    text-decoration: none;
+  }
 
-a:hover {
-  color: var(--color-ink-hover);
+  a:hover {
+    color: var(--color-ink-hover);
+  }
 }
 
 ::selection {
