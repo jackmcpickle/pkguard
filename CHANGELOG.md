@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [1.0.0](https://github.com/jackmcpickle/package-manager-security/compare/v0.1.10...v1.0.0) (2026-08-23)
+
+### ⚠ BREAKING CHANGES
+
+* Rewritten in Rust (workspace in `crates/`). The command surface changed: `mailclad audit` is now `mailclad scan` (read-only), and the old apply/report flags are gone. Config is regrouped under `[policy]` and `[manager.<name>]` tables in `.mailclad.toml` / the user `config.toml`, with unknown keys rejected.
+* npm distribution is dropped; install from source with `cargo install --path crates/mailclad` (Homebrew tap and release binaries to follow).
+
+### Kept contracts
+
+* Finding codes and exit codes (0 pass / 1 policy failure / 2 incomplete) are unchanged.
+* Currently ported: streaming discovery for all managers, npm settings checks, npm advisory audit with lockfile-digest caching, human and JSON (`schemaVersion` 2) output.
+
 ## [0.1.10](https://github.com/jackmcpickle/package-manager-security/compare/v0.1.9...v0.1.10) (2026-08-23)
 ## [0.1.9](https://github.com/jackmcpickle/package-manager-security/compare/v0.1.8...v0.1.9) (2026-08-23)
 ## [0.1.8](https://github.com/jackmcpickle/package-manager-security/compare/v0.1.7...v0.1.8) (2026-08-22)

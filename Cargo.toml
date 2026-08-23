@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/mailclad-core", "crates/mailclad"]
 
 [workspace.package]
-version = "0.2.0-dev"
+version = "1.0.0"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/jackmcpickle/security-audit-tool"
