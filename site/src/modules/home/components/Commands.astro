@@ -1,43 +1,25 @@
 ---
 import { APP_NAME, COMMANDS, commandSynopsis } from "@/lib/catalog";
-import Button from "@/components/Button.astro";
 ---
 
 <section class="border-t border-hairline">
-    <div class="mx-auto max-w-[1200px] px-6 py-16">
-        <p class="font-mono text-[14px] leading-5 tracking-[1.4px] text-body-mid uppercase">
-            Commands
-        </p>
-        <h2
-            class="mt-4 text-[32px] leading-9 font-normal tracking-[-0.6px] md:text-[48px] md:leading-[48px] md:tracking-[-1.2px]"
-        >
-            The same catalog as{" "}
-            <span class="font-mono text-[28px] tracking-[-1px] md:text-[40px]">
-                {APP_NAME} --help
-            </span>
-        </h2>
-        <ul
-            class="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fit,minmax(300px,1fr))]"
-        >
+    <div class="mx-auto max-w-[1400px] px-4 py-20 sm:px-6">
+        <p class="font-mono text-sm text-body-mid">{APP_NAME} --help</p>
+        <ul class="mt-8 flex flex-col">
             {
                 COMMANDS.map((command) => (
-                    <li class="flex flex-col gap-4 rounded-sm border border-hairline bg-canvas-card p-6">
-                        <p class="font-mono text-[14px] leading-5">
-                            {APP_NAME} {commandSynopsis(command)}
-                        </p>
-                        <p class="flex-1 text-[14px] leading-5 text-body-mid">
-                            {command.summary}
-                        </p>
-                        <div class="flex items-center justify-between gap-3">
-                            <p class="font-mono text-[12px] leading-4 tracking-[1.2px] text-body-mid uppercase">
-                                {command.flags.length === 1
-                                    ? "1 option"
-                                    : `${command.flags.length} options`}
+                    <li class="border-t border-hairline">
+                        <a
+                            href={`/docs/commands/${command.name}`}
+                            class="flex flex-col gap-3 py-8 hover:text-ink"
+                        >
+                            <h2 class="font-mono text-2xl leading-8 tracking-tight md:text-3xl">
+                                {APP_NAME} {commandSynopsis(command)}
+                            </h2>
+                            <p class="max-w-[52ch] text-base leading-6 text-body">
+                                {command.summary}
                             </p>
-                            <Button href={`/docs/commands/${command.name}`} size="sm">
-                                Read
-                            </Button>
-                        </div>
+                        </a>
                     </li>
                 ))
             }

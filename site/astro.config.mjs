@@ -12,9 +12,10 @@ export default defineConfig({
   output: "static",
   site: "https://pkguard.dev",
   redirects: {
+    "/docs/commands": "/docs/commands/scan",
     "/docs/commands/audit": "/docs/commands/scan",
-    "/docs/commands/init": "/docs/commands",
-    "/docs/commands/help": "/docs/commands",
+    "/docs/commands/init": "/docs/commands/scan",
+    "/docs/commands/help": "/docs/commands/scan",
   },
   vite: {
     plugins: [tailwindcss()],

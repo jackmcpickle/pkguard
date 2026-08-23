@@ -14,26 +14,26 @@ const keys = [
 ---
 
 <DocsLayout
-    title={`Presets — ${APP_NAME}`}
+    title={`Presets - ${APP_NAME}`}
     description="relaxed, standard, and strict policy defaults from the binary."
     current="/docs/presets"
-    toc={[{ id: "gates", label: "Three gates" }]}
+    toc={[{ id: "defaults", label: "Defaults" }]}
 >
     <DocsHeader
-        eyebrow="Guides / presets"
-        title="Three gates, one table in source."
-        lead="Values are dumped from PresetDefaults in the Rust crate (crates/pkguard-core/src/config.rs). Pass --preset relaxed|standard|strict."
+        eyebrow="Presets"
+        title="relaxed, standard, and strict"
+        lead="Values come from PresetDefaults in crates/pkguard-core/src/config.rs. Pass --preset relaxed, standard, or strict."
     />
-    <SectionHeading id="gates">Three gates</SectionHeading>
+    <SectionHeading id="defaults">Defaults</SectionHeading>
     <DocsBody>
         Pass <code class="font-mono text-ink">--preset relaxed|standard|strict</code> to
         pick a gate.
     </DocsBody>
     <DocsPanel>
-        <table class="w-full min-w-[560px] text-left text-[14px] leading-5">
+        <table class="w-full min-w-[560px] text-left text-sm leading-5">
             <thead>
                 <tr
-                    class="border-b border-hairline font-mono text-[12px] tracking-[1.2px] text-body-mid uppercase"
+                    class="border-b border-hairline font-mono text-xs tracking-[1.2px] text-body-mid uppercase"
                 >
                     <th class="px-6 py-4 font-normal">Key</th>
                     {

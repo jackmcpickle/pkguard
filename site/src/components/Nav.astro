@@ -1,5 +1,4 @@
 ---
-import Button from "@/components/Button.astro";
 import GitHubIcon from "@/components/GitHubIcon.astro";
 import Logo from "@/components/Logo.astro";
 import { GITHUB_URL } from "@/lib/site";
@@ -7,31 +6,42 @@ import { GITHUB_URL } from "@/lib/site";
 interface Props {
     current?: "home" | "docs";
 }
+
+const { current = "home" } = Astro.props;
 ---
 
 <header
-    class="sticky top-0 z-20 border-b border-hairline bg-canvas/88 backdrop-blur-[12px]"
+    class="nav-shell sticky top-0 z-20 border-b border-hairline"
 >
-    <div class="mx-auto flex max-w-[1200px] items-center gap-6 px-6 py-3">
+    <div class="mx-auto flex h-16 max-w-[1400px] items-center gap-6 px-4 sm:px-6">
         <Logo />
         <div class="flex-1"></div>
-        <nav class="hidden items-center gap-3 sm:flex" aria-label="Primary">
-            <Button href="/docs">Read the docs</Button>
-            <Button href="/docs/install" variant="primary">Install</Button>
+        <nav class="hidden items-center gap-6 sm:flex" aria-label="Primary">
+            <a
+                href="/docs"
+                class:list={[
+                    "text-sm leading-5",
+                    current === "docs" ? "text-ink" : "text-body-mid hover:text-ink",
+                ]}
+                aria-current={current === "docs" ? "page" : undefined}
+            >
+                Docs
+            </a>
             <GitHubIcon />
         </nav>
         <details class="relative sm:hidden">
             <summary
-                class="flex min-h-9 list-none items-center justify-center rounded-full border border-white/25 px-4 py-2 text-[14px] leading-5 text-ink"
+                class="flex min-h-9 list-none items-center justify-center rounded-full border border-stroke px-4 py-2 text-sm leading-5 text-ink"
             >
                 Menu
             </summary>
             <div
-                class="absolute right-0 mt-2 flex w-52 flex-col gap-3 rounded-sm border border-hairline bg-canvas-card p-4"
+                class="absolute right-0 mt-2 flex w-44 flex-col gap-3 rounded-sm border border-hairline bg-canvas-card p-4"
             >
-                <Button href="/docs">Read the docs</Button>
-                <Button href="/docs/install" variant="primary">Install</Button>
-                <Button href={GITHUB_URL} external>GitHub</Button>
+                <a href="/docs" class="text-sm leading-5 text-ink">Docs</a>
+                <a href={GITHUB_URL} class="text-sm leading-5 text-ink" rel="noopener" target="_blank">
+                    GitHub
+                </a>
             </div>
         </details>
     </div>

@@ -4,43 +4,36 @@ import { GITHUB_URL, RELEASES_URL, SITE_NAME } from "@/lib/site";
 
 <footer class="border-t border-hairline">
     <div
-        class="mx-auto flex max-w-[1200px] flex-wrap items-start justify-between gap-8 px-6 py-12"
+        class="mx-auto flex max-w-[1400px] flex-wrap items-start justify-between gap-8 px-4 py-12 sm:px-6"
     >
         <div class="flex max-w-[360px] flex-col gap-2">
-            <p class="font-mono text-[14px] leading-5 tracking-[1.4px] uppercase">
-                {SITE_NAME}
-            </p>
-            <p class="text-[14px] leading-5 text-body-mid">
-                Package-manager security audit for monorepos and folders of&nbsp;projects.
+            <p class="font-mono text-sm tracking-[1.4px] uppercase">{SITE_NAME}</p>
+            <p class="text-sm leading-5 text-body-mid">
+                Package-manager security audit for a folder of&nbsp;repos.
             </p>
         </div>
-        <div class="flex flex-wrap gap-8">
+        <div class="flex flex-wrap gap-10">
             <nav class="flex flex-col gap-2" aria-label="Docs">
-                <p
-                    class="font-mono text-[12px] leading-4 tracking-[1.2px] text-body-mid uppercase"
-                >
-                    Docs
-                </p>
-                <a href="/docs/install" class="text-[14px] leading-5 text-body">Install</a>
-                <a href="/docs/commands" class="text-[14px] leading-5 text-body">
-                    Commands
+                <p class="font-mono text-xs tracking-[1.2px] text-body-mid uppercase">Docs</p>
+                <a href="/docs/install" class="text-sm leading-5 text-body">Install</a>
+                <a href="/docs/commands/scan" class="text-sm leading-5 text-body">
+                    Quick start
                 </a>
+                <a href="/docs/config" class="text-sm leading-5 text-body">Config</a>
             </nav>
             <nav class="flex flex-col gap-2" aria-label="Source">
-                <p
-                    class="font-mono text-[12px] leading-4 tracking-[1.2px] text-body-mid uppercase"
-                >
+                <p class="font-mono text-xs tracking-[1.2px] text-body-mid uppercase">
                     Source
                 </p>
                 <a
                     href={GITHUB_URL}
-                    class="text-[14px] leading-5 text-body"
+                    class="text-sm leading-5 text-body"
                     rel="noopener"
                     target="_blank">GitHub</a
                 >
                 <a
                     href={RELEASES_URL}
-                    class="text-[14px] leading-5 text-body"
+                    class="text-sm leading-5 text-body"
                     rel="noopener"
                     target="_blank">Releases</a
                 >

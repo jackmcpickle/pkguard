@@ -3,22 +3,32 @@ import CopyCommand from "@/components/CopyCommand.astro";
 import { APP_NAME } from "@/lib/catalog";
 ---
 
-<section class="px-6 pt-24 pb-16">
-    <div class="mx-auto max-w-[1200px]">
-        <p class="font-mono text-[14px] leading-5 tracking-[1.4px] text-body-mid uppercase">
-            Package-manager security audit
-        </p>
-        <h1
-            class="mt-6 max-w-[1000px] text-[48px] leading-[48px] font-normal tracking-[-1.2px] text-pretty md:text-[96px] md:leading-[96px] md:tracking-[-2.4px]"
-        >
-            Audit every package manager in the&nbsp;tree.
-        </h1>
-        <p class="mt-8 max-w-[640px] text-[18px] leading-7 text-body">
-            Walk a folder of repos, read committed settings, and run each manager's native
-            audit. One read-only command, one Rust binary, one&nbsp;report.
-        </p>
-        <div class="mt-12">
-            <CopyCommand command={`${APP_NAME} scan ~/code`} />
+<section class="px-4 pt-16 pb-12 sm:px-6">
+    <div class="mx-auto grid max-w-[1400px] items-stretch gap-10 lg:grid-cols-2 lg:gap-16">
+        <div class="rise max-w-[34rem]">
+            <h1
+                class="text-4xl leading-[1.1] font-normal tracking-tight text-pretty md:text-5xl"
+            >
+                Audit every package manager in the&nbsp;tree.
+            </h1>
+            <p class="mt-6 max-w-[36ch] text-lg leading-7 text-body">
+                Finds each package-manager root, reads committed settings, and runs that
+                manager's own&nbsp;audit.
+            </p>
+            <div class="mt-10">
+                <CopyCommand command={`${APP_NAME} scan ~/code`} />
+            </div>
+        </div>
+        <div class="rise-late overflow-hidden rounded-sm bg-canvas-card">
+            <img
+                src="/images/hero-tree.jpg"
+                alt="A dark metal tree with orange electric veins and packages hanging from the branches."
+                width="1536"
+                height="968"
+                fetchpriority="high"
+                decoding="async"
+                class="aspect-[1536/968] h-full w-full object-cover lg:min-h-[22rem]"
+            />
         </div>
     </div>
 </section>

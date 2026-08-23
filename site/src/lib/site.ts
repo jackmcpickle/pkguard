@@ -8,14 +8,11 @@ export const RELEASES_URL = `${GITHUB_URL}/releases`;
 export const CONFIG_NAME = CONFIG_FILE_NAME;
 
 export const SITE_DESCRIPTION =
-  "Scan package-manager security settings and advisories across monorepos and folders of projects.";
+  "Scan package-manager settings and advisories across a folder of repos.";
 
 export const docsSourcePath = (current: string): string => {
   if (current === "/docs") {
     return "site/src/pages/docs/index.astro";
-  }
-  if (current === "/docs/commands") {
-    return "site/src/pages/docs/commands/index.astro";
   }
   if (current.startsWith("/docs/commands/")) {
     return "site/src/pages/docs/commands/[name].astro";

@@ -12,8 +12,8 @@ import { GITHUB_URL, RELEASES_URL } from "@/lib/site";
 ---
 
 <DocsLayout
-    title={`Install — ${APP_NAME}`}
-    description="pkguard is a Rust binary. Install it with cargo; a Homebrew tap and prebuilt binaries are coming."
+    title={`Install - ${APP_NAME}`}
+    description="pkguard is a Rust binary. Install it with cargo. Homebrew and prebuilt binaries are not published yet."
     current="/docs/install"
     toc={[
         { id: "cargo", label: "Cargo" },
@@ -24,7 +24,7 @@ import { GITHUB_URL, RELEASES_URL } from "@/lib/site";
     <DocsHeader
         eyebrow="Install"
         title="Install"
-        lead="pkguard is a single Rust binary. Install it straight from the repository with cargo. A Homebrew tap and prebuilt release binaries land with the distribution cutover."
+        lead="Install from the repo with cargo. Homebrew and prebuilt binaries are not published yet."
     />
     <SectionHeading id="cargo">Cargo</SectionHeading>
     <DocsBody>Requires a stable Rust toolchain.</DocsBody>
@@ -37,15 +37,15 @@ import { GITHUB_URL, RELEASES_URL } from "@/lib/site";
     />
     <SectionHeading id="binaries">Prebuilt binaries</SectionHeading>
     <DocsBody>
-        A Homebrew tap and per-platform binaries on the
+        Use cargo until Homebrew and per-platform binaries show up on the
         <a href={RELEASES_URL} class="text-ink underline" rel="noopener" target="_blank">
             releases page
-        </a> are coming with the cutover; until then, cargo is the way in.
+        </a>.
     </DocsBody>
     <Note>
-        The old npm package (named mailclad, 0.1.x) is the previous Bun build and does
-        not match these docs. Settings are parsed from committed config files whether or not
-        the manager binary is installed; a missing binary only skips the live advisory
-        step.
+        The old npm package was named mailclad and shipped as 0.1.x. That was the Bun
+        build. It does not match these docs. Settings are parsed from committed config
+        files whether or not the manager binary is installed. A missing binary only
+        skips the live advisory step.
     </Note>
 </DocsLayout>

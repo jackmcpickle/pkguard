@@ -1,34 +1,67 @@
-@import "@fontsource/inter/400.css";
+@import "@fontsource/geist-sans/400.css";
+@import "@fontsource/geist-sans/500.css";
 @import "@fontsource/geist-mono/400.css";
 @import "tailwindcss";
 
-@theme {
-  --color-canvas: #0a0a0a;
-  --color-canvas-soft: #1a1c20;
-  --color-canvas-card: #191919;
-  --color-canvas-mid: #363a3f;
-  --color-hairline: #212327;
-  --color-ink: #ffffff;
-  --color-ink-hover: #dadbdf;
-  --color-body: #dadbdf;
-  --color-body-mid: #7d8187;
-  --color-primary: #ffffff;
-  --color-on-primary: #0a0a0a;
-  --color-accent-sunset: #ff7a17;
-  --font-sans: "Inter", Helvetica, Arial, sans-serif;
+:root {
+  --canvas: #111214;
+  --canvas-soft: #181a1e;
+  --canvas-card: #191b1f;
+  --hairline: #2a2d33;
+  --ink: #f3f4f6;
+  --ink-hover: #d4d6db;
+  --body: #c5c8ce;
+  --body-mid: #8b8f96;
+  --primary: #f3f4f6;
+  --on-primary: #111214;
+  --accent: #e56b12;
+  --stroke: rgb(243 244 246 / 0.22);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --canvas: #f1f2f4;
+    --canvas-soft: #e7e9ed;
+    --canvas-card: #fcfcfd;
+    --hairline: #d2d5db;
+    --ink: #18181b;
+    --ink-hover: #3f3f46;
+    --body: #3f434a;
+    --body-mid: #5c6168;
+    --primary: #18181b;
+    --on-primary: #f1f2f4;
+    --accent: #c4560e;
+    --stroke: rgb(24 24 27 / 0.2);
+  }
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-canvas-soft: var(--canvas-soft);
+  --color-canvas-card: var(--canvas-card);
+  --color-hairline: var(--hairline);
+  --color-ink: var(--ink);
+  --color-ink-hover: var(--ink-hover);
+  --color-body: var(--body);
+  --color-body-mid: var(--body-mid);
+  --color-primary: var(--primary);
+  --color-on-primary: var(--on-primary);
+  --color-accent-sunset: var(--accent);
+  --color-stroke: var(--stroke);
+  --font-sans: "Geist Sans", Helvetica, Arial, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, monospace;
   --radius-sm: 8px;
   --radius-pill: 9999px;
 }
 
 html {
-  background: var(--color-canvas);
-  color-scheme: dark;
+  background: var(--canvas);
+  color-scheme: dark light;
 }
 
 body {
-  background: var(--color-canvas);
-  color: var(--color-ink);
+  background: var(--canvas);
+  color: var(--ink);
   font-family: var(--font-sans);
   font-weight: 400;
   -webkit-font-smoothing: antialiased;
@@ -36,18 +69,52 @@ body {
 
 @layer base {
   a {
-    color: var(--color-ink);
+    color: var(--ink);
     text-decoration: none;
   }
 }
 
 a:hover:not(.bg-primary) {
-  color: var(--color-ink-hover);
+  color: var(--ink-hover);
 }
 
 ::selection {
-  background: var(--color-accent-sunset);
-  color: var(--color-canvas);
+  background: var(--accent);
+  color: var(--canvas);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rise {
+    animation: rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .rise-late {
+    animation: rise 0.8s 0.08s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.nav-shell {
+  background: color-mix(in oklab, var(--canvas) 88%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .nav-shell {
+    background: var(--canvas);
+    backdrop-filter: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

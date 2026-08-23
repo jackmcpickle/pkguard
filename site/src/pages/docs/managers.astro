@@ -14,7 +14,7 @@ const flagged = MANAGER_DOCS.filter((manager) => manager.kind === "python-legacy
 ---
 
 <DocsLayout
-    title={`Managers — ${APP_NAME}`}
+    title={`Managers - ${APP_NAME}`}
     description="Package managers pkguard scans, with binaries and native audit argv from source."
     current="/docs/managers"
     toc={[
@@ -23,18 +23,18 @@ const flagged = MANAGER_DOCS.filter((manager) => manager.kind === "python-legacy
     ]}
 >
     <DocsHeader
-        eyebrow="Guides / managers"
-        title="Profiles from the Manager registry."
-        lead="Each row is dumped from the exhaustive Manager enum in crates/pkguard-core/src/manager.rs. Ported means the settings checks and advisory parser are live in the Rust build; the rest are detected and reported while their checks are ported."
+        eyebrow="Managers"
+        title="Manager profiles"
+        lead="Each row comes from the Manager enum in crates/pkguard-core/src/manager.rs. Ported means the settings checks and advisory parser are live in the Rust build. The rest are detected while those checks are ported."
     />
     <SectionHeading id="profiles">Profiles</SectionHeading>
     <DocsPanel
         footnote={`Flagged only, no live audit: ${flagged.map((manager) => manager.name).join(", ")}.`}
     >
-        <table class="w-full min-w-[720px] text-left text-[14px] leading-5">
+        <table class="w-full min-w-[720px] text-left text-sm leading-5">
             <thead>
                 <tr
-                    class="border-b border-hairline font-mono text-[12px] tracking-[1.2px] text-body-mid uppercase"
+                    class="border-b border-hairline font-mono text-xs tracking-[1.2px] text-body-mid uppercase"
                 >
                     <th class="px-6 py-4 font-normal">Manager</th>
                     <th class="px-6 py-4 font-normal">Binary</th>

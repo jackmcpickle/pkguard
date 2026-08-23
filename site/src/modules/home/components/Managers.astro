@@ -1,69 +1,83 @@
 ---
 import { MANAGER_DOCS } from "@/lib/catalog";
 
-const configManagers = MANAGER_DOCS.filter((manager) => manager.kind === "config");
-const flagged = MANAGER_DOCS.filter((manager) => manager.kind === "python-legacy");
+const LANGUAGE_BY_MANAGER: Record<string, string> = {
+    bun: "JavaScript",
+    bundler: "Ruby",
+    cargo: "Rust",
+    composer: "PHP",
+    npm: "JavaScript",
+    pip: "Python",
+    pipenv: "Python",
+    pnpm: "JavaScript",
+    poetry: "Python",
+    uv: "Python",
+    yarn: "JavaScript",
+};
+
+const LANGUAGE_ORDER = ["JavaScript", "Python", "Rust", "PHP", "Ruby"] as const;
+
+const grouped = LANGUAGE_ORDER.map((language) => ({
+    language,
+    managers: MANAGER_DOCS.filter(
+        (manager) => LANGUAGE_BY_MANAGER[manager.name] === language,
+    ),
+})).filter((group) => group.managers.length > 0);
+
+const leftover = MANAGER_DOCS.filter(
+    (manager) => LANGUAGE_BY_MANAGER[manager.name] === undefined,
+);
+const groups =
+    leftover.length === 0
+        ? grouped
+        : [...grouped, { language: "Other", managers: leftover }];
+
+const liveNames = MANAGER_DOCS.filter((manager) => manager.ported).map(
+    (manager) => manager.name,
+);
+const detectOnlyNames = MANAGER_DOCS.filter((manager) => !manager.ported).map(
+    (manager) => manager.name,
+);
 ---
 
 <section class="border-t border-hairline">
-    <div class="mx-auto max-w-[1200px] px-6 py-16">
-        <p class="font-mono text-[14px] leading-5 tracking-[1.4px] text-body-mid uppercase">
-            Managers
-        </p>
+    <div class="mx-auto max-w-[1400px] px-4 py-20 sm:px-6">
         <h2
-            class="mt-4 text-[32px] leading-9 font-normal tracking-[-0.6px] md:text-[48px] md:leading-[48px] md:tracking-[-1.2px]"
+            class="max-w-[18ch] text-3xl leading-tight font-normal tracking-tight md:text-5xl md:leading-[1.1]"
         >
-            One path for eight managers.
+            JavaScript, Python, Rust, PHP, Ruby.
         </h2>
-        <p class="mt-6 max-w-[640px] text-[16px] leading-6 text-body">
-            Each row comes from the Manager registry in the Rust crate. Audit argv updates
-            when the code&nbsp;does.
+        <p class="mt-6 max-w-[48ch] text-base leading-6 text-body">
+            The package managers pkguard looks for under each root.
         </p>
-        <div
-            class="mt-12 overflow-hidden rounded-sm border border-hairline bg-canvas-card"
-        >
-            <div class="overflow-x-auto">
-                <table class="w-full min-w-[640px] text-left text-[14px] leading-5">
-                    <thead>
-                        <tr
-                            class="border-b border-hairline font-mono text-[12px] tracking-[1.2px] text-body-mid uppercase"
-                        >
-                            <th class="px-6 py-4 font-normal">Manager</th>
-                            <th class="px-6 py-4 font-normal">Binary</th>
-                            <th class="px-6 py-4 font-normal">Audit</th>
-                            <th class="px-6 py-4 font-normal">Lockfile</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {
-                            configManagers.map((manager) => (
-                                <tr class="border-b border-hairline last:border-b-0">
-                                    <td class="px-6 py-4 text-ink">{manager.name}</td>
-                                    <td class="px-6 py-4 font-mono text-body">
-                                        {manager.binary ?? "none"}
-                                    </td>
-                                    <td class="px-6 py-4 font-mono text-body">
-                                        {manager.auditArgv === null
-                                            ? "OSV lookup"
-                                            : manager.auditArgv.join(" ")}
-                                    </td>
-                                    <td class="px-6 py-4 font-mono text-body-mid">
-                                        {manager.lockfileNames.join(", ")}
-                                    </td>
-                                </tr>
-                            ))
-                        }
-                    </tbody>
-                </table>
-            </div>
-            <p class="border-t border-hairline px-6 py-4 text-[14px] leading-5 text-body-mid">
-                Flagged only, no live audit: {flagged.map((manager) => manager.name).join(", ")}.
-                Settings checks and the native audit are live for
-                {" "}{MANAGER_DOCS.filter((manager) => manager.ported)
-                    .map((manager) => manager.name)
-                    .join(", ")}; the rest are detected and reported while their checks are
-                ported.
-            </p>
-        </div>
+        <ul class="mt-12 flex flex-col">
+            {
+                groups.map((group) => (
+                    <li class="grid grid-cols-1 gap-4 border-t border-hairline py-8 md:grid-cols-[10rem_minmax(0,1fr)] md:items-baseline md:gap-10">
+                        <h3 class="text-lg leading-7 text-ink">{group.language}</h3>
+                        <ul class="flex flex-wrap gap-x-8 gap-y-3">
+                            {group.managers.map((manager) => (
+                                <li
+                                    class:list={[
+                                        "font-mono text-base leading-6",
+                                        manager.ported ? "text-ink" : "text-body-mid",
+                                    ]}
+                                >
+                                    {manager.name}
+                                </li>
+                            ))}
+                        </ul>
+                    </li>
+                ))
+            }
+        </ul>
+        <p class="mt-2 text-sm leading-6 text-body-mid">
+            Live settings checks and native audit:
+            {" "}{liveNames.join(", ") || "none"}. Detected only:
+            {" "}{detectOnlyNames.join(", ")}.
+            <a href="/docs/managers" class="ml-2 text-ink underline">
+                Manager profiles
+            </a>
+        </p>
     </div>
 </section>
