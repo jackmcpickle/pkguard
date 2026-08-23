@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 mailclad-core = { path = "../mailclad-core" }
 anyhow = { workspace = true }
+directories = { workspace = true }
 clap = { workspace = true }
 tokio = { workspace = true }
 serde_json = { workspace = true }
