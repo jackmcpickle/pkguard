@@ -74,7 +74,10 @@ pub fn parse_config(text: &str) -> Result<ConfigFile, toml::de::Error> {
     toml::from_str(text)
 }
 
-fn merge_policy(base: Option<&PolicyOverrides>, over: Option<&PolicyOverrides>) -> Option<PolicyOverrides> {
+fn merge_policy(
+    base: Option<&PolicyOverrides>,
+    over: Option<&PolicyOverrides>,
+) -> Option<PolicyOverrides> {
     match (base, over) {
         (None, None) => None,
         (Some(b), None) => Some(b.clone()),
@@ -203,7 +206,10 @@ audit_level = "high"
         )
         .unwrap();
         assert_eq!(cfg.preset, Some(Preset::Strict));
-        assert_eq!(cfg.managers.as_deref(), Some(&["npm".into(), "cargo".into()][..]));
+        assert_eq!(
+            cfg.managers.as_deref(),
+            Some(&["npm".into(), "cargo".into()][..])
+        );
         assert_eq!(cfg.jobs, Some(8));
         let policy = cfg.policy.as_ref().unwrap();
         assert_eq!(policy.ignore_scripts, Some(false));
@@ -228,14 +234,18 @@ audit_level = "high"
 
     #[test]
     fn later_layers_override_earlier_ones() {
-        let user: ConfigFile = parse_config("preset = \"relaxed\"\n[policy]\nmin_release_age_days = 5").unwrap();
+        let user: ConfigFile =
+            parse_config("preset = \"relaxed\"\n[policy]\nmin_release_age_days = 5").unwrap();
         let scan_root: ConfigFile = parse_config("preset = \"standard\"").unwrap();
         let per_repo: ConfigFile = parse_config("[policy]\nignore_scripts = false").unwrap();
         let layered = layer_configs([&user, &scan_root, &per_repo]);
         // per-repo left preset alone: scan-root's standard wins over user's relaxed
         assert_eq!(layered.preset, Some(Preset::Standard));
         // user's policy override survives because no later layer touched it
-        assert_eq!(layered.policy.as_ref().unwrap().min_release_age_days, Some(5));
+        assert_eq!(
+            layered.policy.as_ref().unwrap().min_release_age_days,
+            Some(5)
+        );
         // per-repo's ignore_scripts wins
         assert_eq!(layered.policy.as_ref().unwrap().ignore_scripts, Some(false));
     }

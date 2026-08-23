@@ -27,9 +27,9 @@ pub struct TokioRunner;
 #[async_trait]
 impl CommandRunner for TokioRunner {
     async fn run(&self, argv: &[String], cwd: &Path) -> std::io::Result<CommandOutput> {
-        let (program, args) = argv.split_first().ok_or_else(|| {
-            std::io::Error::new(std::io::ErrorKind::InvalidInput, "empty argv")
-        })?;
+        let (program, args) = argv
+            .split_first()
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "empty argv"))?;
         let output = tokio::process::Command::new(program)
             .args(args)
             .current_dir(cwd)
@@ -107,7 +107,10 @@ mod tests {
     async fn tokio_runner_captures_stdout_and_exit_code() {
         let runner = TokioRunner;
         let out = runner
-            .run(&["sh".into(), "-c".into(), "printf hi; exit 1".into()], Path::new("."))
+            .run(
+                &["sh".into(), "-c".into(), "printf hi; exit 1".into()],
+                Path::new("."),
+            )
             .await
             .unwrap();
         assert_eq!(out.stdout, "hi");

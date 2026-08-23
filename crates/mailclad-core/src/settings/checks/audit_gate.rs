@@ -22,7 +22,10 @@ fn audit_meets_gate(audit_enabled: bool, audit_level: Option<&str>, gate: Severi
     if audit_enabled {
         return true;
     }
-    let Some(level) = audit_level.map(str::to_lowercase).and_then(|l| severity_of(&l)) else {
+    let Some(level) = audit_level
+        .map(str::to_lowercase)
+        .and_then(|l| severity_of(&l))
+    else {
         return false;
     };
     gate >= level

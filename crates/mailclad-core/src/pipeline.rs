@@ -196,7 +196,11 @@ pub fn scan(
         .await
         .unwrap_or_default();
 
-        let jobs = if opts.jobs == 0 { default_jobs() } else { opts.jobs };
+        let jobs = if opts.jobs == 0 {
+            default_jobs()
+        } else {
+            opts.jobs
+        };
         let semaphore = Arc::new(Semaphore::new(jobs));
         let cache = Arc::new(AdvisoryCache::new(opts.cache_dir.clone()));
         let opts = Arc::new(opts);
@@ -326,14 +330,20 @@ mod tests {
         compliant_npm_repo(tmp.path(), "b");
         let runner = CannedRunner::new().with(
             &["npm", "audit", "--json"],
-            CommandOutput { code: 1, stdout: NPM_HIGH.into(), stderr: String::new() },
+            CommandOutput {
+                code: 1,
+                stdout: NPM_HIGH.into(),
+                stderr: String::new(),
+            },
         );
 
         let events = run_scan(tmp.path(), runner).await;
         let finished: Vec<_> = events
             .iter()
             .filter_map(|e| match e {
-                AuditEvent::ProjectFinished { root, findings, .. } => Some((root.clone(), findings.len())),
+                AuditEvent::ProjectFinished { root, findings, .. } => {
+                    Some((root.clone(), findings.len()))
+                }
                 _ => None,
             })
             .collect();
@@ -352,7 +362,11 @@ mod tests {
         npm_repo(tmp.path(), "a");
         let runner = CannedRunner::new().with(
             &["npm", "audit", "--json"],
-            CommandOutput { code: 0, stdout: NPM_CLEAN.into(), stderr: String::new() },
+            CommandOutput {
+                code: 0,
+                stdout: NPM_CLEAN.into(),
+                stderr: String::new(),
+            },
         );
         let events = run_scan(tmp.path(), runner).await;
         // scripts.unrestricted (high) trips the standard gate
@@ -377,7 +391,11 @@ mod tests {
         compliant_npm_repo(tmp.path(), "a");
         let runner = CannedRunner::new().with(
             &["npm", "audit", "--json"],
-            CommandOutput { code: 0, stdout: NPM_CLEAN.into(), stderr: String::new() },
+            CommandOutput {
+                code: 0,
+                stdout: NPM_CLEAN.into(),
+                stderr: String::new(),
+            },
         );
         let events = run_scan(tmp.path(), runner).await;
         assert_eq!(summary(&events).exit, ExitCode::Clean);
@@ -421,7 +439,11 @@ mod tests {
         fs::write(tmp.path().join("a/.mailclad.toml"), "preset = \"relaxed\"").unwrap();
         let runner = CannedRunner::new().with(
             &["npm", "audit", "--json"],
-            CommandOutput { code: 1, stdout: NPM_HIGH.into(), stderr: String::new() },
+            CommandOutput {
+                code: 1,
+                stdout: NPM_HIGH.into(),
+                stderr: String::new(),
+            },
         );
         let events = run_scan(tmp.path(), runner).await;
         assert_eq!(summary(&events).exit, ExitCode::Clean);

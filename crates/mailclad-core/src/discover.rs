@@ -291,7 +291,11 @@ fn role_for(primary: Option<Manager>, manager: Manager) -> Role {
     }
 }
 
-fn detect_pnpm(dir: &Path, names: &BTreeSet<String>, primary: Option<Manager>) -> Option<DetectedManager> {
+fn detect_pnpm(
+    dir: &Path,
+    names: &BTreeSet<String>,
+    primary: Option<Manager>,
+) -> Option<DetectedManager> {
     if !names.contains("pnpm-lock.yaml") && !names.contains("pnpm-workspace.yaml") {
         return None;
     }
@@ -312,8 +316,8 @@ fn detect_yarn(
     if !names.contains("yarn.lock") {
         return None;
     }
-    let berry = names.contains(".yarnrc.yml")
-        || pin.is_some_and(|p| p.name == "yarn" && p.major >= 2);
+    let berry =
+        names.contains(".yarnrc.yml") || pin.is_some_and(|p| p.name == "yarn" && p.major >= 2);
     let role = if primary.is_some() && primary != Some(Manager::Yarn) {
         Role::Leftover
     } else if berry {
@@ -329,7 +333,11 @@ fn detect_yarn(
     })
 }
 
-fn detect_bun(dir: &Path, names: &BTreeSet<String>, primary: Option<Manager>) -> Option<DetectedManager> {
+fn detect_bun(
+    dir: &Path,
+    names: &BTreeSet<String>,
+    primary: Option<Manager>,
+) -> Option<DetectedManager> {
     if !has_bun_lock(names) && !names.contains("bunfig.toml") {
         return None;
     }

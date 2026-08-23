@@ -93,15 +93,16 @@ pub fn npm_settings(
 
     let mut findings = Vec::new();
     findings.extend(scripts::npm_checks(
-        settings, &npmrc, manifest.as_ref(), &npmrc_path, preset,
+        settings,
+        &npmrc,
+        manifest.as_ref(),
+        &npmrc_path,
+        preset,
     ));
     findings.extend(source::npm_check(settings, &npmrc, &npmrc_path));
     findings.extend(lockfile::check(
         settings.require_lockfile,
-        manager
-            .lockfile_path
-            .as_deref()
-            .is_some_and(Path::is_file),
+        manager.lockfile_path.as_deref().is_some_and(Path::is_file),
         &manager
             .lockfile_path
             .clone()

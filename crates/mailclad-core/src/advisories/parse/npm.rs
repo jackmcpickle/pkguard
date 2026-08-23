@@ -104,7 +104,10 @@ fn finding(
     }
 }
 
-pub fn parse_npm_audit(stdout: &str, lockfile_path: &str) -> Result<Vec<Finding>, serde_json::Error> {
+pub fn parse_npm_audit(
+    stdout: &str,
+    lockfile_path: &str,
+) -> Result<Vec<Finding>, serde_json::Error> {
     let report: NpmReport = serde_json::from_str(stdout)?;
     let mut findings = Vec::new();
 
@@ -314,7 +317,9 @@ mod tests {
     fn clean_audit_yields_no_findings() {
         let stdout = r#"{"auditReportVersion": 2, "vulnerabilities": {}}"#;
         assert_eq!(
-            parse_npm_audit(stdout, "/p/package-lock.json").unwrap().len(),
+            parse_npm_audit(stdout, "/p/package-lock.json")
+                .unwrap()
+                .len(),
             0
         );
     }

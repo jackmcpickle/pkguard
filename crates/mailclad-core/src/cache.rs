@@ -113,7 +113,11 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let cache = AdvisoryCache::new(tmp.path().to_path_buf());
         cache.put("key1", &[sample_finding()]).unwrap();
-        let file = std::fs::read_dir(tmp.path()).unwrap().next().unwrap().unwrap();
+        let file = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap();
         std::fs::write(file.path(), "not json").unwrap();
         assert!(cache.get("key1", DEFAULT_TTL_SECS).is_none());
     }

@@ -32,10 +32,7 @@ fn preset_of(arg: PresetArg) -> Preset {
 }
 
 fn finding_line(finding: &Finding) -> String {
-    let manager = finding
-        .manager
-        .map(|m| m.name())
-        .unwrap_or("-");
+    let manager = finding.manager.map(|m| m.name()).unwrap_or("-");
     let package = match (&finding.package, &finding.current_version) {
         (Some(p), Some(v)) => format!("{p}@{v}"),
         (Some(p), None) => p.clone(),
@@ -70,16 +67,17 @@ fn print_summary(summary: &ScanSummary) {
     println!(
         "\n{} project(s) scanned · policy {} · exit {}",
         summary.projects,
-        if summary.policy_failure { "failed" } else { "passed" },
+        if summary.policy_failure {
+            "failed"
+        } else {
+            "passed"
+        },
         summary.exit.code()
     );
 }
 
 pub async fn run(args: ScanArgs) -> i32 {
-    let root = args
-        .path
-        .clone()
-        .unwrap_or_else(|| PathBuf::from("."));
+    let root = args.path.clone().unwrap_or_else(|| PathBuf::from("."));
     let opts = ScanOptions {
         preset_override: args.preset.map(preset_of),
         jobs: args.jobs.unwrap_or(0),
@@ -95,9 +93,7 @@ pub async fn run(args: ScanArgs) -> i32 {
 
     let progress = if show_progress {
         let bar = indicatif::ProgressBar::new_spinner();
-        bar.set_style(
-            indicatif::ProgressStyle::with_template("{spinner} {msg}").unwrap(),
-        );
+        bar.set_style(indicatif::ProgressStyle::with_template("{spinner} {msg}").unwrap());
         bar.enable_steady_tick(std::time::Duration::from_millis(120));
         Some(bar)
     } else {

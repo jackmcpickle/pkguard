@@ -56,7 +56,11 @@ fn scan_clean_repo_exits_zero() {
     npm_repo(tmp.path(), "app");
     // settings-compliant so no settings findings trip the gate
     let dir = tmp.path().join("app");
-    fs::write(dir.join("package.json"), r#"{"packageManager": "npm@11.0.0"}"#).unwrap();
+    fs::write(
+        dir.join("package.json"),
+        r#"{"packageManager": "npm@11.0.0"}"#,
+    )
+    .unwrap();
     fs::write(
         dir.join(".npmrc"),
         "ignore-scripts=true\nallow-scripts-pin=true\naudit=true\nmin-release-age=1\nregistry=https://registry.npmjs.org/\n",
@@ -82,7 +86,11 @@ fn scan_json_format_emits_machine_output() {
     npm_repo(tmp.path(), "app");
     let bin = fake_npm(tmp.path(), NPM_HIGH);
 
-    let assert = scan_cmd(tmp.path(), &bin).arg("--format").arg("json").assert().code(1);
+    let assert = scan_cmd(tmp.path(), &bin)
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .code(1);
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout).into_owned();
     let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
     assert_eq!(parsed["schemaVersion"], 2);

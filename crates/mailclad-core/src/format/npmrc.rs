@@ -8,7 +8,9 @@ pub fn parse(raw: &str) -> BTreeMap<String, String> {
         if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with(';') {
             continue;
         }
-        let Some(eq) = trimmed.find('=') else { continue };
+        let Some(eq) = trimmed.find('=') else {
+            continue;
+        };
         if eq == 0 {
             continue;
         }

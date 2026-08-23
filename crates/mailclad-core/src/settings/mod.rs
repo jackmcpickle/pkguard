@@ -112,7 +112,10 @@ mod tests {
         let fx = fixture();
         let findings = audit(&fx, "preset = \"relaxed\"");
         // relaxed: ignore_scripts=false, min_age=0, require_pm_pin=false
-        assert_eq!(codes(&findings), vec!["audit.disabled", "registry.unpinned"]);
+        assert_eq!(
+            codes(&findings),
+            vec!["audit.disabled", "registry.unpinned"]
+        );
     }
 
     #[test]
@@ -120,7 +123,10 @@ mod tests {
         let fx = fixture();
         fs::remove_file(fx.root.join("package-lock.json")).unwrap();
         let findings = audit(&fx, "preset = \"standard\"");
-        let lockfile = findings.iter().find(|f| f.code == "lockfile.missing").unwrap();
+        let lockfile = findings
+            .iter()
+            .find(|f| f.code == "lockfile.missing")
+            .unwrap();
         assert_eq!(lockfile.severity, Severity::High);
     }
 
@@ -139,12 +145,19 @@ mod tests {
     #[test]
     fn registry_mismatch_when_policy_pins_a_registry() {
         let fx = fixture();
-        fs::write(fx.root.join(".npmrc"), "registry=https://evil.example.com\n").unwrap();
+        fs::write(
+            fx.root.join(".npmrc"),
+            "registry=https://evil.example.com\n",
+        )
+        .unwrap();
         let findings = audit(
             &fx,
             "preset = \"strict\"\n[policy]\nregistry = \"https://registry.corp.dev\"",
         );
-        let mismatch = findings.iter().find(|f| f.code == "registry.mismatch").unwrap();
+        let mismatch = findings
+            .iter()
+            .find(|f| f.code == "registry.mismatch")
+            .unwrap();
         // pin severity under strict is high
         assert_eq!(mismatch.severity, Severity::High);
     }

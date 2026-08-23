@@ -35,8 +35,9 @@ fn parse_output(
         return Ok(Vec::new());
     }
     match manager {
-        Manager::Npm => parse::npm::parse_npm_audit(stdout, file_path)
-            .map_err(|_| AdvisoryError::Incomplete),
+        Manager::Npm => {
+            parse::npm::parse_npm_audit(stdout, file_path).map_err(|_| AdvisoryError::Incomplete)
+        }
         // Remaining manager dialects arrive with M2.
         _ => Err(AdvisoryError::Incomplete),
     }
@@ -68,13 +69,19 @@ pub async fn run_manager_advisories(
                 for finding in &mut findings {
                     finding.path = file_path.clone();
                 }
-                return Ok(AdvisoryOutcome { findings, from_cache: true });
+                return Ok(AdvisoryOutcome {
+                    findings,
+                    from_cache: true,
+                });
             }
         }
     }
 
     let Some(argv) = manager.manager.audit_argv() else {
-        return Ok(AdvisoryOutcome { findings: Vec::new(), from_cache: false });
+        return Ok(AdvisoryOutcome {
+            findings: Vec::new(),
+            from_cache: false,
+        });
     };
     let argv: Vec<String> = argv.into_iter().map(str::to_string).collect();
     let output = runner
@@ -90,7 +97,10 @@ pub async fn run_manager_advisories(
             let _ = cache.put(key, &findings);
         }
     }
-    Ok(AdvisoryOutcome { findings, from_cache: false })
+    Ok(AdvisoryOutcome {
+        findings,
+        from_cache: false,
+    })
 }
 
 #[cfg(test)]
@@ -135,7 +145,11 @@ mod tests {
         let (manager, cache) = setup(tmp.path());
         let runner = CannedRunner::new().with(
             &["npm", "audit", "--json"],
-            CommandOutput { code: 1, stdout: NPM_AUDIT_JSON.into(), stderr: String::new() },
+            CommandOutput {
+                code: 1,
+                stdout: NPM_AUDIT_JSON.into(),
+                stderr: String::new(),
+            },
         );
 
         let opts = AdvisoryOptions::default();
@@ -161,10 +175,18 @@ mod tests {
         let (manager, cache) = setup(tmp.path());
         let runner = CannedRunner::new().with(
             &["npm", "audit", "--json"],
-            CommandOutput { code: 2, stdout: String::new(), stderr: "boom".into() },
+            CommandOutput {
+                code: 2,
+                stdout: String::new(),
+                stderr: "boom".into(),
+            },
         );
         let out = run_manager_advisories(
-            tmp.path(), &manager, &runner, &cache, &AdvisoryOptions::default(),
+            tmp.path(),
+            &manager,
+            &runner,
+            &cache,
+            &AdvisoryOptions::default(),
         )
         .await;
         assert!(matches!(out, Err(AdvisoryError::Incomplete)));
@@ -175,7 +197,11 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let (manager, cache) = setup(tmp.path());
         let out = run_manager_advisories(
-            tmp.path(), &manager, &CannedRunner::new(), &cache, &AdvisoryOptions::default(),
+            tmp.path(),
+            &manager,
+            &CannedRunner::new(),
+            &cache,
+            &AdvisoryOptions::default(),
         )
         .await;
         assert!(matches!(out, Err(AdvisoryError::Incomplete)));
@@ -187,10 +213,18 @@ mod tests {
         let (manager, cache) = setup(tmp.path());
         let runner = CannedRunner::new().with(
             &["npm", "audit", "--json"],
-            CommandOutput { code: 0, stdout: "  \n".into(), stderr: String::new() },
+            CommandOutput {
+                code: 0,
+                stdout: "  \n".into(),
+                stderr: String::new(),
+            },
         );
         let out = run_manager_advisories(
-            tmp.path(), &manager, &runner, &cache, &AdvisoryOptions::default(),
+            tmp.path(),
+            &manager,
+            &runner,
+            &cache,
+            &AdvisoryOptions::default(),
         )
         .await
         .unwrap();
@@ -203,13 +237,20 @@ mod tests {
         let (manager, cache) = setup(tmp.path());
         let runner = CannedRunner::new().with(
             &["npm", "audit", "--json"],
-            CommandOutput { code: 0, stdout: NPM_AUDIT_JSON.into(), stderr: String::new() },
+            CommandOutput {
+                code: 0,
+                stdout: NPM_AUDIT_JSON.into(),
+                stderr: String::new(),
+            },
         );
         let opts = AdvisoryOptions::default();
         run_manager_advisories(tmp.path(), &manager, &runner, &cache, &opts)
             .await
             .unwrap();
-        let refresh = AdvisoryOptions { refresh: true, ..AdvisoryOptions::default() };
+        let refresh = AdvisoryOptions {
+            refresh: true,
+            ..AdvisoryOptions::default()
+        };
         let out = run_manager_advisories(tmp.path(), &manager, &runner, &cache, &refresh)
             .await
             .unwrap();

@@ -9,7 +9,10 @@ mod tests {
         let parsed = npmrc::parse(
             "# comment\n; also comment\n\nignore-scripts = true\nregistry=https://r.example\nbroken-line\n",
         );
-        assert_eq!(parsed.get("ignore-scripts").map(String::as_str), Some("true"));
+        assert_eq!(
+            parsed.get("ignore-scripts").map(String::as_str),
+            Some("true")
+        );
         assert_eq!(
             parsed.get("registry").map(String::as_str),
             Some("https://r.example")
