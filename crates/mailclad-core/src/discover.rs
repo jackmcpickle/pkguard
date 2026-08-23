@@ -143,7 +143,8 @@ fn find_nested_git_repos(dir: &Path, found: &mut Vec<PathBuf>) {
             continue;
         }
         let child = dir.join(&name);
-        if !child.is_dir() {
+        // Never follow directory symlinks: a repo-controlled link can form a cycle.
+        if child.is_symlink() || !child.is_dir() {
             continue;
         }
         if has_git(&child) {
@@ -183,7 +184,7 @@ fn walk_pm_roots(dir: &Path, repo: &Path, is_repo_root: bool, roots: &mut Vec<Pa
             continue;
         }
         let child = dir.join(&name);
-        if !child.is_dir() || (has_git(&child) && child != repo) {
+        if child.is_symlink() || !child.is_dir() || (has_git(&child) && child != repo) {
             continue;
         }
         walk_pm_roots(&child, repo, false, roots);
@@ -500,6 +501,21 @@ mod tests {
         assert_eq!(m.manager, Manager::Npm);
         assert_eq!(m.role, Role::Primary);
         assert_eq!(m.lockfile_path, None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlink_cycles_do_not_break_discovery() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir_all(tmp.path().join("a/.git")).unwrap();
+        write(tmp.path(), "a/package.json", "{}");
+        // cycle back to the repo itself and to the scan root
+        std::os::unix::fs::symlink(tmp.path().join("a"), tmp.path().join("a/self")).unwrap();
+        std::os::unix::fs::symlink(tmp.path(), tmp.path().join("a/up")).unwrap();
+
+        let projects = discover(tmp.path());
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0].root, tmp.path().join("a"));
     }
 
     #[test]
