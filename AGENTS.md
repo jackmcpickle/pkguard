@@ -20,4 +20,4 @@ npm run check --prefix site && npm run build --prefix site                 # sit
 - `scan` is read-only. Nothing in the scan path may write to user files.
 - Managers live in one exhaustive `Manager` enum (`crates/pkguard-core/src/manager.rs`); add capabilities there, never in a side table. `Manager::ported()` must track the settings/advisories match arms.
 - Settings checks are organized by check family (`settings/checks/`), not by manager.
-- The old npm package is named `mailclad` (≤ 0.1.x, Bun build) and the docs domain is still mailclad.dev; do not rename those references.
+- The old npm package is named `mailclad` (≤ 0.1.x, Bun build); leave that historical name alone. The docs domain is pkguard.dev.

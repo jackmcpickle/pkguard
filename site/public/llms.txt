@@ -12,11 +12,11 @@ Requires a stable Rust toolchain. A Homebrew tap and prebuilt binaries land with
 
 ## Commands
 
-See https://mailclad.dev/docs/commands for flags dumped from the binary (`pkguard dump-catalog`).
+See https://pkguard.dev/docs/commands for flags dumped from the binary (`pkguard dump-catalog`).
 
 ## Links
 
-- Site: https://mailclad.dev
-- Docs: https://mailclad.dev/docs
+- Site: https://pkguard.dev
+- Docs: https://pkguard.dev/docs
 - GitHub: https://github.com/jackmcpickle/pkguard
 - Releases: https://github.com/jackmcpickle/pkguard/releases

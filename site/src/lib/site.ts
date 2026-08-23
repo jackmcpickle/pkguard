@@ -1,7 +1,8 @@
 import { APP_NAME, CONFIG_FILE_NAME } from "@/lib/catalog";
 
 export const SITE_NAME = APP_NAME;
-export const SITE_URL = "https://mailclad.dev";
+export const SITE_URL = "https://pkguard.dev";
+export const SITE_HOST = new URL(SITE_URL).host;
 export const GITHUB_URL = "https://github.com/jackmcpickle/pkguard";
 export const RELEASES_URL = `${GITHUB_URL}/releases`;
 export const CONFIG_NAME = CONFIG_FILE_NAME;

@@ -10,7 +10,7 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   integrations: [sitemap()],
   output: "static",
-  site: "https://mailclad.dev",
+  site: "https://pkguard.dev",
   redirects: {
     "/docs/commands/audit": "/docs/commands/scan",
     "/docs/commands/init": "/docs/commands",

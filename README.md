@@ -2,7 +2,7 @@
 
 pkguard walks a folder of repos, finds each package-manager root, and audits it. `scan` is read-only and never writes files.
 
-Docs and the product page live at [mailclad.dev](https://mailclad.dev).
+Docs and the product page live at [pkguard.dev](https://pkguard.dev).
 
 As of 1.0.0 pkguard is a Rust binary (workspace in `crates/`).
 
