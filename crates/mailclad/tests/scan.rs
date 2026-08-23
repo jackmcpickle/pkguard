@@ -54,6 +54,14 @@ fn scan_reports_findings_and_exits_one_on_policy_failure() {
 fn scan_clean_repo_exits_zero() {
     let tmp = tempfile::tempdir().unwrap();
     npm_repo(tmp.path(), "app");
+    // settings-compliant so no settings findings trip the gate
+    let dir = tmp.path().join("app");
+    fs::write(dir.join("package.json"), r#"{"packageManager": "npm@11.0.0"}"#).unwrap();
+    fs::write(
+        dir.join(".npmrc"),
+        "ignore-scripts=true\nallow-scripts-pin=true\naudit=true\nmin-release-age=1\nregistry=https://registry.npmjs.org/\n",
+    )
+    .unwrap();
     let bin = fake_npm(
         tmp.path(),
         r#"{"auditReportVersion":2,"vulnerabilities":{}}"#,
@@ -79,10 +87,14 @@ fn scan_json_format_emits_machine_output() {
     let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
     assert_eq!(parsed["schemaVersion"], 2);
     assert_eq!(parsed["exitCode"], 1);
-    assert_eq!(
-        parsed["projects"][0]["findings"][0]["code"],
-        "GHSA-v7"
-    );
+    let codes: Vec<&str> = parsed["projects"][0]["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|f| f["code"].as_str())
+        .collect();
+    assert!(codes.contains(&"GHSA-v7"), "codes: {codes:?}");
+    assert!(codes.contains(&"scripts.unrestricted"), "codes: {codes:?}");
 }
 
 #[test]

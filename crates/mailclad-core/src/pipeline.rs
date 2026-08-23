@@ -123,7 +123,9 @@ async fn audit_project(
             continue;
         }
         let settings = resolve_settings(&config, manager.manager.name());
-        let _ = settings; // settings checks are wired in with the check-family port
+        let settings_findings =
+            crate::settings::audit_manager_settings(&project.root, manager, &settings);
+        findings.extend(settings_findings);
         let binary = manager.manager.binary().unwrap_or_default();
         if !runner.which(binary) {
             let finding = missing_binary_finding(&project.root, manager.manager, binary);
@@ -281,6 +283,22 @@ mod tests {
         fs::write(dir.join("package-lock.json"), format!("lock-{name}")).unwrap();
     }
 
+    /// Settings-compliant npm repo: no settings findings under standard preset.
+    fn compliant_npm_repo(root: &Path, name: &str) {
+        npm_repo(root, name);
+        let dir = root.join(name);
+        fs::write(
+            dir.join("package.json"),
+            r#"{"packageManager": "npm@11.0.0"}"#,
+        )
+        .unwrap();
+        fs::write(
+            dir.join(".npmrc"),
+            "ignore-scripts=true\nallow-scripts-pin=true\naudit=true\nmin-release-age=1\nregistry=https://registry.npmjs.org/\n",
+        )
+        .unwrap();
+    }
+
     async fn run_scan(root: &Path, runner: CannedRunner) -> Vec<AuditEvent> {
         let opts = ScanOptions {
             cache_dir: root.join(".cache-test"),
@@ -304,8 +322,8 @@ mod tests {
     #[tokio::test]
     async fn scans_two_repos_and_streams_events() {
         let tmp = tempfile::tempdir().unwrap();
-        npm_repo(tmp.path(), "a");
-        npm_repo(tmp.path(), "b");
+        compliant_npm_repo(tmp.path(), "a");
+        compliant_npm_repo(tmp.path(), "b");
         let runner = CannedRunner::new().with(
             &["npm", "audit", "--json"],
             CommandOutput { code: 1, stdout: NPM_HIGH.into(), stderr: String::new() },
@@ -329,9 +347,34 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn clean_scan_exits_zero() {
+    async fn bare_repo_settings_findings_fail_the_standard_gate() {
         let tmp = tempfile::tempdir().unwrap();
         npm_repo(tmp.path(), "a");
+        let runner = CannedRunner::new().with(
+            &["npm", "audit", "--json"],
+            CommandOutput { code: 0, stdout: NPM_CLEAN.into(), stderr: String::new() },
+        );
+        let events = run_scan(tmp.path(), runner).await;
+        // scripts.unrestricted (high) trips the standard gate
+        assert_eq!(summary(&events).exit, ExitCode::PolicyFailure);
+        let findings: Vec<String> = events
+            .iter()
+            .filter_map(|e| match e {
+                AuditEvent::ProjectFinished { findings, .. } => {
+                    Some(findings.iter().map(|f| f.code.clone()).collect::<Vec<_>>())
+                }
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        assert!(findings.contains(&"scripts.unrestricted".to_string()));
+        assert!(findings.contains(&"audit.disabled".to_string()));
+    }
+
+    #[tokio::test]
+    async fn clean_scan_exits_zero() {
+        let tmp = tempfile::tempdir().unwrap();
+        compliant_npm_repo(tmp.path(), "a");
         let runner = CannedRunner::new().with(
             &["npm", "audit", "--json"],
             CommandOutput { code: 0, stdout: NPM_CLEAN.into(), stderr: String::new() },
@@ -350,12 +393,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn missing_binary_yields_info_finding_not_incomplete() {
+    async fn missing_binary_yields_info_finding_and_settings_still_run() {
         let tmp = tempfile::tempdir().unwrap();
-        npm_repo(tmp.path(), "a");
+        compliant_npm_repo(tmp.path(), "a");
         // CannedRunner "which" knows only binaries with canned argvs: none here
         let events = run_scan(tmp.path(), CannedRunner::new()).await;
         let s = summary(&events);
+        // missing-binary never fails the gate; compliant settings are clean
         assert_eq!(s.exit, ExitCode::Clean);
         let findings: Vec<_> = events
             .iter()
