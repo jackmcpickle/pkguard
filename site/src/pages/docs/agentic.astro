@@ -1,0 +1,43 @@
+---
+import { AGENTIC_CATALOG } from "@cli/agentic-catalog";
+import { APP_NAME } from "@cli/app-name";
+import DocsLayout from "@/layouts/DocsLayout.astro";
+---
+
+<DocsLayout
+  title={`Agentic checks - ${APP_NAME}`}
+  description="Agentic findings mailclad warns about by default."
+  current="/docs/agentic"
+>
+  <p class="font-mono text-[14px] leading-5 tracking-[1.4px] text-ink uppercase">
+    Agentic
+  </p>
+  <h1
+    class="mt-4 text-[32px] leading-9 tracking-[-0.6px] md:text-[48px] md:leading-[48px] md:tracking-[-1.2px]"
+  >
+    Codes from the agentic catalog.
+  </h1>
+  <p class="mt-6 max-w-[60ch] text-[16px] leading-6 text-body">
+    Warned at info by default. <code class="font-mono text-ink">--apply</code> does
+    not write them unless applyAgentic is on.
+    <code class="font-mono text-ink">--apply-agentic</code> writes only the safe
+    edits. Source:
+    <code class="font-mono text-ink">src/agentic-catalog.ts</code>.
+  </p>
+  <ul class="mt-10">
+    {
+      AGENTIC_CATALOG.map((check) => (
+        <li class="border-t border-hairline py-6">
+          <p class="font-mono text-[14px] leading-5 text-ink">{check.code}</p>
+          <h2 class="mt-2 text-[20px] leading-7 text-ink">{check.title}</h2>
+          <p class="mt-3 max-w-[60ch] text-[16px] leading-6 text-body">
+            {check.description}
+          </p>
+          <p class="mt-3 max-w-[60ch] text-[14px] leading-5 text-body-mid">
+            {check.caveat}
+          </p>
+        </li>
+      ))
+    }
+  </ul>
+</DocsLayout>

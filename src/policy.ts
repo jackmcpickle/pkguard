@@ -2,31 +2,10 @@ import { parse } from "smol-toml";
 
 import type { PackageManager, Policy, PresetName } from "./domain";
 import { ALL_MANAGER_NAMES, CONFIG_MANAGER_NAMES } from "./managers/profile";
+import { PRESET_DEFAULTS } from "./preset-defaults";
 import { isPlainObject } from "./std";
 
-export const PRESET_DEFAULTS = {
-  relaxed: {
-    auditLevel: "critical",
-    ignoreScripts: false,
-    minReleaseAgeDays: 0,
-    requireLockfile: true,
-    requirePmPin: false,
-  },
-  standard: {
-    auditLevel: "high",
-    ignoreScripts: true,
-    minReleaseAgeDays: 1,
-    requireLockfile: true,
-    requirePmPin: true,
-  },
-  strict: {
-    auditLevel: "moderate",
-    ignoreScripts: true,
-    minReleaseAgeDays: 14,
-    requireLockfile: true,
-    requirePmPin: true,
-  },
-} as const;
+export { PRESET_DEFAULTS } from "./preset-defaults";
 
 const CONFIG_MANAGERS = new Set<string>(CONFIG_MANAGER_NAMES);
 

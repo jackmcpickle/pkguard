@@ -1,0 +1,24 @@
+---
+import Button from "@/components/Button.astro";
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import { SITE_NAME } from "@/lib/site";
+---
+
+<BaseLayout title={`Not found - ${SITE_NAME}`} description="That page is not on mailclad.dev.">
+  <main class="px-6 py-24 md:px-8">
+    <div class="mx-auto max-w-[1200px]">
+      <h1
+        class="text-[48px] leading-[48px] tracking-[-1.2px] md:text-[72px] md:leading-[72px] md:tracking-[-1.8px]"
+      >
+        Page not found.
+      </h1>
+      <p class="mt-6 max-w-[40ch] text-[16px] leading-6 text-body">
+        That URL is not a docs page or the home page.
+      </p>
+      <div class="mt-8 flex flex-wrap gap-3">
+        <Button href="/" variant="primary">Home</Button>
+        <Button href="/docs">Docs</Button>
+      </div>
+    </div>
+  </main>
+</BaseLayout>

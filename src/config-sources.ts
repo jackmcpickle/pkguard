@@ -5,8 +5,10 @@ export interface ConfigSource {
   path: string;
 }
 
-const SEARCH_ORDER =
+export const CONFIG_SEARCH_ORDER =
   "Looks for a user/tool config, then .mailclad.toml in the scan directory and each project. Closer wins; flags win over files.";
+
+const SEARCH_ORDER = CONFIG_SEARCH_ORDER;
 
 const ANSI = {
   dim: "\u001B[2m",

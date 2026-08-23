@@ -1,0 +1,21 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import {
+  Commands,
+  Hero,
+  InstallBand,
+  Managers,
+  Run,
+} from "@/modules/home";
+import { SITE_NAME } from "@/lib/site";
+---
+
+<BaseLayout title={`${SITE_NAME} - package-manager security audit`}>
+  <main>
+    <Hero />
+    <Run />
+    <Managers />
+    <Commands />
+    <InstallBand />
+  </main>
+</BaseLayout>

@@ -1,0 +1,70 @@
+---
+import { GITHUB_URL, SITE_NAME } from "@/lib/site";
+
+interface Props {
+  current?: "home" | "docs";
+}
+
+const { current = "home" } = Astro.props;
+const links = [
+  { href: "/docs", id: "docs", label: "Docs" },
+  { href: "/docs/install", id: "install", label: "Install" },
+  { href: GITHUB_URL, id: "github", label: "GitHub", external: true },
+] as const;
+---
+
+<header
+  class="sticky top-0 z-20 border-b border-hairline bg-canvas px-6 py-3 md:px-8"
+>
+  <div class="mx-auto flex h-12 max-w-[1200px] items-center justify-between gap-6">
+    <a href="/" class="text-[14px] leading-5 text-ink">{SITE_NAME}</a>
+    <nav class="hidden items-center gap-6 md:flex" aria-label="Primary">
+      {
+        links.map((link) => (
+          <a
+            href={link.href}
+            class:list={[
+              "text-[14px] leading-5",
+              current === link.id ? "text-ink" : "text-body",
+            ]}
+            {...("external" in link
+              ? { rel: "noopener", target: "_blank" }
+              : {})}
+          >
+            {link.label}
+          </a>
+        ))
+      }
+    </nav>
+    <details class="relative md:hidden">
+      <summary
+        class="flex min-h-11 list-none items-center justify-center rounded-full border border-white/25 px-3 text-[14px] text-ink"
+      >
+        Menu
+      </summary>
+      <div
+        class="absolute right-0 mt-2 flex w-48 flex-col gap-3 rounded-sm border border-hairline bg-canvas-card p-4"
+      >
+        {
+          links.map((link) => (
+            <a
+              href={link.href}
+              class="min-h-11 text-[14px] leading-5 text-ink"
+              {...("external" in link
+                ? { rel: "noopener", target: "_blank" }
+                : {})}
+            >
+              {link.label}
+            </a>
+          ))
+        }
+      </div>
+    </details>
+  </div>
+</header>
+
+<style>
+  summary::-webkit-details-marker {
+    display: none;
+  }
+</style>

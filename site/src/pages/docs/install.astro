@@ -1,0 +1,45 @@
+---
+import { APP_NAME } from "@cli/app-name";
+import DocsLayout from "@/layouts/DocsLayout.astro";
+import { RELEASES_URL } from "@/lib/site";
+---
+
+<DocsLayout
+  title={`Install - ${APP_NAME}`}
+  description="Install mailclad from npm or a standalone binary."
+  current="/docs/install"
+>
+  <p class="font-mono text-[14px] leading-5 tracking-[1.4px] text-ink uppercase">
+    Install
+  </p>
+  <h1
+    class="mt-4 text-[32px] leading-9 tracking-[-0.6px] md:text-[48px] md:leading-[48px] md:tracking-[-1.2px]"
+  >
+    From npm, or a standalone binary.
+  </h1>
+  <h2 class="mt-12 text-[20px] leading-7 text-ink">npm (requires Bun)</h2>
+  <p class="mt-3 max-w-[60ch] text-[16px] leading-6 text-body">
+    The CLI runs on Bun, so Bun must be on your PATH either way.
+  </p>
+  <pre
+    class="mt-6 overflow-x-auto rounded-sm border border-hairline bg-canvas-card p-6 font-mono text-[14px] leading-5 text-body"
+  ><code>{`bun install -g ${APP_NAME}
+# or
+npm install -g ${APP_NAME}`}</code></pre>
+  <h2 class="mt-12 text-[20px] leading-7 text-ink">Standalone binary</h2>
+  <p class="mt-3 max-w-[60ch] text-[16px] leading-6 text-body">
+    Grab a binary from the
+    <a href={RELEASES_URL} class="text-ink underline" rel="noopener" target="_blank">
+      releases page
+    </a>. No Bun needed. Binaries are large because Bun's runtime is baked in.
+  </p>
+  <pre
+    class="mt-6 overflow-x-auto rounded-sm border border-hairline bg-canvas-card p-6 font-mono text-[14px] leading-5 text-body"
+  ><code>{`curl -fsSL -o ${APP_NAME} https://github.com/jackmcpickle/mailclad/releases/latest/download/mailclad-darwin-arm64
+chmod +x ${APP_NAME}
+./${APP_NAME} audit .`}</code></pre>
+  <p class="mt-6 text-[14px] leading-5 text-body-mid">
+    Also published: mailclad-linux-x64, mailclad-linux-arm64, mailclad-darwin-x64,
+    mailclad-windows-x64.exe.
+  </p>
+</DocsLayout>
