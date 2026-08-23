@@ -1,7 +1,10 @@
 ---
-import { COMMANDS, commandSynopsis } from "@cli/cli-catalog";
-import { APP_NAME } from "@cli/app-name";
-import { MANAGER_DOCS } from "@cli/manager-docs";
+import {
+    APP_NAME,
+    COMMANDS,
+    commandSynopsis,
+    MANAGER_DOCS,
+} from "@/lib/catalog";
 import DocsLayout from "@/layouts/DocsLayout.astro";
 import {
     DocsBody,
@@ -16,14 +19,14 @@ const configCount = MANAGER_DOCS.filter((manager) => manager.kind === "config")
 
 <DocsLayout
     title={`Docs — ${APP_NAME}`}
-    description={`Install ${APP_NAME}, then audit a folder of package-manager roots.`}
+    description="Install pkguard, then scan a folder of package-manager roots."
     current="/docs"
     toc={[{ id: "commands", label: "Commands" }]}
 >
     <DocsHeader
         eyebrow="Overview"
         title={`${APP_NAME} walks a folder of repos and audits each package-manager root.`}
-        lead={`It does not write files unless you pass an apply flag. ${configCount} managers share the same path. Commands and flags on these pages come from the CLI catalog in source, so a flag change updates the docs.`}
+        lead={`scan is read-only and never writes files. ${configCount} managers share the same path. Commands and flags on these pages are dumped from the Rust binary (${APP_NAME} dump-catalog), so a flag change updates the docs.`}
     />
     <SectionHeading id="commands">Commands</SectionHeading>
     <DocsBody>

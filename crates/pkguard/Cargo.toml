@@ -1,16 +1,16 @@
 [package]
-name = "mailclad"
+name = "pkguard"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
 [[bin]]
-name = "mailclad"
+name = "pkguard"
 path = "src/main.rs"
 
 [dependencies]
-mailclad-core = { path = "../mailclad-core" }
+pkguard-core = { path = "../pkguard-core" }
 anyhow = { workspace = true }
 directories = { workspace = true }
 clap = { workspace = true }

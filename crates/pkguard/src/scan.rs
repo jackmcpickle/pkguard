@@ -1,23 +1,23 @@
 use crate::cli::{Format, PresetArg, ScanArgs};
-use mailclad_core::exec::TokioRunner;
-use mailclad_core::pipeline::{scan, AuditEvent, ScanOptions};
-use mailclad_core::policy::Preset;
+use pkguard_core::exec::TokioRunner;
+use pkguard_core::pipeline::{scan, AuditEvent, ScanOptions};
+use pkguard_core::policy::Preset;
 use serde_json::json;
 use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 fn cache_dir() -> PathBuf {
-    if let Ok(dir) = std::env::var("MAILCLAD_CACHE_DIR") {
+    if let Ok(dir) = std::env::var("PKGUARD_CACHE_DIR") {
         return PathBuf::from(dir);
     }
-    directories::ProjectDirs::from("dev", "mailclad", "mailclad")
+    directories::ProjectDirs::from("dev", "pkguard", "pkguard")
         .map(|dirs| dirs.cache_dir().to_path_buf())
-        .unwrap_or_else(|| std::env::temp_dir().join("mailclad-cache"))
+        .unwrap_or_else(|| std::env::temp_dir().join("pkguard-cache"))
 }
 
 fn user_config_path() -> Option<PathBuf> {
-    directories::ProjectDirs::from("dev", "mailclad", "mailclad")
+    directories::ProjectDirs::from("dev", "pkguard", "pkguard")
         .map(|dirs| dirs.config_dir().join("config.toml"))
         .filter(|p| p.is_file())
 }

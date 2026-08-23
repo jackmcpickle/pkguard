@@ -27,12 +27,12 @@ fn fake_npm(root: &Path, audit_json: &str) -> std::path::PathBuf {
 }
 
 fn scan_cmd(root: &Path, path_dir: &Path) -> Command {
-    let mut cmd = Command::cargo_bin("mailclad").unwrap();
+    let mut cmd = Command::cargo_bin("pkguard").unwrap();
     // fakebin first so our npm wins; /usr/bin:/bin so the script's `cat` works
     cmd.arg("scan")
         .arg(root)
         .env("PATH", format!("{}:/usr/bin:/bin", path_dir.display()))
-        .env("MAILCLAD_CACHE_DIR", root.join(".cache"))
+        .env("PKGUARD_CACHE_DIR", root.join(".cache"))
         .env("NO_COLOR", "1");
     cmd
 }
@@ -107,7 +107,7 @@ fn scan_json_format_emits_machine_output() {
 
 #[test]
 fn version_flag_prints_version() {
-    let mut cmd = Command::cargo_bin("mailclad").unwrap();
+    let mut cmd = Command::cargo_bin("pkguard").unwrap();
     let assert = cmd.arg("--version").assert().success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout).into_owned();
     assert!(stdout.contains(env!("CARGO_PKG_VERSION")));

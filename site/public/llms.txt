@@ -1,22 +1,22 @@
 # pkguard
 
-> Audit package-manager security settings and advisories across monorepos and folders of projects.
+> Scan package-manager security settings and advisories across monorepos and folders of projects. Rust binary; `pkguard scan` is read-only.
 
 ## Install
 
 ```
-bun install -g pkguard
+cargo install --git https://github.com/jackmcpickle/pkguard pkguard
 ```
 
-Requires Bun on PATH. Standalone binaries are on GitHub Releases.
+Requires a stable Rust toolchain. A Homebrew tap and prebuilt binaries land with the distribution cutover. The old npm package (named mailclad, 0.1.x) is the previous Bun build and does not match these docs.
 
 ## Commands
 
-See https://pkguard.dev/docs/commands for flags generated from the CLI catalog.
+See https://mailclad.dev/docs/commands for flags dumped from the binary (`pkguard dump-catalog`).
 
 ## Links
 
-- Site: https://pkguard.dev
-- Docs: https://pkguard.dev/docs
+- Site: https://mailclad.dev
+- Docs: https://mailclad.dev/docs
 - GitHub: https://github.com/jackmcpickle/pkguard
-- npm: https://www.npmjs.com/package/pkguard
+- Releases: https://github.com/jackmcpickle/pkguard/releases

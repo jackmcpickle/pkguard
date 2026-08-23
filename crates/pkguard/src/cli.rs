@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "mailclad", version, about = "Package-manager security audit")]
+#[command(name = "pkguard", version, about = "Package-manager security audit")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
@@ -12,6 +12,10 @@ pub struct Cli {
 pub enum Command {
     /// Read-only audit of one directory tree (never mutates anything)
     Scan(ScanArgs),
+
+    /// Emit the docs-site catalog as JSON (builds the docs site)
+    #[command(hide = true, name = "dump-catalog")]
+    DumpCatalog,
 }
 
 #[derive(clap::Args)]

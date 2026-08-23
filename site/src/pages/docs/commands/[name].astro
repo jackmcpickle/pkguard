@@ -1,12 +1,12 @@
 ---
-import { AGENTIC_CATALOG } from "@cli/agentic-catalog";
-import { APP_NAME } from "@cli/app-name";
 import {
+    AGENTIC_CATALOG,
+    APP_NAME,
     COMMANDS,
     commandSynopsis,
     flagLabel,
     type CommandHelp,
-} from "@cli/cli-catalog";
+} from "@/lib/catalog";
 import DocsLayout from "@/layouts/DocsLayout.astro";
 import {
     CodeBlock,
@@ -35,8 +35,11 @@ const toc = [
         ? [{ id: "arguments", label: "Arguments" }]
         : []),
     { id: "options", label: "Options" },
-    ...(command.name === "audit"
-        ? [{ id: "agentic-checks", label: "Agentic checks" }]
+    ...(command.name === "scan"
+        ? [
+              { id: "exit-codes", label: "Exit codes" },
+              { id: "agentic-checks", label: "Agentic checks" },
+          ]
         : []),
 ];
 ---
@@ -70,10 +73,6 @@ const toc = [
         )
     }
     <SectionHeading id="options">Options</SectionHeading>
-    <DocsBody>
-        {command.flags.length} options in total
-        {command.name === "audit" ? "; the ones you will reach for first:" : "."}
-    </DocsBody>
     <KeyValue
         rows={command.flags.map((flag) => ({
             key: flagLabel(flag),
@@ -81,12 +80,31 @@ const toc = [
         }))}
     />
     {
-        command.name === "audit" && (
+        command.name === "scan" && (
             <>
+                <SectionHeading id="exit-codes">Exit codes</SectionHeading>
+                <KeyValue
+                    rows={[
+                        { key: "0", value: "Every project passed." },
+                        {
+                            key: "1",
+                            value: "Policy failure: settings drift or an advisory at or above the preset's gate.",
+                        },
+                        {
+                            key: "2",
+                            value: "Incomplete run: a missing binary, an audit subprocess died, or no projects were found.",
+                        },
+                    ]}
+                />
+                <Note>
+                    In CI, pair --format json with your archive step; the document
+                    carries schemaVersion 2 and the exit code.
+                </Note>
                 <SectionHeading id="agentic-checks">Agentic checks</SectionHeading>
                 <DocsBody>
-                    Warned by default. Apply is off unless --apply-agentic. Codes come from
-                    the agentic catalog in source.
+                    Reported by default; turn off with [agentic] enabled = false in
+                    config. These codes are the finding-code contract; writes come
+                    with the future fix command.
                 </DocsBody>
                 <KeyValue
                     rows={AGENTIC_CATALOG.map((check) => ({
@@ -95,19 +113,7 @@ const toc = [
                         note: check.caveat,
                     }))}
                 />
-                <Note>
-                    In CI, pair --json or --sarif with --report to archive the full result
-                    from a pipeline.
-                </Note>
             </>
-        )
-    }
-    {
-        command.name === "init" && (
-            <Note>
-                Use --local to write a starter config in the current directory so a run
-                has the same shape on every machine and in CI.
-            </Note>
         )
     }
 </DocsLayout>

@@ -1,6 +1,5 @@
 ---
-import { AGENTIC_CATALOG } from "@cli/agentic-catalog";
-import { APP_NAME } from "@cli/app-name";
+import { AGENTIC_CATALOG, APP_NAME } from "@/lib/catalog";
 import DocsLayout from "@/layouts/DocsLayout.astro";
 import {
     DocsBody,
@@ -13,18 +12,20 @@ import {
 
 <DocsLayout
     title={`Agentic checks — ${APP_NAME}`}
-    description={`Agentic findings ${APP_NAME} warns about by default.`}
+    description="Agentic findings pkguard warns about by default."
     current="/docs/agentic"
     toc={[{ id: "catalog", label: "Catalog" }]}
 >
     <DocsHeader
         eyebrow="Guides / agentic"
         title="Codes from the agentic catalog."
-        lead="Warned at info by default. --apply does not write them unless applyAgentic is on. --apply-agentic writes only the safe edits."
+        lead="Reported by default; turn off with [agentic] enabled = false in config. Writes come with the future fix command and stay off unless [agentic] apply = true."
     />
     <SectionHeading id="catalog">Catalog</SectionHeading>
     <DocsBody>
-        Source: <code class="font-mono text-ink">src/agentic-catalog.ts</code>.
+        Dumped from the binary via
+        <code class="font-mono text-ink">{APP_NAME} dump-catalog</code>. The codes are
+        part of the finding-code contract carried over from the previous build.
     </DocsBody>
     <KeyValue
         rows={AGENTIC_CATALOG.map((check) => ({
@@ -34,7 +35,8 @@ import {
         }))}
     />
     <Note>
-        Apply is off unless applyAgentic is on. --apply-agentic writes only the safe
-        edits. Never writes a home-dir store or deletes overrides.
+        scan is read-only and never applies these. When the fix command lands, apply
+        writes only the safe edits — it never writes a home-dir store or deletes
+        overrides.
     </Note>
 </DocsLayout>

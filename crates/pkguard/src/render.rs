@@ -1,7 +1,7 @@
-use mailclad_core::findings::{Finding, Severity};
-use mailclad_core::pipeline::ScanSummary;
-use mailclad_core::policy::Preset;
 use owo_colors::{OwoColorize, Style};
+use pkguard_core::findings::{Finding, Severity};
+use pkguard_core::pipeline::ScanSummary;
+use pkguard_core::policy::Preset;
 use std::path::{Path, PathBuf};
 
 pub struct RenderOptions {
@@ -217,10 +217,10 @@ pub fn summary_block(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mailclad_core::findings::{Finding, FindingKind, Severity};
-    use mailclad_core::manager::Manager;
-    use mailclad_core::pipeline::ScanSummary;
-    use mailclad_core::policy::{ExitCode, Preset};
+    use pkguard_core::findings::{Finding, FindingKind, Severity};
+    use pkguard_core::manager::Manager;
+    use pkguard_core::pipeline::ScanSummary;
+    use pkguard_core::policy::{ExitCode, Preset};
     use std::path::{Path, PathBuf};
 
     fn finding(
@@ -258,12 +258,12 @@ mod tests {
             &findings,
             false,
             Preset::Standard,
-            &[PathBuf::from("/scan/app/.mailclad.toml")],
+            &[PathBuf::from("/scan/app/.pkguard.toml")],
             &plain(),
         );
         let lines: Vec<&str> = block.lines().collect();
         assert_eq!(lines[0], "app  2 findings");
-        assert_eq!(lines[1], "  preset standard · config .mailclad.toml");
+        assert_eq!(lines[1], "  preset standard · config .pkguard.toml");
         // columns: severity, manager, code, package[@version -> fix], message
         assert_eq!(
             lines[2],
@@ -331,7 +331,7 @@ mod tests {
             &findings,
             false,
             Preset::Standard,
-            &[PathBuf::from("/scan/app/.mailclad.toml")],
+            &[PathBuf::from("/scan/app/.pkguard.toml")],
             &RenderOptions { color: true },
         );
         // dim gray config line, red+bold critical severity

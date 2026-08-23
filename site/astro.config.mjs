@@ -10,13 +10,17 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   integrations: [sitemap()],
   output: "static",
-  site: "https://pkguard.dev",
+  site: "https://mailclad.dev",
+  redirects: {
+    "/docs/commands/audit": "/docs/commands/scan",
+    "/docs/commands/init": "/docs/commands",
+    "/docs/commands/help": "/docs/commands",
+  },
   vite: {
     plugins: [tailwindcss()],
     resolve: {
       alias: {
         "@": path.join(root, "src"),
-        "@cli": path.join(root, "../src"),
       },
     },
   },

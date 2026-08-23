@@ -151,6 +151,15 @@ impl Manager {
         }
     }
 
+    /// True once this manager's settings checks and advisory parser are ported
+    /// from the TS build. Must track the matches in
+    /// `settings::audit_manager_settings` and `advisories::parse_output`;
+    /// `dump-catalog` reads it so the docs site cannot claim support the
+    /// binary does not have.
+    pub fn ported(self) -> bool {
+        matches!(self, Manager::Npm)
+    }
+
     pub fn write_config_name(self) -> Option<&'static str> {
         match self {
             Manager::Npm => Some(".npmrc"),

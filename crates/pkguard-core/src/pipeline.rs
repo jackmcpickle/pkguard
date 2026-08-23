@@ -59,7 +59,7 @@ impl Default for ScanOptions {
             jobs: 0,
             refresh: false,
             no_cache: false,
-            cache_dir: std::env::temp_dir().join("mailclad-cache"),
+            cache_dir: std::env::temp_dir().join("pkguard-cache"),
             user_config: None,
         }
     }
@@ -109,7 +109,7 @@ async fn audit_project(
 ) -> ProjectResult {
     let mut config_sources = base_sources.to_vec();
     let mut layers: Vec<ConfigFile> = vec![base_config.clone()];
-    let repo_config_path = project.root.join(".mailclad.toml");
+    let repo_config_path = project.root.join(".pkguard.toml");
     if let Some(repo_cfg) = read_config(&repo_config_path) {
         layers.push(repo_cfg);
         config_sources.push(repo_config_path);
@@ -196,7 +196,7 @@ pub fn scan(
                 base_sources.push(user_path.to_path_buf());
             }
         }
-        let scan_root_path = root.join(".mailclad.toml");
+        let scan_root_path = root.join(".pkguard.toml");
         if let Some(scan_root) = read_config(&scan_root_path) {
             base_layers.push(scan_root);
             base_sources.push(scan_root_path);
@@ -463,7 +463,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         npm_repo(tmp.path(), "a");
         // relax repo "a" so its high finding no longer fails the gate
-        fs::write(tmp.path().join("a/.mailclad.toml"), "preset = \"relaxed\"").unwrap();
+        fs::write(tmp.path().join("a/.pkguard.toml"), "preset = \"relaxed\"").unwrap();
         let runner = CannedRunner::new().with(
             &["npm", "audit", "--json"],
             CommandOutput {
@@ -480,7 +480,7 @@ mod tests {
     async fn project_finished_reports_preset_and_config_sources() {
         let tmp = tempfile::tempdir().unwrap();
         npm_repo(tmp.path(), "a");
-        fs::write(tmp.path().join("a/.mailclad.toml"), "preset = \"relaxed\"").unwrap();
+        fs::write(tmp.path().join("a/.pkguard.toml"), "preset = \"relaxed\"").unwrap();
         let runner = CannedRunner::new().with(
             &["npm", "audit", "--json"],
             CommandOutput {
@@ -502,6 +502,6 @@ mod tests {
             })
             .unwrap();
         assert_eq!(preset, Preset::Relaxed);
-        assert_eq!(sources, vec![tmp.path().join("a/.mailclad.toml")]);
+        assert_eq!(sources, vec![tmp.path().join("a/.pkguard.toml")]);
     }
 }
