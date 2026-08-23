@@ -8,7 +8,7 @@
 cargo install --git https://github.com/jackmcpickle/pkguard pkguard
 ```
 
-Requires a stable Rust toolchain. A Homebrew tap and prebuilt binaries land with the distribution cutover. The old npm package (named mailclad, 0.1.x) is the previous Bun build and does not match these docs.
+Requires a stable Rust toolchain. A Homebrew tap and prebuilt binaries land with the distribution cutover.
 
 ## Commands
 

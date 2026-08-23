@@ -1,6 +1,6 @@
 # Package-manager QoL for agentic development — research, 21 August 2026
 
-Companion to [`docs/research-2026-08-package-manager-settings.md`](./research-2026-08-package-manager-settings.md), which covers the **cooldown / install-script / provenance** era that mailclad already audits.
+Companion to [`docs/research-2026-08-package-manager-settings.md`](./research-2026-08-package-manager-settings.md), which covers the **cooldown / install-script / provenance** era.
 
 This note is about the other half of the config surface: **shared stores, caches, linkers, hoisting, overrides, catalogs, and lockfile coexistence**. Those knobs decide whether an AI coding agent can `install` in seconds, whether `require("foo")` succeeds when `foo` is not a declared dependency, and whether the next agent copies a dangerous workaround into `package.json`.
 
