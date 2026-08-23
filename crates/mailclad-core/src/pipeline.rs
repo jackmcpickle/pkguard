@@ -26,6 +26,10 @@ pub enum AuditEvent {
         root: PathBuf,
         findings: Vec<Finding>,
         incomplete: bool,
+        preset: Preset,
+        /// Config files that were actually layered for this project, in
+        /// application order (user < scan-root < per-repo).
+        config_sources: Vec<PathBuf>,
     },
     Done(ScanSummary),
 }
@@ -91,19 +95,24 @@ struct ProjectResult {
     findings: Vec<Finding>,
     incomplete: bool,
     preset: Preset,
+    config_sources: Vec<PathBuf>,
 }
 
 async fn audit_project(
     project: &Project,
     base_config: &ConfigFile,
+    base_sources: &[PathBuf],
     runner: &dyn CommandRunner,
     cache: &AdvisoryCache,
     opts: &ScanOptions,
     events: &mpsc::UnboundedSender<AuditEvent>,
 ) -> ProjectResult {
+    let mut config_sources = base_sources.to_vec();
     let mut layers: Vec<ConfigFile> = vec![base_config.clone()];
-    if let Some(repo_cfg) = read_config(&project.root.join(".mailclad.toml")) {
+    let repo_config_path = project.root.join(".mailclad.toml");
+    if let Some(repo_cfg) = read_config(&repo_config_path) {
         layers.push(repo_cfg);
+        config_sources.push(repo_config_path);
     }
     let mut config = layer_configs(layers.iter());
     if let Some(preset) = opts.preset_override {
@@ -167,6 +176,7 @@ async fn audit_project(
         findings,
         incomplete,
         preset: config.preset.unwrap_or(Preset::Standard),
+        config_sources,
     }
 }
 
@@ -179,11 +189,17 @@ pub fn scan(
     let (tx, rx) = mpsc::unbounded_channel();
     tokio::spawn(async move {
         let mut base_layers = Vec::new();
-        if let Some(user) = opts.user_config.as_deref().and_then(read_config) {
-            base_layers.push(user);
+        let mut base_sources: Vec<PathBuf> = Vec::new();
+        if let Some(user_path) = opts.user_config.as_deref() {
+            if let Some(user) = read_config(user_path) {
+                base_layers.push(user);
+                base_sources.push(user_path.to_path_buf());
+            }
         }
-        if let Some(scan_root) = read_config(&root.join(".mailclad.toml")) {
+        let scan_root_path = root.join(".mailclad.toml");
+        if let Some(scan_root) = read_config(&scan_root_path) {
             base_layers.push(scan_root);
+            base_sources.push(scan_root_path);
         }
         let base_config = layer_configs(base_layers.iter());
 
@@ -205,6 +221,7 @@ pub fn scan(
         let cache = Arc::new(AdvisoryCache::new(opts.cache_dir.clone()));
         let opts = Arc::new(opts);
         let base_config = Arc::new(base_config);
+        let base_sources = Arc::new(base_sources);
 
         let mut handles = Vec::new();
         for project in projects {
@@ -216,16 +233,26 @@ pub fn scan(
             let cache = Arc::clone(&cache);
             let opts = Arc::clone(&opts);
             let base_config = Arc::clone(&base_config);
+            let base_sources = Arc::clone(&base_sources);
             let semaphore = Arc::clone(&semaphore);
             handles.push(tokio::spawn(async move {
                 let _permit = semaphore.acquire_owned().await.unwrap();
-                let result =
-                    audit_project(&project, &base_config, runner.as_ref(), &cache, &opts, &tx)
-                        .await;
+                let result = audit_project(
+                    &project,
+                    &base_config,
+                    &base_sources,
+                    runner.as_ref(),
+                    &cache,
+                    &opts,
+                    &tx,
+                )
+                .await;
                 let _ = tx.send(AuditEvent::ProjectFinished {
                     root: project.root.clone(),
                     findings: result.findings.clone(),
                     incomplete: result.incomplete,
+                    preset: result.preset,
+                    config_sources: result.config_sources.clone(),
                 });
                 result
             }));
@@ -447,5 +474,34 @@ mod tests {
         );
         let events = run_scan(tmp.path(), runner).await;
         assert_eq!(summary(&events).exit, ExitCode::Clean);
+    }
+
+    #[tokio::test]
+    async fn project_finished_reports_preset_and_config_sources() {
+        let tmp = tempfile::tempdir().unwrap();
+        npm_repo(tmp.path(), "a");
+        fs::write(tmp.path().join("a/.mailclad.toml"), "preset = \"relaxed\"").unwrap();
+        let runner = CannedRunner::new().with(
+            &["npm", "audit", "--json"],
+            CommandOutput {
+                code: 0,
+                stdout: NPM_CLEAN.into(),
+                stderr: String::new(),
+            },
+        );
+        let events = run_scan(tmp.path(), runner).await;
+        let (preset, sources) = events
+            .iter()
+            .find_map(|e| match e {
+                AuditEvent::ProjectFinished {
+                    preset,
+                    config_sources,
+                    ..
+                } => Some((*preset, config_sources.clone())),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(preset, Preset::Relaxed);
+        assert_eq!(sources, vec![tmp.path().join("a/.mailclad.toml")]);
     }
 }

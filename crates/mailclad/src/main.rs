@@ -1,4 +1,5 @@
 mod cli;
+mod render;
 mod scan;
 
 use clap::Parser;

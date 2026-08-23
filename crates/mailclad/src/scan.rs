@@ -1,7 +1,6 @@
 use crate::cli::{Format, PresetArg, ScanArgs};
 use mailclad_core::exec::TokioRunner;
-use mailclad_core::findings::Finding;
-use mailclad_core::pipeline::{scan, AuditEvent, ScanOptions, ScanSummary};
+use mailclad_core::pipeline::{scan, AuditEvent, ScanOptions};
 use mailclad_core::policy::Preset;
 use serde_json::json;
 use std::io::IsTerminal;
@@ -31,49 +30,8 @@ fn preset_of(arg: PresetArg) -> Preset {
     }
 }
 
-fn finding_line(finding: &Finding) -> String {
-    let manager = finding.manager.map(|m| m.name()).unwrap_or("-");
-    let package = match (&finding.package, &finding.current_version) {
-        (Some(p), Some(v)) => format!("{p}@{v}"),
-        (Some(p), None) => p.clone(),
-        _ => String::new(),
-    };
-    let fix = finding
-        .fix_version
-        .as_deref()
-        .map(|v| format!(" -> {v}"))
-        .unwrap_or_default();
-    let severity = format!("{:?}", finding.severity).to_lowercase();
-    format!(
-        "  {manager:8} {severity:9} {code:28} {package}{fix}  {message}",
-        code = finding.code,
-        message = finding.message
-    )
-}
-
-fn print_project(root: &std::path::Path, findings: &[Finding], incomplete: bool) {
-    if findings.is_empty() && !incomplete {
-        println!("ok {}", root.display());
-        return;
-    }
-    let status = if incomplete { "incomplete" } else { "issues" };
-    println!("{status} {}", root.display());
-    for finding in findings {
-        println!("{}", finding_line(finding));
-    }
-}
-
-fn print_summary(summary: &ScanSummary) {
-    println!(
-        "\n{} project(s) scanned · policy {} · exit {}",
-        summary.projects,
-        if summary.policy_failure {
-            "failed"
-        } else {
-            "passed"
-        },
-        summary.exit.code()
-    );
+fn color_enabled() -> bool {
+    std::env::var_os("NO_COLOR").is_none() && std::io::stdout().is_terminal()
 }
 
 pub async fn run(args: ScanArgs) -> i32 {
@@ -100,6 +58,10 @@ pub async fn run(args: ScanArgs) -> i32 {
         None
     };
 
+    let render_opts = crate::render::RenderOptions {
+        color: color_enabled(),
+    };
+    let mut counts = crate::render::SeverityCounts::default();
     let mut discovered = 0usize;
     let mut finished = 0usize;
     let mut projects_json = Vec::new();
@@ -118,19 +80,34 @@ pub async fn run(args: ScanArgs) -> i32 {
                 root,
                 findings,
                 incomplete,
+                preset,
+                config_sources,
             } => {
                 finished += 1;
+                for finding in &findings {
+                    counts.add(finding.severity);
+                }
                 if human {
+                    let block = crate::render::project_block(
+                        &root,
+                        &findings,
+                        incomplete,
+                        preset,
+                        &config_sources,
+                        &render_opts,
+                    );
                     if let Some(bar) = &progress {
-                        bar.suspend(|| print_project(&root, &findings, incomplete));
+                        bar.suspend(|| print!("{block}"));
                         bar.set_message(format!("auditing {finished}/{discovered} projects"));
                     } else {
-                        print_project(&root, &findings, incomplete);
+                        print!("{block}");
                     }
                 } else {
                     projects_json.push(json!({
                         "root": root,
                         "incomplete": incomplete,
+                        "preset": preset,
+                        "configSources": config_sources,
                         "findings": findings,
                     }));
                 }
@@ -141,7 +118,10 @@ pub async fn run(args: ScanArgs) -> i32 {
                     bar.finish_and_clear();
                 }
                 if human {
-                    print_summary(&summary);
+                    print!(
+                        "{}",
+                        crate::render::summary_block(&summary, &counts, &render_opts)
+                    );
                 } else {
                     let doc = json!({
                         "schemaVersion": 2,
