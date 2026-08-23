@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 
+import pkg from "../package.json" with { type: "json" };
 import { run } from "../src/cli";
 import type { Host } from "../src/host";
 import type { FakeHostOverrides } from "./helpers/memory-fs";
@@ -94,7 +95,20 @@ test("help, --help, and -h print the command catalog on stdout and exit 0", asyn
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
     expectRootCatalog(result.stdout);
+    expect(result.stdout).toContain("--version");
     expect(result.ran).toBe(0);
+  }
+});
+
+test("--version and -V print the package.json version on stdout and exit 0", async () => {
+  const results = await Promise.all(
+    [["--version"], ["-V"], ["audit", "--version"]].map((argv) => capture(argv))
+  );
+  for (const result of results) {
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.ran).toBe(0);
+    expect(result.stdout).toBe(`${pkg.version}\n`);
   }
 });
 

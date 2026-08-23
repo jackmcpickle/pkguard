@@ -1,7 +1,12 @@
 import { AGENTIC_CATALOG } from "./agentic-catalog";
 import { APP_NAME } from "./app-name";
 import type { CommandHelp } from "./cli-catalog";
-import { COMMANDS, commandSynopsis, flagLabel } from "./cli-catalog";
+import {
+  COMMANDS,
+  GLOBAL_FLAGS,
+  commandSynopsis,
+  flagLabel,
+} from "./cli-catalog";
 
 export { commandByName } from "./cli-catalog";
 
@@ -17,6 +22,9 @@ const paint = (text: string, code: string, on: boolean): string =>
 
 export const isHelpFlag = (arg: string): boolean =>
   arg === "--help" || arg === "-h";
+
+export const isVersionFlag = (arg: string): boolean =>
+  arg === "--version" || arg === "-V";
 
 const colWidth = (labels: readonly string[]): number => {
   let width = 0;
@@ -48,6 +56,16 @@ export const formatRootHelp = (color: boolean): string => {
   const rows = COMMANDS.map((command, index) =>
     row(labels[index] ?? command.name, command.summary, width, color)
   );
+  const globalLabels = GLOBAL_FLAGS.map((flag) => flagLabel(flag));
+  const globalWidth = colWidth(globalLabels);
+  const globalRows = GLOBAL_FLAGS.map((flag, index) =>
+    row(
+      globalLabels[index] ?? flag.names[0] ?? "",
+      flag.description,
+      globalWidth,
+      color
+    )
+  );
   return [
     heading(`Usage: ${APP_NAME} <command>`, color),
     "",
@@ -59,6 +77,9 @@ export const formatRootHelp = (color: boolean): string => {
     "",
     heading("Commands:", color),
     ...rows,
+    "",
+    heading("Options:", color),
+    ...globalRows,
     "",
     paint(
       `Run \`${APP_NAME} <command> --help\` for flag details.`,

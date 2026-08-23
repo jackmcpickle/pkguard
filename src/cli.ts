@@ -1,5 +1,6 @@
 import path from "node:path";
 
+import { APP_VERSION } from "./app-name";
 import type { ApplyPrompt } from "./apply-advisories";
 import { auditPath } from "./audit";
 import type { AuditMode, AuditResult, WriteDeps } from "./audit";
@@ -14,6 +15,7 @@ import {
   formatRootHelp,
   formatUnknownCommand,
   isHelpFlag,
+  isVersionFlag,
 } from "./help";
 import type { Host } from "./host";
 import type { PolicyLayers } from "./policy";
@@ -568,6 +570,10 @@ export const run = async (
       withHelpConfig(formatRootHelp(color), host, color),
       host.stderr
     );
+  }
+  if (argv.some(isVersionFlag)) {
+    host.stdout(`${APP_VERSION}\n`);
+    return { exitCode: 0 };
   }
   const helpResult = dispatchHelp(head, rest, color, host);
   if (helpResult !== null) {

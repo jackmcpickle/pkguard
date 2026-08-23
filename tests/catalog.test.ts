@@ -1,7 +1,12 @@
 import { expect, test } from "bun:test";
 
 import { AGENTIC_CATALOG } from "../src/agentic-catalog";
-import { COMMANDS, commandByName, commandSynopsis } from "../src/cli-catalog";
+import {
+  COMMANDS,
+  GLOBAL_FLAGS,
+  commandByName,
+  commandSynopsis,
+} from "../src/cli-catalog";
 import { MANAGER_DOCS } from "../src/manager-docs";
 import { ALL_MANAGER_NAMES } from "../src/managers/profile";
 import { PRESET_DEFAULTS } from "../src/preset-defaults";
@@ -18,6 +23,9 @@ test("command catalog lists audit, init, and help", () => {
   const audit = COMMANDS.find((command) => command.name === "audit");
   expect(audit === undefined ? undefined : commandSynopsis(audit)).toBe(
     "audit [path]"
+  );
+  expect(GLOBAL_FLAGS.some((flag) => flag.names.includes("--version"))).toBe(
+    true
   );
 });
 
