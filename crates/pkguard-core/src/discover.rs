@@ -1,4 +1,5 @@
 use crate::manager::{Manager, PackageManagerPin};
+use ignore::{IncrementalIgnore, WalkBuilder};
 use serde::Serialize;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -138,12 +139,39 @@ fn has_nested_config(dir: &Path, names: &BTreeSet<String>) -> bool {
         || has_project_table(dir)
 }
 
-fn find_nested_git_repos(dir: &Path, found: &mut Vec<PathBuf>) {
+fn ignore_matcher(root: &Path) -> IncrementalIgnore {
+    WalkBuilder::new(root)
+        .hidden(false)
+        .parents(false)
+        .ignore(false)
+        .git_global(false)
+        .git_ignore(true)
+        .git_exclude(true)
+        .require_git(false)
+        .follow_links(false)
+        .build_matchers()
+        .remove(0)
+}
+
+fn skip_dir(root: &Path, child: &Path, name: &str, ignore: &mut IncrementalIgnore) -> bool {
+    if SKIP_DIRS.contains(&name) {
+        return true;
+    }
+    let rel = child.strip_prefix(root).unwrap_or(child);
+    ignore.matched(rel, true).is_ignore()
+}
+
+fn find_nested_git_repos(
+    dir: &Path,
+    root: &Path,
+    ignore: &mut IncrementalIgnore,
+    found: &mut Vec<PathBuf>,
+) {
     for name in dir_names(dir) {
-        if SKIP_DIRS.contains(&name.as_str()) {
+        let child = dir.join(&name);
+        if skip_dir(root, &child, &name, ignore) {
             continue;
         }
-        let child = dir.join(&name);
         // Never follow directory symlinks: a repo-controlled link can form a cycle.
         if child.is_symlink() || !child.is_dir() {
             continue;
@@ -151,7 +179,7 @@ fn find_nested_git_repos(dir: &Path, found: &mut Vec<PathBuf>) {
         if has_git(&child) {
             found.push(child.clone());
         }
-        find_nested_git_repos(&child, found);
+        find_nested_git_repos(&child, root, ignore, found);
     }
 }
 
@@ -159,8 +187,9 @@ fn find_repo_trees(root: &Path) -> Vec<(PathBuf, bool)> {
     if has_git(root) {
         return vec![(root.to_path_buf(), true)];
     }
+    let mut ignore = ignore_matcher(root);
     let mut nested = Vec::new();
-    find_nested_git_repos(root, &mut nested);
+    find_nested_git_repos(root, root, &mut ignore, &mut nested);
     if nested.is_empty() {
         return vec![(root.to_path_buf(), false)];
     }
@@ -171,7 +200,13 @@ fn find_repo_trees(root: &Path) -> Vec<(PathBuf, bool)> {
     trees
 }
 
-fn walk_pm_roots(dir: &Path, repo: &Path, is_repo_root: bool, roots: &mut Vec<PathBuf>) {
+fn walk_pm_roots(
+    dir: &Path,
+    repo: &Path,
+    is_repo_root: bool,
+    ignore: &mut IncrementalIgnore,
+    roots: &mut Vec<PathBuf>,
+) {
     let names = dir_names(dir);
     if is_repo_root {
         if has_root_pm_markers(dir, &names) {
@@ -181,14 +216,14 @@ fn walk_pm_roots(dir: &Path, repo: &Path, is_repo_root: bool, roots: &mut Vec<Pa
         roots.push(dir.to_path_buf());
     }
     for name in names {
-        if SKIP_DIRS.contains(&name.as_str()) {
+        let child = dir.join(&name);
+        if skip_dir(repo, &child, &name, ignore) {
             continue;
         }
-        let child = dir.join(&name);
         if child.is_symlink() || !child.is_dir() || (has_git(&child) && child != repo) {
             continue;
         }
-        walk_pm_roots(&child, repo, false, roots);
+        walk_pm_roots(&child, repo, false, ignore, roots);
     }
 }
 
@@ -567,8 +602,9 @@ fn detect_managers(dir: &Path) -> Vec<DetectedManager> {
 /// Walks `root`, streaming each discovered project into `sink` as it is found.
 pub fn discover_projects(root: &Path, sink: &mut dyn FnMut(Project)) {
     for (tree, is_git) in find_repo_trees(root) {
+        let mut ignore = ignore_matcher(&tree);
         let mut roots = Vec::new();
-        walk_pm_roots(&tree, &tree, true, &mut roots);
+        walk_pm_roots(&tree, &tree, true, &mut ignore, &mut roots);
         for pm_root in roots {
             sink(Project {
                 managers: detect_managers(&pm_root),
@@ -637,6 +673,57 @@ mod tests {
         assert_eq!(projects[1].root, tmp.path().join("b"));
         assert_eq!(projects[1].managers[0].manager, Manager::Yarn);
         assert_eq!(projects[1].managers[0].role, Role::Primary);
+    }
+
+    fn project_roots(root: &Path) -> Vec<PathBuf> {
+        discover(root).into_iter().map(|p| p.root).collect()
+    }
+
+    #[test]
+    fn gitignore_skips_ignored_branches_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir(tmp.path().join(".git")).unwrap();
+        write(tmp.path(), ".gitignore", "branches/\n");
+        write(tmp.path(), "package.json", "{}");
+        write(tmp.path(), "package-lock.json", "{}");
+        write(tmp.path(), "branches/worktree/package.json", "{}");
+        write(tmp.path(), "branches/worktree/.npmrc", "");
+        write(tmp.path(), "apps/api/package.json", "{}");
+        write(tmp.path(), "apps/api/.npmrc", "");
+
+        assert_eq!(
+            project_roots(tmp.path()),
+            vec![tmp.path().to_path_buf(), tmp.path().join("apps/api")]
+        );
+    }
+
+    #[test]
+    fn gitignore_skips_ignored_nested_git_repos() {
+        let tmp = tempfile::tempdir().unwrap();
+        write(tmp.path(), ".gitignore", "branches/\n");
+        fs::create_dir_all(tmp.path().join("app/.git")).unwrap();
+        write(tmp.path(), "app/package.json", "{}");
+        fs::create_dir_all(tmp.path().join("branches/other/.git")).unwrap();
+        write(tmp.path(), "branches/other/package.json", "{}");
+
+        assert_eq!(project_roots(tmp.path()), vec![tmp.path().join("app")]);
+    }
+
+    #[test]
+    fn branches_folder_is_scanned_when_not_gitignored() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir(tmp.path().join(".git")).unwrap();
+        write(tmp.path(), "package.json", "{}");
+        write(tmp.path(), "branches/worktree/package.json", "{}");
+        write(tmp.path(), "branches/worktree/.npmrc", "");
+
+        assert_eq!(
+            project_roots(tmp.path()),
+            vec![
+                tmp.path().to_path_buf(),
+                tmp.path().join("branches/worktree")
+            ]
+        );
     }
 
     #[test]
