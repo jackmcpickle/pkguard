@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/mailclad-core", "crates/mailclad"]
+members = ["crates/pkguard-core", "crates/pkguard"]
 
 [workspace.package]
 version = "1.0.0"

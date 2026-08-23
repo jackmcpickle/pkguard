@@ -4,7 +4,7 @@ pkguard walks a folder of repos, finds each package-manager root, and audits it.
 
 Docs and the product page live at [pkguard.dev](https://pkguard.dev).
 
-As of 1.0.0 pkguard is a Rust binary (workspace in `crates/`). The previous Bun/TypeScript CLI still lives in `src/` until the cutover is complete, but the Rust build is the one described here.
+As of 1.0.0 pkguard is a Rust binary (workspace in `crates/`).
 
 ## How a scan runs
 
@@ -34,10 +34,10 @@ A missing binary does not skip settings. You still get the file findings plus a 
 Build from source (requires a Rust toolchain):
 
 ```bash
-cargo install --path crates/mailclad
+cargo install --path crates/pkguard
 ```
 
-Homebrew tap and prebuilt release binaries are coming with the distribution cutover. The old npm package (`mailclad` ≤ 0.1.x) is the Bun build and does not match these docs.
+Homebrew tap and prebuilt release binaries are coming with the distribution cutover. The old npm package (named `mailclad`, ≤ 0.1.x) is the Bun build and does not match these docs.
 
 ## Usage
 
@@ -128,16 +128,16 @@ Requires a stable Rust toolchain.
 cargo test              # run the test suite
 cargo clippy            # lint
 cargo fmt               # format
-cargo run -p mailclad -- scan .
+cargo run -p pkguard -- scan .
 ```
 
-The workspace is two crates: `mailclad-core` (discovery, config, checks, advisory pipeline) and `mailclad` (the CLI: clap, rendering, progress). The product name and config files are `pkguard`; crate rename follows the distribution cutover.
+The workspace is two crates: `pkguard-core` (discovery, config, checks, advisory pipeline) and `pkguard` (the CLI: clap, rendering, progress).
 
-The legacy Bun toolchain (`bun install`, `bun test`) still covers the TypeScript CLI in `src/` until the cutover PR removes it.
+The docs site (`site/`, Astro) builds from a checked-in catalog dumped from the binary (`pkguard dump-catalog`); CI fails if it goes stale.
 
 ## Releasing
 
-The Rust build will be released via release-plz and cargo-dist (GitHub release binaries plus a Homebrew tap). The existing GitHub Actions release workflows (`publish.yml`, `release.yml`) still serve the legacy npm package and will be replaced at cutover.
+Pushing a `v*` tag runs `.github/workflows/release.yml`: tests, a GitHub release, and per-platform binaries built on a runner matrix. cargo-dist and release-plz (plus the Homebrew tap) replace this at the distribution cutover.
 
 ## License
 

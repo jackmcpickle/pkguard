@@ -1,6 +1,5 @@
 ---
-import { APP_NAME } from "@cli/app-name";
-import { PRESET_DEFAULTS } from "@cli/preset-defaults";
+import { APP_NAME, PRESET_DEFAULTS } from "@/lib/catalog";
 import DocsLayout from "@/layouts/DocsLayout.astro";
 import { DocsBody, DocsHeader, DocsPanel, SectionHeading } from "@/modules/docs";
 
@@ -16,14 +15,14 @@ const keys = [
 
 <DocsLayout
     title={`Presets — ${APP_NAME}`}
-    description="relaxed, standard, and strict policy defaults from the CLI."
+    description="relaxed, standard, and strict policy defaults from the binary."
     current="/docs/presets"
     toc={[{ id: "gates", label: "Three gates" }]}
 >
     <DocsHeader
         eyebrow="Guides / presets"
         title="Three gates, one table in source."
-        lead="Values come from src/preset-defaults.ts. Pass --preset relaxed|standard|strict."
+        lead="Values are dumped from PresetDefaults in the Rust crate (crates/pkguard-core/src/config.rs). Pass --preset relaxed|standard|strict."
     />
     <SectionHeading id="gates">Three gates</SectionHeading>
     <DocsBody>

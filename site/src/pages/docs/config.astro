@@ -1,7 +1,11 @@
 ---
-import { APP_NAME } from "@cli/app-name";
-import { CONFIG_SEARCH_ORDER } from "@cli/config-sources";
-import defaultConfigToml from "../../../../src/config.default.toml?raw";
+import {
+    APP_NAME,
+    CACHE_ENV_VAR,
+    CONFIG_FILE_NAME,
+    CONFIG_SEARCH_ORDER,
+    USER_CONFIG_PATHS,
+} from "@/lib/catalog";
 import DocsLayout from "@/layouts/DocsLayout.astro";
 import {
     CodeBlock,
@@ -10,20 +14,36 @@ import {
     KeyValue,
     SectionHeading,
 } from "@/modules/docs";
-import {
-    CONFIG_NAME,
-    USER_CONFIG_PATH_DOCS,
-    USER_CONFIG_PATH_FALLBACK,
-} from "@/lib/site";
+
+// Mirrors the parse_config test in crates/pkguard-core/src/config.rs; unknown
+// keys are rejected by the binary, so this example stays honest.
+const exampleConfig = `preset = "standard"          # relaxed | standard | strict
+managers = ["npm", "cargo"]  # limit which managers are audited
+jobs = 8
+
+[policy]                     # overrides the preset's defaults
+ignore_scripts = true
+min_release_age_days = 3
+require_lockfile = true
+require_pm_pin = true
+audit_level = "high"         # advisory gate: info | low | moderate | high | critical
+registry = "https://npm.corp.example/"
+
+[agentic]
+enabled = true               # report agentic-hygiene findings (default: true)
+apply = false                # let a future fix command write them (default: false)
+
+[manager.npm]                # per-manager override, beats [policy]
+audit_level = "critical"`;
 ---
 
 <DocsLayout
     title={`Config — ${APP_NAME}`}
-    description={`${APP_NAME} config files, search order, and the default starter.`}
+    description="pkguard config files, search order, and an example."
     current="/docs/config"
     toc={[
         { id: "search-order", label: "Search order" },
-        { id: "default-starter", label: "Default starter" },
+        { id: "example", label: "Example" },
     ]}
 >
     <DocsHeader
@@ -32,22 +52,28 @@ import {
         lead={CONFIG_SEARCH_ORDER}
     />
     <SectionHeading id="search-order">Search order</SectionHeading>
+    <DocsBody>
+        Config is TOML, layered field by field. Later layers win, and flags win over
+        files. Unknown keys are rejected, so typos fail loudly instead of being
+        ignored.
+    </DocsBody>
     <KeyValue
         rows={[
             {
                 key: "user",
-                value: `${USER_CONFIG_PATH_DOCS}. If XDG_CONFIG_HOME is unset: ${USER_CONFIG_PATH_FALLBACK}`,
+                value: `${USER_CONFIG_PATHS.linux} on Linux; ${USER_CONFIG_PATHS.macos} on macOS`,
             },
             {
                 key: "scan or repo",
-                value: CONFIG_NAME,
+                value: CONFIG_FILE_NAME,
             },
         ]}
     />
-    <SectionHeading id="default-starter">Default starter</SectionHeading>
+    <SectionHeading id="example">Example</SectionHeading>
     <DocsBody>
-        Written by <code class="font-mono text-ink">{APP_NAME} init</code>. Imported from
-        <code class="font-mono text-ink">src/config.default.toml</code>.
+        Every key the binary accepts. Advisory results are cached by lockfile digest
+        in the platform cache dir; override the location with
+        <code class="font-mono text-ink">{CACHE_ENV_VAR}</code>.
     </DocsBody>
-    <CodeBlock label={CONFIG_NAME} code={defaultConfigToml.trimEnd()} />
+    <CodeBlock label={CONFIG_FILE_NAME} code={exampleConfig} />
 </DocsLayout>

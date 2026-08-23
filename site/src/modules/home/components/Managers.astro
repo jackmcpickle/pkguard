@@ -1,5 +1,5 @@
 ---
-import { MANAGER_DOCS } from "@cli/manager-docs";
+import { MANAGER_DOCS } from "@/lib/catalog";
 
 const configManagers = MANAGER_DOCS.filter((manager) => manager.kind === "config");
 const flagged = MANAGER_DOCS.filter((manager) => manager.kind === "python-legacy");
@@ -16,8 +16,8 @@ const flagged = MANAGER_DOCS.filter((manager) => manager.kind === "python-legacy
             One path for eight managers.
         </h2>
         <p class="mt-6 max-w-[640px] text-[16px] leading-6 text-body">
-            Each row comes from the manager profile in the CLI. Audit argv updates when the
-            code&nbsp;does.
+            Each row comes from the Manager registry in the Rust crate. Audit argv updates
+            when the code&nbsp;does.
         </p>
         <div
             class="mt-12 overflow-hidden rounded-sm border border-hairline bg-canvas-card"
@@ -58,6 +58,11 @@ const flagged = MANAGER_DOCS.filter((manager) => manager.kind === "python-legacy
             </div>
             <p class="border-t border-hairline px-6 py-4 text-[14px] leading-5 text-body-mid">
                 Flagged only, no live audit: {flagged.map((manager) => manager.name).join(", ")}.
+                Settings checks and the native audit are live for
+                {" "}{MANAGER_DOCS.filter((manager) => manager.ported)
+                    .map((manager) => manager.name)
+                    .join(", ")}; the rest are detected and reported while their checks are
+                ported.
             </p>
         </div>
     </div>

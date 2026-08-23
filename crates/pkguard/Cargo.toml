@@ -1,0 +1,29 @@
+[package]
+name = "pkguard"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "pkguard"
+path = "src/main.rs"
+
+[dependencies]
+pkguard-core = { path = "../pkguard-core" }
+anyhow = { workspace = true }
+directories = { workspace = true }
+clap = { workspace = true }
+tokio = { workspace = true }
+serde_json = { workspace = true }
+indicatif = { workspace = true }
+anstream = { workspace = true }
+anstyle = { workspace = true }
+owo-colors = { workspace = true }
+dialoguer = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+assert_cmd = { workspace = true }
+predicates = { workspace = true }
+tempfile = { workspace = true }

@@ -1,5 +1,4 @@
-import { APP_NAME } from "@cli/app-name";
-import { COMMANDS } from "@cli/cli-catalog";
+import { APP_NAME, COMMANDS } from "@/lib/catalog";
 
 export interface DocsLink {
   href: string;
@@ -22,7 +21,7 @@ export const DOCS_NAV: readonly DocsNavGroup[] = [
     items: [
       { href: "/docs", label: "Overview" },
       { href: "/docs/install", label: "Install" },
-      { href: "/docs/commands/audit", label: "Quick start" },
+      { href: "/docs/commands/scan", label: "Quick start" },
     ],
   },
   {

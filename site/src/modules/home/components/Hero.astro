@@ -1,6 +1,6 @@
 ---
 import CopyCommand from "@/components/CopyCommand.astro";
-import { APP_NAME } from "@cli/app-name";
+import { APP_NAME } from "@/lib/catalog";
 ---
 
 <section class="px-6 pt-24 pb-16">
@@ -15,10 +15,10 @@ import { APP_NAME } from "@cli/app-name";
         </h1>
         <p class="mt-8 max-w-[640px] text-[18px] leading-7 text-body">
             Walk a folder of repos, read committed settings, and run each manager's native
-            audit. One command, eight ecosystems, one&nbsp;report.
+            audit. One read-only command, one Rust binary, one&nbsp;report.
         </p>
         <div class="mt-12">
-            <CopyCommand command={`bun install -g ${APP_NAME}`} />
+            <CopyCommand command={`${APP_NAME} scan ~/code`} />
         </div>
     </div>
 </section>

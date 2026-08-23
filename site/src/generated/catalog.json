@@ -1,0 +1,323 @@
+{
+  "agentic": [
+    {
+      "caveat": "Shared caches belong in user config. A committed home path breaks CI and other agents. Apply only unsets an in-repo path — it never writes ~/…/store.",
+      "code": "cache.path-committed",
+      "description": "A project file pins storeDir, cache, cacheFolder, or install.cache.dir.",
+      "title": "Committed store or cache path"
+    },
+    {
+      "caveat": "Leave enableGlobalCache true unless the team vendors .yarn/cache (Zero-Installs).",
+      "code": "agentic.cache-disabled",
+      "description": "yarn enableGlobalCache is false.",
+      "title": "Global cache disabled"
+    },
+    {
+      "caveat": "The next agent will copy this instead of upgrading. Presence is the warning; apply never deletes a pin.",
+      "code": "overrides.present",
+      "description": "overrides, resolutions, or pnpm workspace overrides force a version the manifest does not show.",
+      "title": "Version override precedent"
+    },
+    {
+      "caveat": "pnpm 11 ignores package.json#pnpm. Apply can move the map to pnpm-workspace.yaml only.",
+      "code": "overrides.legacy-location",
+      "description": "package.json#pnpm.overrides on pnpm 11 or later.",
+      "title": "Legacy pnpm overrides location"
+    },
+    {
+      "caveat": "Makes require() succeed for undeclared deps. The next isolated install breaks.",
+      "code": "layout.shamefully-hoist",
+      "description": "pnpm shamefullyHoist is true, or publicHoistPattern contains *.",
+      "title": "Shameful hoist"
+    },
+    {
+      "caveat": "Most agents assume node_modules and run node, not yarn node. Apply to node-modules is opt-in because it changes the team layout.",
+      "code": "layout.pnp",
+      "description": "yarn or pnpm nodeLinker is pnp (yarn's default).",
+      "title": "Plug'n'Play linker"
+    }
+  ],
+  "appName": "pkguard",
+  "cacheEnvVar": "PKGUARD_CACHE_DIR",
+  "commands": [
+    {
+      "arguments": [
+        {
+          "description": "Directory to scan (defaults to the current directory)",
+          "name": "path",
+          "required": false
+        }
+      ],
+      "flags": [
+        {
+          "description": "Policy preset",
+          "names": [
+            "--preset"
+          ],
+          "value": "relaxed|standard|strict"
+        },
+        {
+          "description": "Max concurrent audits (defaults to min(cpus*2, 16))",
+          "names": [
+            "--jobs"
+          ],
+          "value": "jobs"
+        },
+        {
+          "description": "Output format",
+          "names": [
+            "--format"
+          ],
+          "value": "human|json"
+        },
+        {
+          "description": "Ignore cached advisory results for this run and re-fetch",
+          "names": [
+            "--refresh"
+          ],
+          "value": null
+        },
+        {
+          "description": "Disable the advisory cache entirely (no reads, no writes)",
+          "names": [
+            "--no-cache"
+          ],
+          "value": null
+        },
+        {
+          "description": "Suppress progress output",
+          "names": [
+            "-q",
+            "--quiet"
+          ],
+          "value": null
+        },
+        {
+          "description": "Print help",
+          "names": [
+            "-h",
+            "--help"
+          ],
+          "value": null
+        }
+      ],
+      "name": "scan",
+      "summary": "Read-only audit of one directory tree (never mutates anything)"
+    }
+  ],
+  "configFileName": ".pkguard.toml",
+  "configSearchOrder": "Reads the user config, then .pkguard.toml at the scan root and in each repo. Closer wins; flags win over files.",
+  "managers": [
+    {
+      "auditArgv": [
+        "npm",
+        "audit",
+        "--json"
+      ],
+      "binary": "npm",
+      "configNames": [
+        ".npmrc"
+      ],
+      "kind": "config",
+      "lockfileNames": [
+        "package-lock.json"
+      ],
+      "name": "npm",
+      "ported": true,
+      "writeConfigName": ".npmrc"
+    },
+    {
+      "auditArgv": [
+        "pnpm",
+        "audit",
+        "--json"
+      ],
+      "binary": "pnpm",
+      "configNames": [
+        "pnpm-workspace.yaml"
+      ],
+      "kind": "config",
+      "lockfileNames": [
+        "pnpm-lock.yaml"
+      ],
+      "name": "pnpm",
+      "ported": false,
+      "writeConfigName": "pnpm-workspace.yaml"
+    },
+    {
+      "auditArgv": [
+        "yarn",
+        "npm",
+        "audit",
+        "--json"
+      ],
+      "binary": "yarn",
+      "configNames": [
+        ".yarnrc.yml"
+      ],
+      "kind": "config",
+      "lockfileNames": [
+        "yarn.lock"
+      ],
+      "name": "yarn",
+      "ported": false,
+      "writeConfigName": ".yarnrc.yml"
+    },
+    {
+      "auditArgv": [
+        "bun",
+        "audit",
+        "--json"
+      ],
+      "binary": "bun",
+      "configNames": [
+        "bunfig.toml"
+      ],
+      "kind": "config",
+      "lockfileNames": [
+        "bun.lock",
+        "bun.lockb"
+      ],
+      "name": "bun",
+      "ported": false,
+      "writeConfigName": "bunfig.toml"
+    },
+    {
+      "auditArgv": [
+        "uv",
+        "audit",
+        "--output-format",
+        "json",
+        "--frozen"
+      ],
+      "binary": "uv",
+      "configNames": [
+        "uv.toml",
+        "pyproject.toml"
+      ],
+      "kind": "config",
+      "lockfileNames": [
+        "uv.lock"
+      ],
+      "name": "uv",
+      "ported": false,
+      "writeConfigName": null
+    },
+    {
+      "auditArgv": [
+        "cargo",
+        "audit",
+        "--json"
+      ],
+      "binary": "cargo",
+      "configNames": [
+        ".cargo/config.toml",
+        ".cargo/config"
+      ],
+      "kind": "config",
+      "lockfileNames": [
+        "Cargo.lock"
+      ],
+      "name": "cargo",
+      "ported": false,
+      "writeConfigName": ".cargo/config.toml"
+    },
+    {
+      "auditArgv": [
+        "composer",
+        "audit",
+        "--format",
+        "json",
+        "--locked"
+      ],
+      "binary": "composer",
+      "configNames": [
+        "composer.json"
+      ],
+      "kind": "config",
+      "lockfileNames": [
+        "composer.lock"
+      ],
+      "name": "composer",
+      "ported": false,
+      "writeConfigName": "composer.json"
+    },
+    {
+      "auditArgv": null,
+      "binary": null,
+      "configNames": [],
+      "kind": "python-legacy",
+      "lockfileNames": [],
+      "name": "poetry",
+      "ported": false,
+      "writeConfigName": null
+    },
+    {
+      "auditArgv": null,
+      "binary": null,
+      "configNames": [],
+      "kind": "python-legacy",
+      "lockfileNames": [],
+      "name": "pip",
+      "ported": false,
+      "writeConfigName": null
+    },
+    {
+      "auditArgv": null,
+      "binary": null,
+      "configNames": [],
+      "kind": "python-legacy",
+      "lockfileNames": [],
+      "name": "pipenv",
+      "ported": false,
+      "writeConfigName": null
+    },
+    {
+      "auditArgv": [
+        "bundle-audit",
+        "check",
+        "--format",
+        "json"
+      ],
+      "binary": "bundle-audit",
+      "configNames": [
+        ".bundle/config"
+      ],
+      "kind": "config",
+      "lockfileNames": [
+        "Gemfile.lock"
+      ],
+      "name": "bundler",
+      "ported": false,
+      "writeConfigName": ".bundle/config"
+    }
+  ],
+  "presetDefaults": {
+    "relaxed": {
+      "auditLevel": "critical",
+      "ignoreScripts": false,
+      "minReleaseAgeDays": 0,
+      "requireLockfile": true,
+      "requirePmPin": false
+    },
+    "standard": {
+      "auditLevel": "high",
+      "ignoreScripts": true,
+      "minReleaseAgeDays": 1,
+      "requireLockfile": true,
+      "requirePmPin": true
+    },
+    "strict": {
+      "auditLevel": "moderate",
+      "ignoreScripts": true,
+      "minReleaseAgeDays": 14,
+      "requireLockfile": true,
+      "requirePmPin": true
+    }
+  },
+  "userConfigPaths": {
+    "linux": "~/.config/pkguard/config.toml",
+    "macos": "~/Library/Application Support/dev.pkguard.pkguard/config.toml"
+  },
+  "version": "1.0.0"
+}

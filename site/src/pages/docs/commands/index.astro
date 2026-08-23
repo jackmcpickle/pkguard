@@ -1,6 +1,10 @@
 ---
-import { COMMANDS, commandSynopsis, flagLabel } from "@cli/cli-catalog";
-import { APP_NAME } from "@cli/app-name";
+import {
+    APP_NAME,
+    COMMANDS,
+    commandSynopsis,
+    flagLabel,
+} from "@/lib/catalog";
 import DocsLayout from "@/layouts/DocsLayout.astro";
 import {
     DocsBody,
@@ -17,14 +21,14 @@ const toc = COMMANDS.map((command) => ({
 
 <DocsLayout
     title={`Commands — ${APP_NAME}`}
-    description={`Every ${APP_NAME} command and flag, generated from the CLI catalog.`}
+    description="Every pkguard command and flag, dumped from the Rust binary."
     current="/docs/commands"
     toc={toc}
 >
     <DocsHeader
         eyebrow="Commands"
-        title="Generated from the CLI catalog."
-        lead={`These names, arguments, and flags are imported from src/cli-catalog.ts. The same data prints in ${APP_NAME} --help.`}
+        title="Dumped from the binary."
+        lead={`These names, arguments, and flags come straight from the clap definitions in the Rust CLI, via ${APP_NAME} dump-catalog. The same data prints in ${APP_NAME} --help.`}
     />
     {
         COMMANDS.map((command) => (

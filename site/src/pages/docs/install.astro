@@ -1,5 +1,5 @@
 ---
-import { APP_NAME } from "@cli/app-name";
+import { APP_NAME } from "@/lib/catalog";
 import DocsLayout from "@/layouts/DocsLayout.astro";
 import {
     CodeBlock,
@@ -13,41 +13,39 @@ import { GITHUB_URL, RELEASES_URL } from "@/lib/site";
 
 <DocsLayout
     title={`Install — ${APP_NAME}`}
-    description="The CLI runs on Bun. Install it globally, or grab a standalone binary from the releases page."
+    description="pkguard is a Rust binary. Install it with cargo; a Homebrew tap and prebuilt binaries are coming."
     current="/docs/install"
     toc={[
-        { id: "global-install", label: "Global install" },
-        { id: "one-off", label: "One-off run" },
-        { id: "standalone", label: "Standalone binary" },
+        { id: "cargo", label: "Cargo" },
+        { id: "from-source", label: "From source" },
+        { id: "binaries", label: "Prebuilt binaries" },
     ]}
 >
     <DocsHeader
         eyebrow="Install"
         title="Install"
-        lead="The CLI runs on Bun. Install it globally, or grab a standalone binary from the releases page if you would rather not have Bun on PATH."
+        lead="pkguard is a single Rust binary. Install it straight from the repository with cargo. A Homebrew tap and prebuilt release binaries land with the distribution cutover."
     />
-    <SectionHeading id="global-install">Global install</SectionHeading>
+    <SectionHeading id="cargo">Cargo</SectionHeading>
+    <DocsBody>Requires a stable Rust toolchain.</DocsBody>
     <CodeBlock
-        code={`bun install -g ${APP_NAME}\n${APP_NAME} --version`}
+        code={`cargo install --git ${GITHUB_URL} ${APP_NAME}\n${APP_NAME} --version`}
     />
-    <SectionHeading id="one-off">One-off run</SectionHeading>
-    <DocsBody>No install needed for a single pass over a folder of repos.</DocsBody>
-    <CodeBlock code={`bunx ${APP_NAME} audit ~/code`} />
-    <SectionHeading id="standalone">Standalone binary</SectionHeading>
+    <SectionHeading id="from-source">From source</SectionHeading>
+    <CodeBlock
+        code={`git clone ${GITHUB_URL}\ncd ${APP_NAME}\ncargo install --path crates/${APP_NAME}`}
+    />
+    <SectionHeading id="binaries">Prebuilt binaries</SectionHeading>
     <DocsBody>
-        Download the binary for your platform from the
+        A Homebrew tap and per-platform binaries on the
         <a href={RELEASES_URL} class="text-ink underline" rel="noopener" target="_blank">
             releases page
-        </a>, mark it executable, and drop it on PATH. No Bun needed. Binaries are large
-        because Bun's runtime is baked in.
+        </a> are coming with the cutover; until then, cargo is the way in.
     </DocsBody>
-    <CodeBlock
-        code={`curl -fsSL -o ${APP_NAME} \\\n  ${GITHUB_URL}/releases/latest/download/${APP_NAME}-linux-x64\nchmod +x ${APP_NAME} && mv ${APP_NAME} /usr/local/bin/`}
-    />
     <Note>
-        Settings are parsed from committed config files whether or not the manager binary is
-        installed. A missing binary only skips the live advisory step. Also
-        published:{" "}
-        {`${APP_NAME}-linux-arm64, ${APP_NAME}-darwin-arm64, ${APP_NAME}-darwin-x64, ${APP_NAME}-windows-x64.exe.`}
+        The old npm package (named mailclad, 0.1.x) is the previous Bun build and does
+        not match these docs. Settings are parsed from committed config files whether or not
+        the manager binary is installed; a missing binary only skips the live advisory
+        step.
     </Note>
 </DocsLayout>
