@@ -16,6 +16,10 @@ pub struct CommandOutput {
 #[async_trait]
 pub trait CommandRunner: Send + Sync {
     async fn run(&self, argv: &[String], cwd: &Path) -> std::io::Result<CommandOutput>;
+
+    /// Preflight check: is this binary invocable? Missing binaries become a
+    /// `pm.missing-binary` info finding rather than a failed audit.
+    fn which(&self, binary: &str) -> bool;
 }
 
 pub struct TokioRunner;
@@ -37,6 +41,13 @@ impl CommandRunner for TokioRunner {
             stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
             stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
         })
+    }
+
+    fn which(&self, binary: &str) -> bool {
+        let Some(paths) = std::env::var_os("PATH") else {
+            return false;
+        };
+        std::env::split_paths(&paths).any(|dir| dir.join(binary).is_file())
     }
 }
 
@@ -75,6 +86,15 @@ impl CommandRunner for CannedRunner {
                     format!("no canned response for {argv:?}"),
                 )
             })
+    }
+
+    /// A binary "exists" iff some canned argv invokes it.
+    fn which(&self, binary: &str) -> bool {
+        self.responses
+            .lock()
+            .unwrap()
+            .keys()
+            .any(|argv| argv.first().is_some_and(|b| b == binary))
     }
 }
 

@@ -5,4 +5,5 @@ pub mod discover;
 pub mod exec;
 pub mod findings;
 pub mod manager;
+pub mod pipeline;
 pub mod policy;
