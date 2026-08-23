@@ -1,0 +1,23 @@
+---
+interface Row {
+    key: string;
+    value: string;
+}
+
+interface Props {
+    rows: readonly Row[];
+}
+
+const { rows } = Astro.props;
+---
+
+<div class="mb-12 overflow-hidden rounded-sm border border-hairline bg-canvas-card">
+    {
+        rows.map((row) => (
+            <div class="grid grid-cols-1 gap-2 border-b border-hairline px-6 py-4 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] sm:gap-6">
+                <p class="font-mono text-[14px] leading-5">{row.key}</p>
+                <p class="text-[14px] leading-5 text-body-mid">{row.value}</p>
+            </div>
+        ))
+    }
+</div>

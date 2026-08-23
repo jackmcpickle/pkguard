@@ -2,92 +2,111 @@
 import { AGENTIC_CATALOG } from "@cli/agentic-catalog";
 import { APP_NAME } from "@cli/app-name";
 import {
-  COMMANDS,
-  commandSynopsis,
-  flagLabel,
-  type CommandHelp,
+    COMMANDS,
+    commandSynopsis,
+    flagLabel,
+    type CommandHelp,
 } from "@cli/cli-catalog";
 import DocsLayout from "@/layouts/DocsLayout.astro";
+import {
+    CodeBlock,
+    DocsBody,
+    DocsHeader,
+    KeyValue,
+    Note,
+    SectionHeading,
+} from "@/modules/docs";
 
 export const getStaticPaths = () =>
-  COMMANDS.map((command) => ({
-    params: { name: command.name },
-    props: { command },
-  }));
+    COMMANDS.map((command) => ({
+        params: { name: command.name },
+        props: { command },
+    }));
 
 interface Props {
-  command: CommandHelp;
+    command: CommandHelp;
 }
 
 const { command } = Astro.props;
 const title = `${APP_NAME} ${commandSynopsis(command)}`;
+const toc = [
+    { id: "usage", label: "Usage" },
+    ...(command.arguments.length > 0
+        ? [{ id: "arguments", label: "Arguments" }]
+        : []),
+    { id: "options", label: "Options" },
+    ...(command.name === "audit"
+        ? [{ id: "agentic-checks", label: "Agentic checks" }]
+        : []),
+];
 ---
 
 <DocsLayout
-  title={`${title} - ${APP_NAME}`}
-  description={command.summary}
-  current={`/docs/commands/${command.name}`}
+    title={`${title} — ${APP_NAME}`}
+    description={command.summary}
+    current={`/docs/commands/${command.name}`}
+    toc={toc}
 >
-  <p class="font-mono text-[14px] leading-5 tracking-[1.4px] text-ink uppercase">
-    Command
-  </p>
-  <h1
-    class="mt-4 font-mono text-[32px] leading-9 tracking-[-0.6px] md:text-[48px] md:leading-[48px] md:tracking-[-1.2px]"
-  >
-    {title}
-  </h1>
-  <p class="mt-6 max-w-[60ch] text-[16px] leading-6 text-body">
-    {command.summary}
-  </p>
-  {
-    command.arguments.length > 0 && (
-      <section class="mt-12">
-        <h2 class="text-[20px] leading-7 text-ink">Arguments</h2>
-        <ul class="mt-4">
-          {command.arguments.map((arg) => (
-            <li class="border-t border-hairline py-4">
-              <p class="font-mono text-[14px] leading-5 text-ink">
-                {arg.name}
-                {arg.required ? "" : " (optional)"}
-              </p>
-              <p class="mt-2 text-[16px] leading-6 text-body">{arg.description}</p>
-            </li>
-          ))}
-        </ul>
-      </section>
-    )
-  }
-  <section class="mt-12">
-    <h2 class="text-[20px] leading-7 text-ink">Options</h2>
-    <ul class="mt-4">
-      {
-        command.flags.map((flag) => (
-          <li class="border-t border-hairline py-4">
-            <p class="font-mono text-[14px] leading-5 text-ink">{flagLabel(flag)}</p>
-            <p class="mt-2 text-[16px] leading-6 text-body">{flag.description}</p>
-          </li>
-        ))
-      }
-    </ul>
-  </section>
-  {
-    command.name === "audit" && (
-      <section class="mt-12">
-        <h2 class="text-[20px] leading-7 text-ink">Agentic checks</h2>
-        <p class="mt-3 max-w-[60ch] text-[16px] leading-6 text-body">
-          Warned by default. Apply is off unless --apply-agentic. Codes come from
-          the agentic catalog in source.
-        </p>
-        <ul class="mt-6">
-          {AGENTIC_CATALOG.map((check) => (
-            <li class="border-t border-hairline py-4">
-              <p class="font-mono text-[14px] leading-5 text-ink">{check.code}</p>
-              <p class="mt-2 text-[16px] leading-6 text-body">{check.description}</p>
-              <p class="mt-2 text-[14px] leading-5 text-body-mid">{check.caveat}</p>
-            </li>
-          ))}
-        </ul>
-      </section>
-    )
-  }
+    <DocsHeader
+        eyebrow={`Commands / ${command.name}`}
+        title={title}
+        lead={command.summary}
+    />
+    <SectionHeading id="usage">Usage</SectionHeading>
+    <CodeBlock
+        code={`${APP_NAME} ${commandSynopsis(command)}${command.flags.length > 0 ? " [options]" : ""}`}
+    />
+    {
+        command.arguments.length > 0 && (
+            <>
+                <SectionHeading id="arguments">Arguments</SectionHeading>
+                <KeyValue
+                    rows={command.arguments.map((arg) => ({
+                        key: arg.required ? arg.name : `${arg.name} (optional)`,
+                        value: arg.description,
+                    }))}
+                />
+            </>
+        )
+    }
+    <SectionHeading id="options">Options</SectionHeading>
+    <DocsBody>
+        {command.flags.length} options in total
+        {command.name === "audit" ? "; the ones you will reach for first:" : "."}
+    </DocsBody>
+    <KeyValue
+        rows={command.flags.map((flag) => ({
+            key: flagLabel(flag),
+            value: flag.description,
+        }))}
+    />
+    {
+        command.name === "audit" && (
+            <>
+                <SectionHeading id="agentic-checks">Agentic checks</SectionHeading>
+                <DocsBody>
+                    Warned by default. Apply is off unless --apply-agentic. Codes come from
+                    the agentic catalog in source.
+                </DocsBody>
+                <KeyValue
+                    rows={AGENTIC_CATALOG.map((check) => ({
+                        key: check.code,
+                        value: check.description,
+                    }))}
+                />
+                <Note>
+                    In CI, pair --json or --sarif with --report to archive the full result
+                    from a pipeline.
+                </Note>
+            </>
+        )
+    }
+    {
+        command.name === "init" && (
+            <Note>
+                Use --local to write a starter config in the current directory so a run
+                has the same shape on every machine and in CI.
+            </Note>
+        )
+    }
 </DocsLayout>

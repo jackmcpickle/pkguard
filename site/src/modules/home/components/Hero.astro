@@ -1,20 +1,31 @@
 ---
 import Button from "@/components/Button.astro";
+import CopyCommand from "@/components/CopyCommand.astro";
+import { APP_NAME } from "@cli/app-name";
+import { GITHUB_URL } from "@/lib/site";
 ---
 
-<section class="px-6 pt-16 pb-20 md:px-8 md:pt-20 md:pb-24">
-  <div class="mx-auto max-w-[1200px]">
-    <h1
-      class="max-w-[18ch] text-[48px] leading-[48px] tracking-[-1.2px] text-ink md:text-[96px] md:leading-[96px] md:tracking-[-2.4px]"
-    >
-      Audit every package manager in the&nbsp;tree.
-    </h1>
-    <p class="mt-6 max-w-[36ch] text-[18px] leading-7 text-body">
-      Walk a folder of repos, read settings, and run each manager's native&nbsp;audit.
-    </p>
-    <div class="mt-8 flex flex-wrap gap-3">
-      <Button href="/docs/install" variant="primary">Install</Button>
-      <Button href="/docs">Read the docs</Button>
+<section class="px-6 pt-24 pb-16">
+    <div class="mx-auto max-w-[1200px]">
+        <p class="font-mono text-[14px] leading-5 tracking-[1.4px] text-body-mid uppercase">
+            Package-manager security audit
+        </p>
+        <h1
+            class="mt-6 max-w-[1000px] text-[48px] leading-[48px] font-normal tracking-[-1.2px] text-pretty md:text-[96px] md:leading-[96px] md:tracking-[-2.4px]"
+        >
+            Audit every package manager in the&nbsp;tree.
+        </h1>
+        <p class="mt-8 max-w-[640px] text-[18px] leading-7 text-body">
+            Walk a folder of repos, read committed settings, and run each manager's native
+            audit. One command, eight ecosystems, one&nbsp;report.
+        </p>
+        <div class="mt-12 flex flex-wrap gap-3">
+            <Button href="/docs/install" variant="primary" size="lg">Install</Button>
+            <Button href="/docs" size="lg">Read the docs</Button>
+            <Button href={GITHUB_URL} size="lg" external>GitHub</Button>
+        </div>
+        <div class="mt-12">
+            <CopyCommand command={`bun install -g ${APP_NAME}`} />
+        </div>
     </div>
-  </div>
 </section>

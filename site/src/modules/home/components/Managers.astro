@@ -5,53 +5,60 @@ const configManagers = MANAGER_DOCS.filter((manager) => manager.kind === "config
 const flagged = MANAGER_DOCS.filter((manager) => manager.kind === "python-legacy");
 ---
 
-<section class="border-t border-hairline px-6 py-16 md:px-8">
-  <div class="mx-auto max-w-[1200px]">
-    <p class="font-mono text-[14px] leading-5 tracking-[1.4px] text-ink uppercase">
-      Managers
-    </p>
-    <h2
-      class="mt-4 max-w-[18ch] text-[32px] leading-9 tracking-[-0.6px] md:text-[48px] md:leading-[48px] md:tracking-[-1.2px]"
-    >
-      One path for eight managers.
-    </h2>
-    <p class="mt-6 max-w-[52ch] text-[16px] leading-6 text-body">
-      Each row comes from the manager profile in the CLI. Audit argv updates when the code&nbsp;does.
-    </p>
-    <div class="mt-10 overflow-x-auto">
-      <table class="w-full min-w-[640px] text-left text-[14px] leading-5">
-        <thead>
-          <tr class="font-mono text-[12px] tracking-[1.2px] text-body-mid uppercase">
-            <th class="pb-3 font-normal">Manager</th>
-            <th class="pb-3 font-normal">Binary</th>
-            <th class="pb-3 font-normal">Audit</th>
-            <th class="pb-3 font-normal">Lockfile</th>
-          </tr>
-        </thead>
-        <tbody>
-          {
-            configManagers.map((manager) => (
-              <tr class="border-t border-hairline">
-                <td class="py-3 text-ink">{manager.name}</td>
-                <td class="py-3 font-mono text-body">
-                  {manager.binary ?? "none"}
-                </td>
-                <td class="py-3 font-mono text-body">
-                  {manager.auditArgv === null
-                    ? "OSV lookup"
-                    : manager.auditArgv.join(" ")}
-                </td>
-                <td class="py-3 font-mono text-body">
-                  {manager.lockfileNames.join(", ")}
-                </td>
-              </tr>
-            ))
-          }
-        </tbody>
-      </table>
+<section class="border-t border-hairline">
+    <div class="mx-auto max-w-[1200px] px-6 py-16">
+        <p class="font-mono text-[14px] leading-5 tracking-[1.4px] text-body-mid uppercase">
+            Managers
+        </p>
+        <h2
+            class="mt-4 text-[32px] leading-9 font-normal tracking-[-0.6px] md:text-[48px] md:leading-[48px] md:tracking-[-1.2px]"
+        >
+            One path for eight managers.
+        </h2>
+        <p class="mt-6 max-w-[640px] text-[16px] leading-6 text-body">
+            Each row comes from the manager profile in the CLI. Audit argv updates when the
+            code&nbsp;does.
+        </p>
+        <div
+            class="mt-12 overflow-hidden rounded-sm border border-hairline bg-canvas-card"
+        >
+            <div class="overflow-x-auto">
+                <table class="w-full min-w-[640px] text-left text-[14px] leading-5">
+                    <thead>
+                        <tr
+                            class="border-b border-hairline font-mono text-[12px] tracking-[1.2px] text-body-mid uppercase"
+                        >
+                            <th class="px-6 py-4 font-normal">Manager</th>
+                            <th class="px-6 py-4 font-normal">Binary</th>
+                            <th class="px-6 py-4 font-normal">Audit</th>
+                            <th class="px-6 py-4 font-normal">Lockfile</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {
+                            configManagers.map((manager) => (
+                                <tr class="border-b border-hairline last:border-b-0">
+                                    <td class="px-6 py-4 text-ink">{manager.name}</td>
+                                    <td class="px-6 py-4 font-mono text-body">
+                                        {manager.binary ?? "none"}
+                                    </td>
+                                    <td class="px-6 py-4 font-mono text-body">
+                                        {manager.auditArgv === null
+                                            ? "OSV lookup"
+                                            : manager.auditArgv.join(" ")}
+                                    </td>
+                                    <td class="px-6 py-4 font-mono text-body-mid">
+                                        {manager.lockfileNames.join(", ")}
+                                    </td>
+                                </tr>
+                            ))
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p class="border-t border-hairline px-6 py-4 text-[14px] leading-5 text-body-mid">
+                Flagged only, no live audit: {flagged.map((manager) => manager.name).join(", ")}.
+            </p>
+        </div>
     </div>
-    <p class="mt-6 text-[14px] leading-5 text-body-mid">
-      Flagged only, no live audit: {flagged.map((manager) => manager.name).join(", ")}.
-    </p>
-  </div>
 </section>

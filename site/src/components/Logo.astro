@@ -1,0 +1,24 @@
+---
+import { SITE_NAME } from "@/lib/site";
+
+interface Props {
+    href?: string;
+}
+
+const { href = "/" } = Astro.props;
+---
+
+<a href={href} class="flex shrink-0 items-center gap-2.5 text-ink hover:text-ink">
+    <svg width="22" height="24" viewBox="0 0 22 24" fill="none" aria-hidden="true">
+        <path
+            d="M11 1.2 20.2 4.3v7.4c0 5.3-3.9 9-9.2 11.1C5.7 20.7 1.8 17 1.8 11.7V4.3L11 1.2Z"
+            stroke="currentColor"
+            stroke-width="1.2"></path>
+        <circle cx="7.6" cy="7.4" r="1.5" stroke="currentColor" stroke-width="1"></circle>
+        <circle cx="14.4" cy="7.4" r="1.5" stroke="currentColor" stroke-width="1"></circle>
+        <circle cx="11" cy="11" r="1.5" stroke="currentColor" stroke-width="1"></circle>
+        <circle cx="7.6" cy="14.6" r="1.5" stroke="currentColor" stroke-width="1"></circle>
+        <circle cx="14.4" cy="14.6" r="1.5" stroke="currentColor" stroke-width="1"></circle>
+    </svg>
+    <span class="font-mono text-[14px] tracking-[1.4px] uppercase">{SITE_NAME}</span>
+</a>

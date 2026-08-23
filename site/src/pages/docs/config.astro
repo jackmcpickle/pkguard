@@ -4,49 +4,50 @@ import { CONFIG_SEARCH_ORDER } from "@cli/config-sources";
 import defaultConfigToml from "../../../../src/config.default.toml?raw";
 import DocsLayout from "@/layouts/DocsLayout.astro";
 import {
-  CONFIG_NAME,
-  USER_CONFIG_PATH_DOCS,
-  USER_CONFIG_PATH_FALLBACK,
+    CodeBlock,
+    DocsBody,
+    DocsHeader,
+    KeyValue,
+    SectionHeading,
+} from "@/modules/docs";
+import {
+    CONFIG_NAME,
+    USER_CONFIG_PATH_DOCS,
+    USER_CONFIG_PATH_FALLBACK,
 } from "@/lib/site";
 ---
 
 <DocsLayout
-  title={`Config - ${APP_NAME}`}
-  description="mailclad config files, search order, and the default starter."
-  current="/docs/config"
+    title={`Config — ${APP_NAME}`}
+    description="mailclad config files, search order, and the default starter."
+    current="/docs/config"
+    toc={[
+        { id: "search-order", label: "Search order" },
+        { id: "default-starter", label: "Default starter" },
+    ]}
 >
-  <p class="font-mono text-[14px] leading-5 tracking-[1.4px] text-ink uppercase">
-    Config
-  </p>
-  <h1
-    class="mt-4 text-[32px] leading-9 tracking-[-0.6px] md:text-[48px] md:leading-[48px] md:tracking-[-1.2px]"
-  >
-    User file, then scan root, then each&nbsp;repo.
-  </h1>
-  <p class="mt-6 max-w-[60ch] text-[16px] leading-6 text-body">
-    {CONFIG_SEARCH_ORDER}
-  </p>
-  <ul class="mt-8">
-    <li class="border-t border-hairline py-4">
-      <p class="font-mono text-[14px] leading-5 text-ink">user</p>
-      <p class="mt-2 font-mono text-[16px] leading-6 text-body">
-        {USER_CONFIG_PATH_DOCS}
-      </p>
-      <p class="mt-2 text-[14px] leading-5 text-body-mid">
-        If XDG_CONFIG_HOME is unset: {USER_CONFIG_PATH_FALLBACK}
-      </p>
-    </li>
-    <li class="border-t border-hairline py-4">
-      <p class="font-mono text-[14px] leading-5 text-ink">scan or repo</p>
-      <p class="mt-2 font-mono text-[16px] leading-6 text-body">{CONFIG_NAME}</p>
-    </li>
-  </ul>
-  <h2 class="mt-12 text-[20px] leading-7 text-ink">Default starter</h2>
-  <p class="mt-3 max-w-[60ch] text-[16px] leading-6 text-body">
-    Written by <code class="font-mono text-ink">{APP_NAME} init</code>. Imported from
-    <code class="font-mono text-ink">src/config.default.toml</code>.
-  </p>
-  <pre
-    class="mt-6 overflow-x-auto rounded-sm border border-hairline bg-canvas-card p-6 font-mono text-[13px] leading-5 text-body"
-  ><code>{defaultConfigToml.trimEnd()}</code></pre>
+    <DocsHeader
+        eyebrow="Guides / config"
+        title="User file, then scan root, then each repo."
+        lead={CONFIG_SEARCH_ORDER}
+    />
+    <SectionHeading id="search-order">Search order</SectionHeading>
+    <KeyValue
+        rows={[
+            {
+                key: "user",
+                value: `${USER_CONFIG_PATH_DOCS}. If XDG_CONFIG_HOME is unset: ${USER_CONFIG_PATH_FALLBACK}`,
+            },
+            {
+                key: "scan or repo",
+                value: CONFIG_NAME,
+            },
+        ]}
+    />
+    <SectionHeading id="default-starter">Default starter</SectionHeading>
+    <DocsBody>
+        Written by <code class="font-mono text-ink">{APP_NAME} init</code>. Imported from
+        <code class="font-mono text-ink">src/config.default.toml</code>.
+    </DocsBody>
+    <CodeBlock label={CONFIG_NAME} code={defaultConfigToml.trimEnd()} />
 </DocsLayout>

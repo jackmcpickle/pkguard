@@ -2,58 +2,62 @@
 import { APP_NAME } from "@cli/app-name";
 import { PRESET_DEFAULTS } from "@cli/preset-defaults";
 import DocsLayout from "@/layouts/DocsLayout.astro";
+import { DocsBody, DocsHeader, DocsPanel, SectionHeading } from "@/modules/docs";
 
 const presets = Object.entries(PRESET_DEFAULTS);
 const keys = [
-  "auditLevel",
-  "ignoreScripts",
-  "minReleaseAgeDays",
-  "requireLockfile",
-  "requirePmPin",
+    "auditLevel",
+    "ignoreScripts",
+    "minReleaseAgeDays",
+    "requireLockfile",
+    "requirePmPin",
 ] as const;
 ---
 
 <DocsLayout
-  title={`Presets - ${APP_NAME}`}
-  description="relaxed, standard, and strict policy defaults from the CLI."
-  current="/docs/presets"
+    title={`Presets — ${APP_NAME}`}
+    description="relaxed, standard, and strict policy defaults from the CLI."
+    current="/docs/presets"
+    toc={[{ id: "gates", label: "Three gates" }]}
 >
-  <p class="font-mono text-[14px] leading-5 tracking-[1.4px] text-ink uppercase">
-    Presets
-  </p>
-  <h1
-    class="mt-4 text-[32px] leading-9 tracking-[-0.6px] md:text-[48px] md:leading-[48px] md:tracking-[-1.2px]"
-  >
-    Three gates, one table in source.
-  </h1>
-  <p class="mt-6 max-w-[60ch] text-[16px] leading-6 text-body">
-    Values come from <code class="font-mono text-ink">src/preset-defaults.ts</code>.
-    Pass <code class="font-mono text-ink">--preset relaxed|standard|strict</code>.
-  </p>
-  <div class="mt-10 overflow-x-auto">
-    <table class="w-full min-w-[560px] text-left text-[14px] leading-5">
-      <thead>
-        <tr class="font-mono text-[12px] tracking-[1.2px] text-body-mid uppercase">
-          <th class="pb-3 font-normal">Key</th>
-          {
-            presets.map(([name]) => (
-              <th class="pb-3 font-normal">{name}</th>
-            ))
-          }
-        </tr>
-      </thead>
-      <tbody>
-        {
-          keys.map((key) => (
-            <tr class="border-t border-hairline">
-              <td class="py-3 font-mono text-ink">{key}</td>
-              {presets.map(([, preset]) => (
-                <td class="py-3 font-mono text-body">{String(preset[key])}</td>
-              ))}
-            </tr>
-          ))
-        }
-      </tbody>
-    </table>
-  </div>
+    <DocsHeader
+        eyebrow="Guides / presets"
+        title="Three gates, one table in source."
+        lead="Values come from src/preset-defaults.ts. Pass --preset relaxed|standard|strict."
+    />
+    <SectionHeading id="gates">Three gates</SectionHeading>
+    <DocsBody>
+        Pass <code class="font-mono text-ink">--preset relaxed|standard|strict</code> to
+        pick a gate.
+    </DocsBody>
+    <DocsPanel>
+        <table class="w-full min-w-[560px] text-left text-[14px] leading-5">
+            <thead>
+                <tr
+                    class="border-b border-hairline font-mono text-[12px] tracking-[1.2px] text-body-mid uppercase"
+                >
+                    <th class="px-6 py-4 font-normal">Key</th>
+                    {
+                        presets.map(([name]) => (
+                            <th class="px-6 py-4 font-normal">{name}</th>
+                        ))
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                {
+                    keys.map((key) => (
+                        <tr class="border-b border-hairline last:border-b-0">
+                            <td class="px-6 py-4 font-mono text-ink">{key}</td>
+                            {presets.map(([, preset]) => (
+                                <td class="px-6 py-4 font-mono text-body">
+                                    {String(preset[key])}
+                                </td>
+                            ))}
+                        </tr>
+                    ))
+                }
+            </tbody>
+        </table>
+    </DocsPanel>
 </DocsLayout>

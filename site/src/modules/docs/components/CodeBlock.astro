@@ -1,0 +1,18 @@
+---
+interface Props {
+    label?: string;
+    code: string;
+}
+
+const { label = "shell", code } = Astro.props;
+---
+
+<div class="mb-12 overflow-hidden rounded-sm border border-hairline bg-canvas-card">
+    <div
+        class="border-b border-hairline px-6 py-3 font-mono text-[12px] leading-4 tracking-[1.2px] text-body-mid uppercase"
+    >
+        {label}
+    </div>
+    <pre
+        class="m-0 overflow-x-auto p-6 font-mono text-[14px] leading-[22px] wrap-break-word whitespace-pre-wrap text-body">{code}</pre>
+</div>

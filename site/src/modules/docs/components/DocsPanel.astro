@@ -1,0 +1,20 @@
+---
+interface Props {
+    footnote?: string;
+}
+
+const { footnote } = Astro.props;
+---
+
+<div class="mb-12 overflow-hidden rounded-sm border border-hairline bg-canvas-card">
+    <div class="overflow-x-auto">
+        <slot />
+    </div>
+    {
+        footnote && (
+            <p class="border-t border-hairline px-6 py-4 text-[14px] leading-5 text-body-mid">
+                {footnote}
+            </p>
+        )
+    }
+</div>

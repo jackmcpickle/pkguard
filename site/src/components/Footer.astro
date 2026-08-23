@@ -2,16 +2,49 @@
 import { GITHUB_URL, NPM_URL, SITE_NAME } from "@/lib/site";
 ---
 
-<footer class="border-t border-hairline px-6 py-12 md:px-8">
-  <div
-    class="mx-auto flex max-w-[1200px] flex-col gap-6 text-[14px] leading-5 text-body md:flex-row md:items-center md:justify-between"
-  >
-    <p>{SITE_NAME}</p>
-    <nav class="flex flex-wrap gap-6" aria-label="Footer">
-      <a href="/docs">Docs</a>
-      <a href="/docs/install">Install</a>
-      <a href={GITHUB_URL} rel="noopener" target="_blank">GitHub</a>
-      <a href={NPM_URL} rel="noopener" target="_blank">npm</a>
-    </nav>
-  </div>
+<footer class="border-t border-hairline">
+    <div
+        class="mx-auto flex max-w-[1200px] flex-wrap items-start justify-between gap-8 px-6 py-12"
+    >
+        <div class="flex max-w-[360px] flex-col gap-2">
+            <p class="font-mono text-[14px] leading-5 tracking-[1.4px] uppercase">
+                {SITE_NAME}
+            </p>
+            <p class="text-[14px] leading-5 text-body-mid">
+                Package-manager security audit for monorepos and folders of&nbsp;projects.
+            </p>
+        </div>
+        <div class="flex flex-wrap gap-8">
+            <nav class="flex flex-col gap-2" aria-label="Docs">
+                <p
+                    class="font-mono text-[12px] leading-4 tracking-[1.2px] text-body-mid uppercase"
+                >
+                    Docs
+                </p>
+                <a href="/docs/install" class="text-[14px] leading-5 text-body">Install</a>
+                <a href="/docs/commands" class="text-[14px] leading-5 text-body">
+                    Commands
+                </a>
+            </nav>
+            <nav class="flex flex-col gap-2" aria-label="Source">
+                <p
+                    class="font-mono text-[12px] leading-4 tracking-[1.2px] text-body-mid uppercase"
+                >
+                    Source
+                </p>
+                <a
+                    href={GITHUB_URL}
+                    class="text-[14px] leading-5 text-body"
+                    rel="noopener"
+                    target="_blank">GitHub</a
+                >
+                <a
+                    href={NPM_URL}
+                    class="text-[14px] leading-5 text-body"
+                    rel="noopener"
+                    target="_blank">npm</a
+                >
+            </nav>
+        </div>
+    </div>
 </footer>

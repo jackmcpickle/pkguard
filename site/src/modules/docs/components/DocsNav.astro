@@ -1,33 +1,38 @@
 ---
-import { DOCS_LINKS } from "../nav";
+import { DOCS_NAV } from "../nav";
 
 interface Props {
-  current: string;
+    current: string;
 }
 
 const { current } = Astro.props;
 ---
 
-<nav aria-label="Docs">
-  <p class="font-mono text-[12px] leading-4 tracking-[1.2px] text-body-mid uppercase">
-    Docs
-  </p>
-  <ul class="mt-4 flex flex-col gap-3">
+<nav class="flex flex-col gap-8" aria-label="Docs">
     {
-      DOCS_LINKS.map((link) => (
-        <li>
-          <a
-            href={link.href}
-            class:list={[
-              "font-mono text-[14px] leading-5",
-              current === link.href ? "text-ink" : "text-body",
-            ]}
-            aria-current={current === link.href ? "page" : undefined}
-          >
-            {link.label}
-          </a>
-        </li>
-      ))
+        DOCS_NAV.map((group) => (
+            <div class="flex flex-col gap-3">
+                <p class="font-mono text-[12px] leading-4 tracking-[1.2px] text-body-mid uppercase">
+                    {group.title}
+                </p>
+                {group.items.map((link) => {
+                    const isCurrent = current === link.href;
+                    return (
+                        <a
+                            href={link.href}
+                            class:list={[
+                                "border-l py-0 pl-3 text-[14px] leading-5",
+                                isCurrent
+                                    ? "border-accent-sunset text-ink"
+                                    : "border-hairline text-body-mid hover:text-ink",
+                            ]}
+                            aria-current={isCurrent ? "page" : undefined}
+                        >
+                            {link.label}
+                        </a>
+                    );
+                })}
+            </div>
+        ))
     }
-  </ul>
 </nav>

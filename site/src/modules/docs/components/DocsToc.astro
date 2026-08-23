@@ -1,0 +1,24 @@
+---
+import type { DocsTocItem } from "../nav";
+
+interface Props {
+    items: readonly DocsTocItem[];
+}
+
+const { items } = Astro.props;
+---
+
+{
+    items.length > 0 && (
+        <nav class="flex flex-col gap-3" aria-label="On this page">
+            <p class="font-mono text-[12px] leading-4 tracking-[1.2px] text-body-mid uppercase">
+                On this page
+            </p>
+            {items.map((item) => (
+                <a href={`#${item.id}`} class="text-[14px] leading-5 text-body-mid hover:text-ink">
+                    {item.label}
+                </a>
+            ))}
+        </nav>
+    )
+}

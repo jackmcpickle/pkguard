@@ -3,42 +3,36 @@ import { COMMANDS, commandSynopsis } from "@cli/cli-catalog";
 import { APP_NAME } from "@cli/app-name";
 import { MANAGER_DOCS } from "@cli/manager-docs";
 import DocsLayout from "@/layouts/DocsLayout.astro";
+import {
+    DocsBody,
+    DocsHeader,
+    KeyValue,
+    SectionHeading,
+} from "@/modules/docs";
 
 const configCount = MANAGER_DOCS.filter((manager) => manager.kind === "config")
-  .length;
+    .length;
 ---
 
 <DocsLayout
-  title={`Docs - ${APP_NAME}`}
-  description="Install mailclad, then audit a folder of package-manager roots."
-  current="/docs"
+    title={`Docs — ${APP_NAME}`}
+    description="Install mailclad, then audit a folder of package-manager roots."
+    current="/docs"
+    toc={[{ id: "commands", label: "Commands" }]}
 >
-  <p class="font-mono text-[14px] leading-5 tracking-[1.4px] text-ink uppercase">
-    Overview
-  </p>
-  <h1
-    class="mt-4 text-[32px] leading-9 tracking-[-0.6px] md:text-[48px] md:leading-[48px] md:tracking-[-1.2px]"
-  >
-    {APP_NAME} walks a folder of repos and audits each package-manager&nbsp;root.
-  </h1>
-  <p class="mt-6 max-w-[60ch] text-[16px] leading-6 text-body">
-    It does not write files unless you pass an apply flag. {configCount} managers
-    share the same path. Commands and flags on these pages come from the CLI catalog
-    in source, so a flag change updates the&nbsp;docs.
-  </p>
-  <h2 class="mt-12 text-[20px] leading-7 text-ink">Commands</h2>
-  <ul class="mt-4">
-    {
-      COMMANDS.map((command) => (
-        <li class="border-t border-hairline py-4">
-          <a href={`/docs/commands/${command.name}`} class="block">
-            <p class="font-mono text-[14px] leading-5 text-ink">
-              {APP_NAME} {commandSynopsis(command)}
-            </p>
-            <p class="mt-2 text-[16px] leading-6 text-body">{command.summary}</p>
-          </a>
-        </li>
-      ))
-    }
-  </ul>
+    <DocsHeader
+        eyebrow="Overview"
+        title={`${APP_NAME} walks a folder of repos and audits each package-manager root.`}
+        lead={`It does not write files unless you pass an apply flag. ${configCount} managers share the same path. Commands and flags on these pages come from the CLI catalog in source, so a flag change updates the docs.`}
+    />
+    <SectionHeading id="commands">Commands</SectionHeading>
+    <DocsBody>
+        The same catalog as <code class="font-mono text-ink">{APP_NAME} --help</code>.
+    </DocsBody>
+    <KeyValue
+        rows={COMMANDS.map((command) => ({
+            key: `${APP_NAME} ${commandSynopsis(command)}`,
+            value: command.summary,
+        }))}
+    />
 </DocsLayout>
