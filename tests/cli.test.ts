@@ -76,12 +76,12 @@ const capturingHost = (
     ...extras,
   });
 
-test("mailclad with no args prints usage and exits 2", async () => {
+test("pkguard with no args prints usage and exits 2", async () => {
   const stdout: string[] = [];
   const stderr: string[] = [];
   const result = await run([], capturingHost(stdout, stderr));
   expect(result.exitCode).toBe(2);
-  expect(stderr.join("")).toContain("Usage: mailclad");
+  expect(stderr.join("")).toContain("Usage: pkguard");
 });
 
 test("audit of a fixture repo with open npm scripts exits 1 and lists the finding", async () => {
@@ -96,7 +96,7 @@ test("audit of a fixture repo with open npm scripts exits 1 and lists the findin
   expect(stdout.join("")).toContain("scripts.unrestricted");
 });
 
-test("CLI --preset wins over repo .mailclad.toml preset", async () => {
+test("CLI --preset wins over repo .pkguard.toml preset", async () => {
   const root = nodePath.join(import.meta.dir, "fixtures/audit/flag-wins");
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -803,7 +803,7 @@ test("--apply on a poetry project never runs uv migrate commands", async () => {
   ).toBe(false);
 });
 
-test("XDG_CONFIG_HOME wins over ~/.config/mailclad when CLI loads user config", async () => {
+test("XDG_CONFIG_HOME wins over ~/.config/pkguard when CLI loads user config", async () => {
   mkdirSync(
     nodePath.join(import.meta.dir, "fixtures/discover/many-repos/alpha/.git"),
     {
@@ -814,16 +814,16 @@ test("XDG_CONFIG_HOME wins over ~/.config/mailclad when CLI loads user config", 
     import.meta.dir,
     "fixtures/discover/many-repos/alpha"
   );
-  const home = mkdtempSync(nodePath.join(tmpdir(), "mailclad-home-"));
-  const xdg = mkdtempSync(nodePath.join(tmpdir(), "mailclad-xdg-"));
-  mkdirSync(nodePath.join(home, ".config", "mailclad"), { recursive: true });
-  mkdirSync(nodePath.join(xdg, "mailclad"), { recursive: true });
+  const home = mkdtempSync(nodePath.join(tmpdir(), "pkguard-home-"));
+  const xdg = mkdtempSync(nodePath.join(tmpdir(), "pkguard-xdg-"));
+  mkdirSync(nodePath.join(home, ".config", "pkguard"), { recursive: true });
+  mkdirSync(nodePath.join(xdg, "pkguard"), { recursive: true });
   writeFileSync(
-    nodePath.join(home, ".config", "mailclad", "config.toml"),
+    nodePath.join(home, ".config", "pkguard", "config.toml"),
     `preset = "standard"\n`
   );
   writeFileSync(
-    nodePath.join(xdg, "mailclad", "config.toml"),
+    nodePath.join(xdg, "pkguard", "config.toml"),
     `preset = "relaxed"\n`
   );
   const stdout: string[] = [];
@@ -875,7 +875,7 @@ test("--report creates missing parent directories and writes markdown", async ()
     import.meta.dir,
     "fixtures/discover/many-repos/alpha"
   );
-  const outDir = mkdtempSync(nodePath.join(tmpdir(), "mailclad-report-"));
+  const outDir = mkdtempSync(nodePath.join(tmpdir(), "pkguard-report-"));
   const reportPath = nodePath.join(outDir, "nested", "deep", "report.md");
   const result = await run(
     ["audit", root, "--report", reportPath],
@@ -1117,7 +1117,7 @@ test("resolveColor honors the host's isTTY", () => {
 });
 
 const SEARCH_ORDER =
-  "Looks for a user/tool config, then .mailclad.toml in the scan directory and each project. Closer wins; flags win over files.";
+  "Looks for a user/tool config, then .pkguard.toml in the scan directory and each project. Closer wins; flags win over files.";
 
 const expectConfigLine = (
   text: string,
@@ -1147,11 +1147,11 @@ test("audit human stdout lists user, scan, and repo config paths as found or mis
   expectConfigLine(
     out,
     "user",
-    nodePath.join(home, ".config", "mailclad", "config.toml"),
+    nodePath.join(home, ".config", "pkguard", "config.toml"),
     "missing"
   );
-  expectConfigLine(out, "scan", nodePath.join(root, ".mailclad.toml"), "found");
-  expectConfigLine(out, "repo", nodePath.join(root, ".mailclad.toml"), "found");
+  expectConfigLine(out, "scan", nodePath.join(root, ".pkguard.toml"), "found");
+  expectConfigLine(out, "repo", nodePath.join(root, ".pkguard.toml"), "found");
 });
 
 test("--json keeps JSON on stdout and prints Configuration on stderr", async () => {
@@ -1171,13 +1171,13 @@ test("--json keeps JSON on stdout and prints Configuration on stderr", async () 
   expectConfigLine(
     stderr.join(""),
     "user",
-    nodePath.join(home, ".config", "mailclad", "config.toml"),
+    nodePath.join(home, ".config", "pkguard", "config.toml"),
     "missing"
   );
   expectConfigLine(
     stderr.join(""),
     "scan",
-    nodePath.join(root, ".mailclad.toml"),
+    nodePath.join(root, ".pkguard.toml"),
     "found"
   );
 });
@@ -1190,10 +1190,10 @@ const expectStarterToml = (body: string): void => {
 };
 
 test("init writes user config under XDG_CONFIG_HOME", async () => {
-  const home = mkdtempSync(nodePath.join(tmpdir(), "mailclad-init-home-"));
-  const xdg = mkdtempSync(nodePath.join(tmpdir(), "mailclad-init-xdg-"));
+  const home = mkdtempSync(nodePath.join(tmpdir(), "pkguard-init-home-"));
+  const xdg = mkdtempSync(nodePath.join(tmpdir(), "pkguard-init-xdg-"));
   const stdout: string[] = [];
-  const target = nodePath.join(xdg, "mailclad", "config.toml");
+  const target = nodePath.join(xdg, "pkguard", "config.toml");
   const result = await run(
     ["init"],
     capturingHost(stdout, [], {
@@ -1210,9 +1210,9 @@ test("init writes user config under XDG_CONFIG_HOME", async () => {
 });
 
 test("init writes user config under HOME when XDG_CONFIG_HOME is unset", async () => {
-  const home = mkdtempSync(nodePath.join(tmpdir(), "mailclad-init-home-"));
+  const home = mkdtempSync(nodePath.join(tmpdir(), "pkguard-init-home-"));
   const stdout: string[] = [];
-  const target = nodePath.join(home, ".config", "mailclad", "config.toml");
+  const target = nodePath.join(home, ".config", "pkguard", "config.toml");
   const result = await run(
     ["init"],
     capturingHost(stdout, [], {
@@ -1227,10 +1227,10 @@ test("init writes user config under HOME when XDG_CONFIG_HOME is unset", async (
   rmSync(home, { force: true, recursive: true });
 });
 
-test("init --local writes .mailclad.toml in cwd", async () => {
-  const cwd = mkdtempSync(nodePath.join(tmpdir(), "mailclad-init-local-"));
+test("init --local writes .pkguard.toml in cwd", async () => {
+  const cwd = mkdtempSync(nodePath.join(tmpdir(), "pkguard-init-local-"));
   const stdout: string[] = [];
-  const target = nodePath.join(cwd, ".mailclad.toml");
+  const target = nodePath.join(cwd, ".pkguard.toml");
   const result = await run(
     ["init", "--local"],
     capturingHost(stdout, [], {
@@ -1246,9 +1246,9 @@ test("init --local writes .mailclad.toml in cwd", async () => {
 });
 
 test("init refuses to overwrite an existing file without --force", async () => {
-  const xdg = mkdtempSync(nodePath.join(tmpdir(), "mailclad-init-refuse-"));
-  mkdirSync(nodePath.join(xdg, "mailclad"), { recursive: true });
-  const target = nodePath.join(xdg, "mailclad", "config.toml");
+  const xdg = mkdtempSync(nodePath.join(tmpdir(), "pkguard-init-refuse-"));
+  mkdirSync(nodePath.join(xdg, "pkguard"), { recursive: true });
+  const target = nodePath.join(xdg, "pkguard", "config.toml");
   writeFileSync(target, `preset = "relaxed"\n`);
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -1266,9 +1266,9 @@ test("init refuses to overwrite an existing file without --force", async () => {
 });
 
 test("init --force overwrites an existing file", async () => {
-  const xdg = mkdtempSync(nodePath.join(tmpdir(), "mailclad-init-force-"));
-  mkdirSync(nodePath.join(xdg, "mailclad"), { recursive: true });
-  const target = nodePath.join(xdg, "mailclad", "config.toml");
+  const xdg = mkdtempSync(nodePath.join(tmpdir(), "pkguard-init-force-"));
+  mkdirSync(nodePath.join(xdg, "pkguard"), { recursive: true });
+  const target = nodePath.join(xdg, "pkguard", "config.toml");
   writeFileSync(target, `preset = "relaxed"\n`);
   const stdout: string[] = [];
   const result = await run(
@@ -1285,7 +1285,7 @@ test("init --force overwrites an existing file", async () => {
 });
 
 test("init refuses an existing unreadable file without --force", async () => {
-  const target = "/xdg/mailclad/config.toml";
+  const target = "/xdg/pkguard/config.toml";
   const stderr: string[] = [];
   const result = await run(
     ["init"],
@@ -1308,10 +1308,10 @@ test("init refuses an existing unreadable file without --force", async () => {
 });
 
 test("init rejects an unknown flag and does not write", async () => {
-  const xdg = mkdtempSync(nodePath.join(tmpdir(), "mailclad-init-unknown-"));
+  const xdg = mkdtempSync(nodePath.join(tmpdir(), "pkguard-init-unknown-"));
   const stdout: string[] = [];
   const stderr: string[] = [];
-  const target = nodePath.join(xdg, "mailclad", "config.toml");
+  const target = nodePath.join(xdg, "pkguard", "config.toml");
   const result = await run(
     ["init", "--focre"],
     capturingHost(stdout, stderr, {
@@ -1325,11 +1325,9 @@ test("init rejects an unknown flag and does not write", async () => {
   rmSync(xdg, { force: true, recursive: true });
 });
 
-test("init --local --force overwrites cwd .mailclad.toml", async () => {
-  const cwd = mkdtempSync(
-    nodePath.join(tmpdir(), "mailclad-init-local-force-")
-  );
-  const target = nodePath.join(cwd, ".mailclad.toml");
+test("init --local --force overwrites cwd .pkguard.toml", async () => {
+  const cwd = mkdtempSync(nodePath.join(tmpdir(), "pkguard-init-local-force-"));
+  const target = nodePath.join(cwd, ".pkguard.toml");
   writeFileSync(target, `preset = "relaxed"\n`);
   const stdout: string[] = [];
   const result = await run(

@@ -8,7 +8,7 @@ import {
     Note,
     SectionHeading,
 } from "@/modules/docs";
-import { RELEASES_URL } from "@/lib/site";
+import { GITHUB_URL, RELEASES_URL } from "@/lib/site";
 ---
 
 <DocsLayout
@@ -42,12 +42,12 @@ import { RELEASES_URL } from "@/lib/site";
         because Bun's runtime is baked in.
     </DocsBody>
     <CodeBlock
-        code={`curl -fsSL -o ${APP_NAME} \\\n  https://github.com/jackmcpickle/mailclad/releases/latest/download/mailclad-linux-x64\nchmod +x ${APP_NAME} && mv ${APP_NAME} /usr/local/bin/`}
+        code={`curl -fsSL -o ${APP_NAME} \\\n  ${GITHUB_URL}/releases/latest/download/${APP_NAME}-linux-x64\nchmod +x ${APP_NAME} && mv ${APP_NAME} /usr/local/bin/`}
     />
     <Note>
         Settings are parsed from committed config files whether or not the manager binary is
-        installed. A missing binary only skips the live advisory step. Also published:
-        mailclad-linux-arm64, mailclad-darwin-arm64, mailclad-darwin-x64,
-        mailclad-windows-x64.exe.
+        installed. A missing binary only skips the live advisory step. Also
+        published:{" "}
+        {`${APP_NAME}-linux-arm64, ${APP_NAME}-darwin-arm64, ${APP_NAME}-darwin-x64, ${APP_NAME}-windows-x64.exe.`}
     </Note>
 </DocsLayout>

@@ -1,4 +1,6 @@
 ---
+import { SITE_HOST } from "@/lib/site";
+
 interface Props {
     href: string;
 }
@@ -17,7 +19,7 @@ const { href } = Astro.props;
             Edit this page on GitHub
         </a>
         <span class="font-mono text-[12px] leading-4 tracking-[1.2px] text-body-mid uppercase">
-            Served from GitHub Pages · mailclad.dev
+            Served from GitHub Pages · {SITE_HOST}
         </span>
     </div>
 </div>

@@ -1,12 +1,12 @@
-# mailclad Implementation Plan
+# pkguard Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
 > REQUIRED: Follow TDD (`red → green`). No production code without a failing test first, except generated/config files listed in a task as scaffold. Test only at the **Seams** section. Do not commit unless the task step says to and the controller allowed commits.
 
-**Goal:** Ship `mailclad`, a local CLI that audits package-manager security settings and advisories across monorepos and folders of many projects, and applies fixes only when explicitly asked.
+**Goal:** Ship `pkguard`, a local CLI that audits package-manager security settings and advisories across monorepos and folders of many projects, and applies fixes only when explicitly asked.
 
-**Architecture:** Bun + TypeScript library with a thin CLI. File-based settings checks need no PM binary. Advisories and migrate shell out through injected runners. Policy is layered TOML. Discovery is hybrid (git repos → workspace/PM roots). Cache lives in `~/.cache/mailclad/` (overridable). Apply is serial; audit concurrency defaults to 4.
+**Architecture:** Bun + TypeScript library with a thin CLI. File-based settings checks need no PM binary. Advisories and migrate shell out through injected runners. Policy is layered TOML. Discovery is hybrid (git repos → workspace/PM roots). Cache lives in `~/.cache/pkguard/` (overridable). Apply is serial; audit concurrency defaults to 4.
 
 **Tech Stack:** TypeScript, Bun (runtime + `bun test` + compile to binary), `@std/toml` or `smol-toml` for parse/stringify, no JS/TS policy files.
 
@@ -14,15 +14,15 @@
 
 ## Global Constraints
 
-- Binary / package name: `mailclad`
+- Binary / package name: `pkguard`
 - Audit is default and never writes. `--apply` writes settings only. `--apply-advisories` upgrades dependencies. `-i` / `--interactive` can write after per-repo consent without also passing `--apply`.
 - Apply (and interactive) is always serial. Audit default `--concurrency 4`. `--concurrency 1` is serial audit.
 - Apply requires a clean git tree unless `--force`. `--commit` is opt-in, one commit per repo. Audit-only ignores dirty.
 - Exit codes: `0` = every project that ran passed the gate; `1` = policy failure (settings drift or above-gate advisory); `2` = incomplete (missing binary, apply skipped-dirty, audit subprocess died). Warnings never become `1`.
 - Presets: `relaxed` | `standard` | `strict`. Default `standard`.
 - Advisory gate: `relaxed` = critical only; `standard` = high+critical; `strict` = moderate+. uv deprecation/quarantine always count as findings.
-- Config files: user `~/.config/mailclad/config.toml` (or `$XDG_CONFIG_HOME/mailclad/config.toml`); scan-root and per-repo `.mailclad.toml`. Closer wins. Flags win over files. Per-PM tables: `[npm]`, `[pnpm]`, `[yarn]`, `[bun]`, `[uv]`. Never execute JS/TS config.
-- Cache dir: `~/.cache/mailclad/` (or `$XDG_CACHE_HOME/mailclad/`). Lockfile-digest entries + shared package@version. Do not write into `uv cache` or the pnpm store. `--refresh` / `--no-cache` bypass. Settings checks never use the advisory cache.
+- Config files: user `~/.config/pkguard/config.toml` (or `$XDG_CONFIG_HOME/pkguard/config.toml`); scan-root and per-repo `.pkguard.toml`. Closer wins. Flags win over files. Per-PM tables: `[npm]`, `[pnpm]`, `[yarn]`, `[bun]`, `[uv]`. Never execute JS/TS config.
+- Cache dir: `~/.cache/pkguard/` (or `$XDG_CACHE_HOME/pkguard/`). Lockfile-digest entries + shared package@version. Do not write into `uv cache` or the pnpm store. `--refresh` / `--no-cache` bypass. Settings checks never use the advisory cache.
 - Lockfile-digest + TTL hit may skip a live advisory run. Package@version hits are preview only; live audit still runs. Process waits for live before finalizing that repo, exit code, and reports. Live wins; cache updates.
 - Write rule: prefer the existing correct file for that PM; create it if missing; never write user-global PM config (`~/.npmrc`, user `uv.toml`).
 - npm settings file: `.npmrc`. pnpm settings file: `pnpm-workspace.yaml` (not `.npmrc`, not the lockfile). Yarn Berry: `.yarnrc.yml` (not `yarn.lock`). bun: `bunfig.toml`. uv: `uv.toml` or `[tool.uv]` in `pyproject.toml` if that is where config already lives.

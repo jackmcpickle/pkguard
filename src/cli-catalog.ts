@@ -1,3 +1,5 @@
+import { CONFIG_FILE_NAME } from "./app-name";
+
 export interface HelpArg {
   name: string;
   required: boolean;
@@ -108,7 +110,7 @@ export const COMMANDS: readonly CommandHelp[] = [
     arguments: [],
     flags: [
       {
-        description: "Write .mailclad.toml in the current directory",
+        description: `Write ${CONFIG_FILE_NAME} in the current directory`,
         names: ["--local"],
       },
       {

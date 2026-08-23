@@ -1,3 +1,5 @@
+import { CONFIG_FILE_NAME } from "./app-name";
+
 export type ConfigSourceKind = "user" | "scan" | "repo";
 
 export interface ConfigSource {
@@ -5,8 +7,7 @@ export interface ConfigSource {
   path: string;
 }
 
-export const CONFIG_SEARCH_ORDER =
-  "Looks for a user/tool config, then .mailclad.toml in the scan directory and each project. Closer wins; flags win over files.";
+export const CONFIG_SEARCH_ORDER = `Looks for a user/tool config, then ${CONFIG_FILE_NAME} in the scan directory and each project. Closer wins; flags win over files.`;
 
 const SEARCH_ORDER = CONFIG_SEARCH_ORDER;
 

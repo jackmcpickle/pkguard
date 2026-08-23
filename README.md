@@ -1,10 +1,10 @@
-# mailclad
+# pkguard
 
-mailclad walks a folder of repos, finds each package-manager root, and audits it. `scan` is read-only and never writes files.
+pkguard walks a folder of repos, finds each package-manager root, and audits it. `scan` is read-only and never writes files.
 
-Docs and the product page live at [mailclad.dev](https://mailclad.dev).
+Docs and the product page live at [pkguard.dev](https://pkguard.dev).
 
-As of 1.0.0 mailclad is a Rust binary (workspace in `crates/`). The previous Bun/TypeScript CLI still lives in `src/` until the cutover is complete, but the Rust build is the one described here.
+As of 1.0.0 pkguard is a Rust binary (workspace in `crates/`). The previous Bun/TypeScript CLI still lives in `src/` until the cutover is complete, but the Rust build is the one described here.
 
 ## How a scan runs
 
@@ -42,26 +42,26 @@ Homebrew tap and prebuilt release binaries are coming with the distribution cuto
 ## Usage
 
 ```bash
-mailclad scan [path]                # read-only audit, defaults to the current directory
-mailclad scan . --preset strict     # relaxed | standard | strict
-mailclad scan . --format json       # machine-readable output (schemaVersion 2)
-mailclad scan . --jobs 4            # max concurrent audits (default: min(cpus*2, 16))
-mailclad scan . --refresh           # ignore cached advisory results, re-fetch
-mailclad scan . --no-cache          # disable the advisory cache entirely
-mailclad scan . -q                  # suppress progress output
+pkguard scan [path]                # read-only audit, defaults to the current directory
+pkguard scan . --preset strict     # relaxed | standard | strict
+pkguard scan . --format json       # machine-readable output (schemaVersion 2)
+pkguard scan . --jobs 4            # max concurrent audits (default: min(cpus*2, 16))
+pkguard scan . --refresh           # ignore cached advisory results, re-fetch
+pkguard scan . --no-cache          # disable the advisory cache entirely
+pkguard scan . -q                  # suppress progress output
 ```
 
 Exit code `0` means every project passed. `1` means a policy failure, either settings drift or an advisory at or above the preset's gate. `2` means the run was incomplete: a missing binary, an audit subprocess died, or no projects were found.
 
-Advisory results are cached by lockfile digest in the platform cache dir (override with `MAILCLAD_CACHE_DIR`).
+Advisory results are cached by lockfile digest in the platform cache dir (override with `PKGUARD_CACHE_DIR`).
 
 ## Configuration
 
 Config is TOML, layered field by field. Later layers win, and flags win over files:
 
-1. user config: `config.toml` in the platform config dir (`~/.config/mailclad/` on Linux, `~/Library/Application Support/dev.mailclad.mailclad/` on macOS)
-2. `.mailclad.toml` at the scan root
-3. `.mailclad.toml` in an individual repo
+1. user config: `config.toml` in the platform config dir (`~/.config/pkguard/` on Linux, `~/Library/Application Support/dev.pkguard.pkguard/` on macOS)
+2. `.pkguard.toml` at the scan root
+3. `.pkguard.toml` in an individual repo
 
 ```toml
 preset = "standard"          # relaxed | standard | strict
@@ -118,7 +118,7 @@ Relying on a safe default instead of pinning it is reported as `info` (`moderate
 
 ## Advisory audits
 
-When the manager binary is present, mailclad shells out to the native audit (`npm audit --json` for npm) and reports advisories at or above the preset's gate. Results are cached by lockfile digest; pass `--refresh` or `--no-cache` to bypass.
+When the manager binary is present, pkguard shells out to the native audit (`npm audit --json` for npm) and reports advisories at or above the preset's gate. Results are cached by lockfile digest; pass `--refresh` or `--no-cache` to bypass.
 
 ## Development
 
@@ -131,7 +131,7 @@ cargo fmt               # format
 cargo run -p mailclad -- scan .
 ```
 
-The workspace is two crates: `mailclad-core` (discovery, config, checks, advisory pipeline) and `mailclad` (the CLI: clap, rendering, progress).
+The workspace is two crates: `mailclad-core` (discovery, config, checks, advisory pipeline) and `mailclad` (the CLI: clap, rendering, progress). The product name and config files are `pkguard`; crate rename follows the distribution cutover.
 
 The legacy Bun toolchain (`bun install`, `bun test`) still covers the TypeScript CLI in `src/` until the cutover PR removes it.
 

@@ -70,15 +70,15 @@ jobs:
       matrix:
         include:
           - target: bun-linux-x64
-            artifact: mailclad-linux-x64
+            artifact: pkguard-linux-x64
           - target: bun-linux-arm64
-            artifact: mailclad-linux-arm64
+            artifact: pkguard-linux-arm64
           - target: bun-darwin-x64
-            artifact: mailclad-darwin-x64
+            artifact: pkguard-darwin-x64
           - target: bun-darwin-arm64
-            artifact: mailclad-darwin-arm64
+            artifact: pkguard-darwin-arm64
           - target: bun-windows-x64
-            artifact: mailclad-windows-x64.exe
+            artifact: pkguard-windows-x64.exe
     steps:
       - uses: actions/checkout@v4
         with:
