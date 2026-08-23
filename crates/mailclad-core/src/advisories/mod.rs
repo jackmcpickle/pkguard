@@ -31,8 +31,10 @@ fn parse_output(
     stdout: &str,
     file_path: &str,
 ) -> Result<Vec<Finding>, AdvisoryError> {
+    // A "successful" audit that produced no report is not evidence of a clean
+    // project; treat it as incomplete rather than silently passing.
     if stdout.trim().is_empty() {
-        return Ok(Vec::new());
+        return Err(AdvisoryError::Incomplete);
     }
     match manager {
         Manager::Npm => {
@@ -208,7 +210,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn empty_stdout_is_clean() {
+    async fn empty_stdout_is_incomplete() {
         let tmp = tempfile::tempdir().unwrap();
         let (manager, cache) = setup(tmp.path());
         let runner = CannedRunner::new().with(
@@ -226,9 +228,8 @@ mod tests {
             &cache,
             &AdvisoryOptions::default(),
         )
-        .await
-        .unwrap();
-        assert!(out.findings.is_empty());
+        .await;
+        assert!(matches!(out, Err(AdvisoryError::Incomplete)));
     }
 
     #[tokio::test]
