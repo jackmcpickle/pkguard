@@ -3,7 +3,11 @@ import { APP_NAME } from "@cli/app-name";
 import { CONFIG_SEARCH_ORDER } from "@cli/config-sources";
 import defaultConfigToml from "../../../../src/config.default.toml?raw";
 import DocsLayout from "@/layouts/DocsLayout.astro";
-import { CONFIG_NAME, USER_CONFIG_PATH } from "@/lib/site";
+import {
+  CONFIG_NAME,
+  USER_CONFIG_PATH_DOCS,
+  USER_CONFIG_PATH_FALLBACK,
+} from "@/lib/site";
 ---
 
 <DocsLayout
@@ -25,7 +29,12 @@ import { CONFIG_NAME, USER_CONFIG_PATH } from "@/lib/site";
   <ul class="mt-8">
     <li class="border-t border-hairline py-4">
       <p class="font-mono text-[14px] leading-5 text-ink">user</p>
-      <p class="mt-2 font-mono text-[16px] leading-6 text-body">{USER_CONFIG_PATH}</p>
+      <p class="mt-2 font-mono text-[16px] leading-6 text-body">
+        {USER_CONFIG_PATH_DOCS}
+      </p>
+      <p class="mt-2 text-[14px] leading-5 text-body-mid">
+        If XDG_CONFIG_HOME is unset: {USER_CONFIG_PATH_FALLBACK}
+      </p>
     </li>
     <li class="border-t border-hairline py-4">
       <p class="font-mono text-[14px] leading-5 text-ink">scan or repo</p>

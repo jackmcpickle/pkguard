@@ -24,3 +24,7 @@ export const userCachePath = (
 
 export const dirConfigPath = (dir: string): string =>
   path.join(dir, CONFIG_FILE_NAME);
+
+/** Static docs form of userConfigPath: XDG wins, else ~/.config. */
+export const USER_CONFIG_PATH_DOCS = `$XDG_CONFIG_HOME/${APP_NAME}/config.toml`;
+export const USER_CONFIG_PATH_FALLBACK = `~/.config/${APP_NAME}/config.toml`;
