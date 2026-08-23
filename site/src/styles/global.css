@@ -34,12 +34,14 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-a {
-  color: var(--color-ink);
-  text-decoration: none;
+@layer base {
+  a {
+    color: var(--color-ink);
+    text-decoration: none;
+  }
 }
 
-a:hover {
+a:hover:not(.bg-primary) {
   color: var(--color-ink-hover);
 }
 
