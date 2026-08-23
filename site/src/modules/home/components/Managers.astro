@@ -32,9 +32,12 @@ const groups =
         ? grouped
         : [...grouped, { language: "Other", managers: leftover }];
 
-const flaggedNames = MANAGER_DOCS.filter(
-    (manager) => manager.kind === "python-legacy",
-).map((manager) => manager.name);
+const liveNames = MANAGER_DOCS.filter((manager) => manager.ported).map(
+    (manager) => manager.name,
+);
+const detectOnlyNames = MANAGER_DOCS.filter((manager) => !manager.ported).map(
+    (manager) => manager.name,
+);
 ---
 
 <section class="border-t border-hairline">
@@ -57,9 +60,7 @@ const flaggedNames = MANAGER_DOCS.filter(
                                 <li
                                     class:list={[
                                         "font-mono text-base leading-6",
-                                        manager.kind === "python-legacy"
-                                            ? "text-body-mid"
-                                            : "text-ink",
+                                        manager.ported ? "text-ink" : "text-body-mid",
                                     ]}
                                 >
                                     {manager.name}
@@ -71,7 +72,9 @@ const flaggedNames = MANAGER_DOCS.filter(
             }
         </ul>
         <p class="mt-2 text-sm leading-6 text-body-mid">
-            {flaggedNames.join(", ")} are detected only.
+            Live settings checks and native audit:
+            {" "}{liveNames.join(", ") || "none"}. Detected only:
+            {" "}{detectOnlyNames.join(", ")}.
             <a href="/docs/managers" class="ml-2 text-ink underline">
                 Manager profiles
             </a>
