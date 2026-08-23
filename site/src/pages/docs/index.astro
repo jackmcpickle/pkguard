@@ -1,42 +1,23 @@
 ---
-import {
-    APP_NAME,
-    COMMANDS,
-    commandSynopsis,
-    MANAGER_DOCS,
-} from "@/lib/catalog";
+import { APP_NAME } from "@/lib/catalog";
 import DocsLayout from "@/layouts/DocsLayout.astro";
-import {
-    DocsBody,
-    DocsHeader,
-    KeyValue,
-    SectionHeading,
-} from "@/modules/docs";
-
-const configCount = MANAGER_DOCS.filter((manager) => manager.kind === "config")
-    .length;
+import { DocsBody, DocsHeader } from "@/modules/docs";
 ---
 
 <DocsLayout
-    title={`Docs — ${APP_NAME}`}
+    title={`Docs - ${APP_NAME}`}
     description="Install pkguard, then scan a folder of package-manager roots."
     current="/docs"
-    toc={[{ id: "commands", label: "Commands" }]}
 >
     <DocsHeader
         eyebrow="Overview"
-        title={`${APP_NAME} walks a folder of repos and audits each package-manager root.`}
-        lead={`scan is read-only and never writes files. ${configCount} managers share the same path. Commands and flags on these pages are dumped from the Rust binary (${APP_NAME} dump-catalog), so a flag change updates the docs.`}
+        title="Scan a folder of package-manager roots."
+        lead={`${APP_NAME} scan does not write files. Flags on the scan page come from ${APP_NAME} dump-catalog.`}
     />
-    <SectionHeading id="commands">Commands</SectionHeading>
     <DocsBody>
-        The same catalog as <code class="font-mono text-ink">{APP_NAME} --help</code>.
+        Start with
+        <a href="/docs/commands/scan" class="text-ink underline">
+            {APP_NAME} scan
+        </a>.
     </DocsBody>
-    <KeyValue
-        rows={COMMANDS.map((command) => ({
-            href: `/docs/commands/${command.name}`,
-            key: `${APP_NAME} ${commandSynopsis(command)}`,
-            value: command.summary,
-        }))}
-    />
 </DocsLayout>

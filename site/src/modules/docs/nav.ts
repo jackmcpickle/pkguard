@@ -1,5 +1,3 @@
-import { APP_NAME, COMMANDS } from "@/lib/catalog";
-
 export interface DocsLink {
   href: string;
   label: string;
@@ -22,16 +20,6 @@ export const DOCS_NAV: readonly DocsNavGroup[] = [
       { href: "/docs", label: "Overview" },
       { href: "/docs/install", label: "Install" },
       { href: "/docs/commands/scan", label: "Quick start" },
-    ],
-  },
-  {
-    title: "Commands",
-    items: [
-      { href: "/docs/commands", label: "Catalog" },
-      ...COMMANDS.map((command) => ({
-        href: `/docs/commands/${command.name}`,
-        label: `${APP_NAME} ${command.name}`,
-      })),
     ],
   },
   {

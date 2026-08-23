@@ -1,6 +1,4 @@
 ---
-import { SITE_HOST } from "@/lib/site";
-
 interface Props {
     href: string;
 }
@@ -9,17 +7,12 @@ const { href } = Astro.props;
 ---
 
 <div class="mt-12 border-t border-hairline pt-12">
-    <div class="flex flex-wrap items-center gap-3">
-        <a
-            href={href}
-            class="rounded-full border border-white/25 px-4 py-2 text-[14px] leading-5 text-ink"
-            rel="noopener"
-            target="_blank"
-        >
-            Edit this page on GitHub
-        </a>
-        <span class="font-mono text-[12px] leading-4 tracking-[1.2px] text-body-mid uppercase">
-            Served from GitHub Pages · {SITE_HOST}
-        </span>
-    </div>
+    <a
+        href={href}
+        class="inline-flex items-center justify-center rounded-full border border-stroke px-4 py-2 text-sm leading-5 text-ink"
+        rel="noopener"
+        target="_blank"
+    >
+        Edit this page on GitHub
+    </a>
 </div>

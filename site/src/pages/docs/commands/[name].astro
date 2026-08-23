@@ -45,13 +45,13 @@ const toc = [
 ---
 
 <DocsLayout
-    title={`${title} — ${APP_NAME}`}
+    title={`${title} - ${APP_NAME}`}
     description={command.summary}
     current={`/docs/commands/${command.name}`}
     toc={toc}
 >
     <DocsHeader
-        eyebrow={`Commands / ${command.name}`}
+        eyebrow={command.name}
         title={title}
         lead={command.summary}
     />
@@ -97,13 +97,13 @@ const toc = [
                     ]}
                 />
                 <Note>
-                    In CI, pair --format json with your archive step; the document
+                    In CI, pair --format json with your archive step. The document
                     carries schemaVersion 2 and the exit code.
                 </Note>
                 <SectionHeading id="agentic-checks">Agentic checks</SectionHeading>
                 <DocsBody>
-                    Reported by default; turn off with [agentic] enabled = false in
-                    config. These codes are the finding-code contract; writes come
+                    Reported by default. Turn off with [agentic] enabled = false in
+                    config. These codes are the finding-code contract. Writes come
                     with the future fix command.
                 </DocsBody>
                 <KeyValue

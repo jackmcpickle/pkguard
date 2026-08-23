@@ -38,7 +38,7 @@ audit_level = "critical"`;
 ---
 
 <DocsLayout
-    title={`Config — ${APP_NAME}`}
+    title={`Config - ${APP_NAME}`}
     description="pkguard config files, search order, and an example."
     current="/docs/config"
     toc={[
@@ -47,15 +47,14 @@ audit_level = "critical"`;
     ]}
 >
     <DocsHeader
-        eyebrow="Guides / config"
+        eyebrow="Config"
         title="User file, then scan root, then each repo."
         lead={CONFIG_SEARCH_ORDER}
     />
     <SectionHeading id="search-order">Search order</SectionHeading>
     <DocsBody>
         Config is TOML, layered field by field. Later layers win, and flags win over
-        files. Unknown keys are rejected, so typos fail loudly instead of being
-        ignored.
+        files. Unknown keys are rejected, so a typo fails the run.
     </DocsBody>
     <KeyValue
         rows={[

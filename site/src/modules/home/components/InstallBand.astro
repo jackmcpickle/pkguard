@@ -3,31 +3,36 @@ import Button from "@/components/Button.astro";
 import { RELEASES_URL } from "@/lib/site";
 ---
 
-<section class="border-t border-hairline">
+<section class="border-t border-hairline bg-canvas-soft">
     <div
-        class="mx-auto flex max-w-[1200px] flex-wrap items-end justify-between gap-12 px-6 py-16"
+        class="mx-auto grid max-w-[1400px] items-center gap-10 px-4 py-20 sm:px-6 lg:grid-cols-2 lg:gap-16"
     >
-        <div class="max-w-[640px]">
-            <p
-                class="font-mono text-[14px] leading-5 tracking-[1.4px] text-body-mid uppercase"
-            >
-                Install
-            </p>
-            <h2
-                class="mt-4 text-[48px] leading-[48px] font-normal tracking-[-1.2px] md:text-[72px] md:leading-[72px] md:tracking-[-1.8px]"
-            >
-                One Rust binary.
-            </h2>
-            <p class="mt-6 text-[16px] leading-6 text-body">
-                Install with cargo today. A Homebrew tap and prebuilt release binaries land
-                with the distribution&nbsp;cutover.
-            </p>
+        <div class="overflow-hidden rounded-sm bg-canvas-card">
+            <img
+                src="/images/install-hardware.jpg"
+                alt="Dark anodized metal plate with one orange hex screw in raking light."
+                width="1536"
+                height="968"
+                loading="lazy"
+                decoding="async"
+                class="aspect-[1536/968] h-full w-full object-cover"
+            />
         </div>
-        <div class="flex flex-wrap gap-3">
-            <Button href="/docs/install" variant="primary" size="lg">
-                Install guide
-            </Button>
-            <Button href={RELEASES_URL} size="lg" external>Releases</Button>
+        <div class="max-w-[520px]">
+            <h2
+                class="text-3xl leading-tight font-normal tracking-tight md:text-5xl md:leading-[1.1]"
+            >
+                Install with cargo
+            </h2>
+            <p class="mt-6 text-base leading-6 text-body">
+                Homebrew and release binaries are not published yet.
+            </p>
+            <div class="mt-10 flex flex-wrap gap-3">
+                <Button href="/docs/install" variant="primary" size="lg">
+                    Install guide
+                </Button>
+                <Button href={RELEASES_URL} size="lg" external>Releases</Button>
+            </div>
         </div>
     </div>
 </section>

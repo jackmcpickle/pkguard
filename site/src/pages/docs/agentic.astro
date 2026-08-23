@@ -11,19 +11,19 @@ import {
 ---
 
 <DocsLayout
-    title={`Agentic checks — ${APP_NAME}`}
+    title={`Agentic checks - ${APP_NAME}`}
     description="Agentic findings pkguard warns about by default."
     current="/docs/agentic"
     toc={[{ id: "catalog", label: "Catalog" }]}
 >
     <DocsHeader
-        eyebrow="Guides / agentic"
-        title="Codes from the agentic catalog."
-        lead="Reported by default; turn off with [agentic] enabled = false in config. Writes come with the future fix command and stay off unless [agentic] apply = true."
+        eyebrow="Agentic checks"
+        title="Agentic finding codes"
+        lead="Reported by default. Turn off with [agentic] enabled = false in config. Writes come with the future fix command and stay off unless [agentic] apply = true."
     />
     <SectionHeading id="catalog">Catalog</SectionHeading>
     <DocsBody>
-        Dumped from the binary via
+        Taken from the binary via
         <code class="font-mono text-ink">{APP_NAME} dump-catalog</code>. The codes are
         part of the finding-code contract carried over from the previous build.
     </DocsBody>
@@ -36,7 +36,7 @@ import {
     />
     <Note>
         scan is read-only and never applies these. When the fix command lands, apply
-        writes only the safe edits — it never writes a home-dir store or deletes
+        writes only the safe edits. It never writes a home-dir store or deletes
         overrides.
     </Note>
 </DocsLayout>

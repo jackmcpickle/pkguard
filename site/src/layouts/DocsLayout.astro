@@ -15,7 +15,7 @@ const { title, description, current, toc = [] } = Astro.props;
 
 <BaseLayout title={title} description={description} current="docs">
     <div
-        class="mx-auto grid max-w-[1200px] grid-cols-1 items-start gap-12 px-6 py-12 lg:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)_200px]"
+        class="mx-auto grid max-w-[1400px] grid-cols-1 items-start gap-12 px-4 py-12 sm:px-6 lg:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)_200px]"
     >
         <aside class="lg:sticky lg:top-24">
             <DocsNav current={current} />

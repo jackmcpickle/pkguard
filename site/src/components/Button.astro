@@ -13,13 +13,13 @@ const isPrimary = variant === "primary";
 <a
     href={href}
     class:list={[
-        "inline-flex items-center justify-center rounded-full border text-[14px] leading-5 whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
+        "inline-flex items-center justify-center rounded-full border text-sm leading-5 whitespace-nowrap transition-transform duration-150 ease-out active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink",
         size === "sm" && "px-3 py-1",
         size === "md" && "px-4 py-2",
         size === "lg" && "px-6 py-3",
         isPrimary
             ? "border-primary bg-primary text-on-primary hover:text-on-primary"
-            : "border-white/25 bg-transparent text-ink",
+            : "border-stroke bg-transparent text-ink",
     ]}
     {...(external ? { rel: "noopener", target: "_blank" } : {})}
 >

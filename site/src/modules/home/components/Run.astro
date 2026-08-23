@@ -1,42 +1,37 @@
 ---
 const steps = [
     {
-        n: "01",
-        title: "Discover roots",
-        body: "Find each package-manager root under the path you pass.",
+        title: "Find each root",
+        body: "Walk the path you pass and stop at every package-manager root.",
     },
     {
-        n: "02",
-        title: "Read settings",
-        body: "Parse committed config files. A missing binary does not skip this step.",
+        title: "Read committed settings",
+        body: "Parse the config files in git. A missing binary does not skip this.",
     },
     {
-        n: "03",
-        title: "Run native audit",
-        body: "If the binary is on PATH, shell out to that manager's own audit command.",
+        title: "Run the native audit",
+        body: "If the manager binary is on PATH, pkguard shells out to that manager's own audit command.",
     },
 ] as const;
 ---
 
-<section class="border-t border-hairline">
-    <div class="mx-auto max-w-[1200px] px-6 py-16">
-        <p class="font-mono text-[14px] leading-5 tracking-[1.4px] text-body-mid uppercase">
-            How a run works
-        </p>
+<section class="border-t border-hairline bg-canvas-soft">
+    <div
+        class="mx-auto grid max-w-[1400px] gap-12 px-4 py-16 sm:px-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-start"
+    >
         <h2
-            class="mt-4 text-[32px] leading-9 font-normal tracking-[-0.6px] md:text-[48px] md:leading-[48px] md:tracking-[-1.2px]"
+            class="text-3xl leading-tight font-normal tracking-tight md:text-5xl md:leading-[1.1]"
         >
-            Settings first. Advisories second.
+            Settings first. Advisories&nbsp;second.
         </h2>
-        <ol class="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fit,minmax(280px,1fr))]">
+        <ol class="flex flex-col">
             {
                 steps.map((step) => (
-                    <li class="flex flex-col gap-3 rounded-sm border border-hairline bg-canvas-card p-6">
-                        <p class="font-mono text-[12px] leading-4 tracking-[1.2px] text-accent-sunset">
-                            {step.n}
+                    <li class="border-l border-hairline py-5 pl-6 first:pt-0 last:pb-0">
+                        <h3 class="text-xl leading-7">{step.title}</h3>
+                        <p class="mt-2 max-w-[48ch] text-sm leading-6 text-body-mid">
+                            {step.body}
                         </p>
-                        <h3 class="text-[20px] leading-7">{step.title}</h3>
-                        <p class="text-[14px] leading-5 text-body-mid">{step.body}</p>
                     </li>
                 ))
             }
