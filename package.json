@@ -1,6 +1,6 @@
 {
   "name": "pkguard",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "Audit package-manager security settings and advisories across monorepos and folders of projects. Supports npm, pnpm, yarn, bun, uv, cargo, and bundler.",
   "keywords": [
     "audit",
