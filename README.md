@@ -2,6 +2,8 @@
 
 mailclad walks a folder of repos, finds each package-manager root, and audits it. It does not write files unless you pass an apply flag.
 
+Docs and the product page live at [mailclad.dev](https://mailclad.dev). Command flags on that site are generated from the CLI catalog in this repo.
+
 npm, pnpm, yarn Berry, bun, uv, cargo, bundler, and composer all go through the same path. Yarn v1 and Poetry, pip, or Pipenv projects get flagged. They do not get a live audit.
 
 ## How an audit runs

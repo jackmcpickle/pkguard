@@ -1,0 +1,41 @@
+---
+const steps = [
+  {
+    title: "Discover roots",
+    body: "Find each package-manager root under the path you pass.",
+  },
+  {
+    title: "Read settings",
+    body: "Parse committed config files. A missing binary does not skip this step.",
+  },
+  {
+    title: "Run native audit",
+    body: "If the binary is on PATH, shell out to that manager's audit command.",
+  },
+] as const;
+---
+
+<section class="border-t border-hairline px-6 py-16 md:px-8 md:py-16">
+  <div class="mx-auto max-w-[1200px]">
+    <p class="font-mono text-[14px] leading-5 tracking-[1.4px] text-ink uppercase">
+      How a run works
+    </p>
+    <h2
+      class="mt-4 max-w-[16ch] text-[32px] leading-9 tracking-[-0.6px] md:text-[48px] md:leading-[48px] md:tracking-[-1.2px]"
+    >
+      Settings first. Advisories second.
+    </h2>
+    <ol class="mt-12 max-w-[720px]">
+      {
+        steps.map((step) => (
+          <li class="border-t border-hairline py-8 first:border-t-0 first:pt-0">
+            <h3 class="text-[20px] leading-7 text-ink">{step.title}</h3>
+            <p class="mt-3 max-w-[48ch] text-[16px] leading-6 text-body">
+              {step.body}
+            </p>
+          </li>
+        ))
+      }
+    </ol>
+  </div>
+</section>

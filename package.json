@@ -47,7 +47,10 @@
     "fix": "ultracite fix",
     "lint": "ultracite check",
     "release": "commit-and-tag-version",
-    "release:notes": "bun scripts/release-notes.ts"
+    "release:notes": "bun scripts/release-notes.ts",
+    "site:dev": "bun run --cwd site dev",
+    "site:build": "bun run --cwd site build",
+    "site:check": "bun run --cwd site check"
   },
   "dependencies": {
     "smol-toml": "^1.8.0"

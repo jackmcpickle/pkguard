@@ -1,0 +1,17 @@
+---
+import { GITHUB_URL, NPM_URL, SITE_NAME } from "@/lib/site";
+---
+
+<footer class="border-t border-hairline px-6 py-12 md:px-8">
+  <div
+    class="mx-auto flex max-w-[1200px] flex-col gap-6 text-[14px] leading-5 text-body md:flex-row md:items-center md:justify-between"
+  >
+    <p>{SITE_NAME}</p>
+    <nav class="flex flex-wrap gap-6" aria-label="Footer">
+      <a href="/docs">Docs</a>
+      <a href="/docs/install">Install</a>
+      <a href={GITHUB_URL} rel="noopener" target="_blank">GitHub</a>
+      <a href={NPM_URL} rel="noopener" target="_blank">npm</a>
+    </nav>
+  </div>
+</footer>

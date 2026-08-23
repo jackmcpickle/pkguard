@@ -5,6 +5,7 @@ const ignorePatterns = [
   ...(core.ignorePatterns ?? []),
   "**/.claude",
   "tests/fixtures/**",
+  "site/**",
 ];
 
 export default defineConfig({

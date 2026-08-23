@@ -1,5 +1,9 @@
-import { AGENTIC_CATALOG } from "./agentic";
+import { AGENTIC_CATALOG } from "./agentic-catalog";
 import { APP_NAME } from "./app-name";
+import type { CommandHelp } from "./cli-catalog";
+import { COMMANDS, commandSynopsis, flagLabel } from "./cli-catalog";
+
+export { commandByName } from "./cli-catalog";
 
 const ANSI = {
   bold: "\u001B[1m",
@@ -11,155 +15,8 @@ const ANSI = {
 const paint = (text: string, code: string, on: boolean): string =>
   on ? `${code}${text}${ANSI.reset}` : text;
 
-interface HelpArg {
-  name: string;
-  required: boolean;
-  description: string;
-}
-
-interface HelpFlag {
-  names: readonly string[];
-  value?: string;
-  description: string;
-}
-
-interface CommandHelp {
-  name: string;
-  summary: string;
-  arguments: readonly HelpArg[];
-  flags: readonly HelpFlag[];
-}
-
-const HELP_FLAG: HelpFlag = {
-  description: "Show this help",
-  names: ["-h", "--help"],
-};
-
-const COMMANDS: readonly CommandHelp[] = [
-  {
-    arguments: [
-      {
-        description: "Directory to scan (default: current directory)",
-        name: "path",
-        required: false,
-      },
-    ],
-    flags: [
-      {
-        description: "Policy preset: relaxed, standard, or strict",
-        names: ["--preset"],
-        value: "name",
-      },
-      {
-        description: "Max concurrent advisory audits (default: 4)",
-        names: ["--concurrency"],
-        value: "n",
-      },
-      {
-        description: "Write a markdown report to path",
-        names: ["--report"],
-        value: "path",
-      },
-      {
-        description: "Write settings fixes (clean git tree required)",
-        names: ["--apply", "--fix"],
-      },
-      {
-        description: "Upgrade packages with known fixes (no major bumps)",
-        names: ["--apply-advisories"],
-      },
-      {
-        description:
-          "Write safe agentic edits only. Never writes a home-dir store or deletes overrides",
-        names: ["--apply-agentic"],
-      },
-      {
-        description: "Allow major version bumps when applying advisories",
-        names: ["--allow-majors"],
-      },
-      {
-        description: "Prompt for consent per repo",
-        names: ["--interactive", "-i"],
-      },
-      {
-        description: "Apply even when the git tree is dirty",
-        names: ["--force"],
-      },
-      {
-        description: "Commit applied changes (one commit per repo)",
-        names: ["--commit"],
-      },
-      {
-        description: "Print the full result as JSON",
-        names: ["--json"],
-      },
-      {
-        description: "Print the result as SARIF",
-        names: ["--sarif"],
-      },
-      {
-        description: "Bypass the lockfile digest cache and re-run audits",
-        names: ["--refresh"],
-      },
-      {
-        description: "Bypass the cache and do not write new entries",
-        names: ["--no-cache"],
-      },
-      HELP_FLAG,
-    ],
-    name: "audit",
-    summary: "Audit settings and advisories (never writes unless apply flags)",
-  },
-  {
-    arguments: [],
-    flags: [
-      {
-        description: "Write .mailclad.toml in the current directory",
-        names: ["--local"],
-      },
-      {
-        description: "Overwrite an existing file",
-        names: ["--force"],
-      },
-      HELP_FLAG,
-    ],
-    name: "init",
-    summary: "Write a starter user config (or --local for this directory)",
-  },
-  {
-    arguments: [
-      {
-        description: "Command to describe",
-        name: "command",
-        required: false,
-      },
-    ],
-    flags: [HELP_FLAG],
-    name: "help",
-    summary: "Show this help or help for a command",
-  },
-];
-
 export const isHelpFlag = (arg: string): boolean =>
   arg === "--help" || arg === "-h";
-
-export const commandByName = (name: string): CommandHelp | undefined =>
-  COMMANDS.find((command) => command.name === name);
-
-const argToken = (arg: HelpArg): string =>
-  arg.required ? `<${arg.name}>` : `[${arg.name}]`;
-
-const synopsis = (command: CommandHelp): string => {
-  if (command.arguments.length === 0) {
-    return command.name;
-  }
-  return `${command.name} ${command.arguments.map(argToken).join(" ")}`;
-};
-
-const flagLabel = (flag: HelpFlag): string => {
-  const names = flag.names.join(", ");
-  return flag.value === undefined ? names : `${names} <${flag.value}>`;
-};
 
 const colWidth = (labels: readonly string[]): number => {
   let width = 0;
@@ -186,7 +43,7 @@ const heading = (text: string, color: boolean): string =>
   paint(text, ANSI.bold, color);
 
 export const formatRootHelp = (color: boolean): string => {
-  const labels = COMMANDS.map((command) => synopsis(command));
+  const labels = COMMANDS.map((command) => commandSynopsis(command));
   const width = colWidth(labels);
   const rows = COMMANDS.map((command, index) =>
     row(labels[index] ?? command.name, command.summary, width, color)
@@ -217,7 +74,7 @@ export const formatCommandHelp = (
   color: boolean
 ): string => {
   const lines = [
-    heading(`Usage: ${APP_NAME} ${synopsis(command)}`, color),
+    heading(`Usage: ${APP_NAME} ${commandSynopsis(command)}`, color),
     "",
     paint(command.summary, ANSI.dim, color),
   ];

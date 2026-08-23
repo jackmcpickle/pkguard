@@ -1,0 +1,22 @@
+# mailclad
+
+> Audit package-manager security settings and advisories across monorepos and folders of projects.
+
+## Install
+
+```
+bun install -g mailclad
+```
+
+Requires Bun on PATH. Standalone binaries are on GitHub Releases.
+
+## Commands
+
+See https://mailclad.dev/docs/commands for flags generated from the CLI catalog.
+
+## Links
+
+- Site: https://mailclad.dev
+- Docs: https://mailclad.dev/docs
+- GitHub: https://github.com/jackmcpickle/mailclad
+- npm: https://www.npmjs.com/package/mailclad

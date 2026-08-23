@@ -1,0 +1,44 @@
+@import "@fontsource/geist-sans/400.css";
+@import "@fontsource/geist-mono/400.css";
+@import "tailwindcss";
+
+@theme {
+  --color-canvas: #0a0a0a;
+  --color-canvas-soft: #1a1c20;
+  --color-canvas-card: #191919;
+  --color-canvas-mid: #363a3f;
+  --color-hairline: #212327;
+  --color-ink: #ffffff;
+  --color-ink-hover: #fafaf7;
+  --color-body: #dadbdf;
+  --color-body-mid: #7d8187;
+  --color-primary: #ffffff;
+  --color-on-primary: #0a0a0a;
+  --color-accent-sunset: #ff7a17;
+  --font-sans: "Geist Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
+  --radius-sm: 8px;
+  --radius-pill: 9999px;
+}
+
+html {
+  background: var(--color-canvas);
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-weight: 400;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

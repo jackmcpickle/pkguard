@@ -1,0 +1,25 @@
+---
+interface Props {
+  href: string;
+  variant?: "primary" | "outline";
+  external?: boolean;
+}
+
+const { href, variant = "outline", external = false } = Astro.props;
+const isPrimary = variant === "primary";
+---
+
+<a
+  href={href}
+  class:list={[
+    "inline-flex min-h-11 items-center justify-center rounded-full border px-3 py-2 text-[14px] leading-5 whitespace-nowrap",
+    isPrimary
+      ? "border-primary bg-primary text-on-primary"
+      : "border-white/25 bg-transparent text-ink",
+  ]}
+  {...(external
+    ? { rel: "noopener", target: "_blank" }
+    : {})}
+>
+  <slot />
+</a>

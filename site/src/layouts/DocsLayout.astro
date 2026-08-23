@@ -1,0 +1,23 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import DocsNav from "@/modules/docs/components/DocsNav.astro";
+
+interface Props {
+  title: string;
+  description?: string;
+  current: string;
+}
+
+const { title, description, current } = Astro.props;
+---
+
+<BaseLayout title={title} description={description} current="docs">
+  <div class="mx-auto grid max-w-[1200px] gap-12 px-6 py-16 md:grid-cols-[220px_minmax(0,1fr)] md:px-8">
+    <aside>
+      <DocsNav current={current} />
+    </aside>
+    <article class="min-w-0">
+      <slot />
+    </article>
+  </div>
+</BaseLayout>

@@ -1,0 +1,55 @@
+---
+import { ClientRouter } from "astro:transitions";
+
+import Footer from "@/components/Footer.astro";
+import Nav from "@/components/Nav.astro";
+import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
+import "@/styles/global.css";
+
+interface Props {
+  title: string;
+  description?: string;
+  current?: "home" | "docs";
+}
+
+const {
+  title,
+  description = SITE_DESCRIPTION,
+  current = "home",
+} = Astro.props;
+const canonicalUrl = new URL(Astro.url.pathname, SITE_URL);
+const jsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  applicationCategory: "DeveloperApplication",
+  description,
+  name: SITE_NAME,
+  operatingSystem: "macOS, Linux, Windows",
+  url: SITE_URL,
+});
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonicalUrl} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title}</title>
+    <script is:inline type="application/ld+json" set:html={jsonLd} />
+    <ClientRouter />
+  </head>
+  <body class="min-h-[100dvh] antialiased">
+    <Nav current={current} />
+    <slot />
+    <Footer />
+  </body>
+</html>
