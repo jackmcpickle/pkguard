@@ -32,6 +32,25 @@ impl FindingKind {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Finding {
+    pub kind: FindingKind,
+    pub code: String,
+    pub message: String,
+    pub severity: Severity,
+    pub path: String,
+    pub fixable: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub manager: Option<crate::manager::Manager>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub package: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fix_version: Option<String>,
+}
+
 pub mod codes {
     /// Frozen semantic contract shared with the TS version; advisory findings
     /// additionally use their upstream advisory id as the code.
