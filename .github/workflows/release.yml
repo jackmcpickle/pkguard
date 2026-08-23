@@ -1,21 +1,21 @@
 name: Release
 
+# Tag-triggered release of the Rust binary. cargo-dist + release-plz will
+# replace this at the distribution cutover; until then this is the whole
+# release path.
+
 on:
-  workflow_call:
-    inputs:
-      tag:
-        description: Git tag to release (e.g. v0.1.3)
-        required: true
-        type: string
+  push:
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
-        description: Git tag to release (e.g. v0.1.3)
+        description: Git tag to release (e.g. v1.0.0)
         required: true
         type: string
 
 concurrency:
-  group: release-${{ inputs.tag }}
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 permissions:
@@ -27,89 +27,60 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag }}
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bun test
+          ref: ${{ inputs.tag || github.ref_name }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace
 
   create-release:
     needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ inputs.tag }}
+          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
-          version="${TAG#v}"
-          notes_file="$(mktemp)"
-          changelog_file="$(mktemp)"
-          git fetch --depth 1 origin "refs/tags/${TAG}:refs/tags/${TAG}"
-          if git show "${TAG}:CHANGELOG.md" > "$changelog_file" && bun scripts/release-notes.ts "$version" "$changelog_file" > "$notes_file"; then
-            echo "Using CHANGELOG.md for release notes"
-          else
-            echo "No CHANGELOG entry for ${TAG}; falling back to generated notes" > "$notes_file"
-            gh api "repos/${{ github.repository }}/releases/generate-notes" \
-              -f tag_name="$TAG" \
-              -f target_commitish="$TAG" \
-              --jq .body >> "$notes_file"
-          fi
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release edit "$TAG" --notes-file "$notes_file"
+            echo "Release $TAG already exists"
           else
-            gh release create "$TAG" --title "$TAG" --notes-file "$notes_file"
+            gh release create "$TAG" --title "$TAG" --generate-notes
           fi
 
   binaries:
     needs: create-release
-    runs-on: ubuntu-latest
     strategy:
       matrix:
         include:
-          - target: bun-linux-x64
+          - runner: ubuntu-latest
             artifact: pkguard-linux-x64
-          - target: bun-linux-arm64
+          - runner: ubuntu-24.04-arm
             artifact: pkguard-linux-arm64
-          - target: bun-darwin-x64
+          - runner: macos-13
             artifact: pkguard-darwin-x64
-          - target: bun-darwin-arm64
+          - runner: macos-latest
             artifact: pkguard-darwin-arm64
-          - target: bun-windows-x64
+          - runner: windows-latest
             artifact: pkguard-windows-x64.exe
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag }}
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bun build ./src/main.ts --compile --target=${{ matrix.target }} --outfile dist/${{ matrix.artifact }}
+          ref: ${{ inputs.tag || github.ref_name }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release -p pkguard
       - name: Attach binary to release
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ inputs.tag }}
-        run: gh release upload "$TAG" "dist/${{ matrix.artifact }}" --clobber
-
-  npm-publish:
-    needs: test
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.tag }}
-      - uses: oven-sh/setup-bun@v2
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          registry-url: "https://registry.npmjs.org"
-      - run: bun install --frozen-lockfile
-      - run: bun test
-      - run: bun run build
-      # Trusted publishing (OIDC) — no npm token; provenance is implied.
-      # Requires the Trusted Publisher config on npmjs.com for this repo/workflow.
-      - run: npm publish --access public
+          TAG: ${{ inputs.tag || github.ref_name }}
+          ARTIFACT: ${{ matrix.artifact }}
+        run: |
+          set -euo pipefail
+          src="target/release/pkguard"
+          if [[ "$ARTIFACT" == *.exe ]]; then src="target/release/pkguard.exe"; fi
+          cp "$src" "$ARTIFACT"
+          gh release upload "$TAG" "$ARTIFACT" --clobber

@@ -1,8 +1,0 @@
-[test]
-root = "."
-
-[install]
-ignoreScripts = true
-registry = "https://registry.npmjs.org/"
-minimumReleaseAge = 604800
-minimumReleaseAgeExcludes = ["eslint-plugin-crap"]

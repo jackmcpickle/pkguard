@@ -1,0 +1,11 @@
+# Marks site/ as its own pnpm workspace root so installs never walk up.
+packages:
+  - "."
+
+# esbuild's postinstall only sanity-checks the binary; the platform package
+# arrives as an optional dependency, so the script stays denied.
+allowBuilds:
+  esbuild: false
+
+# Supply-chain settings pkguard itself recommends (standard preset).
+minimumReleaseAge: 1440
