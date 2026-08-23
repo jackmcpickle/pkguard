@@ -1,3 +1,4 @@
+pub mod generic;
 pub mod npm;
 
 use crate::findings::Severity;

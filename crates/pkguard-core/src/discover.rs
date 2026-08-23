@@ -26,11 +26,12 @@ pub struct Project {
     pub managers: Vec<DetectedManager>,
 }
 
-const SKIP_DIRS: [&str; 8] = [
+const SKIP_DIRS: [&str; 9] = [
     "node_modules",
     ".git",
     "dist",
     "build",
+    "target",
     ".venv",
     "vendor",
     "__pycache__",
@@ -358,19 +359,209 @@ fn detect_npm(
     })
 }
 
+fn cargo_config_path(dir: &Path) -> Option<PathBuf> {
+    let toml = dir.join(".cargo/config.toml");
+    if toml.is_file() {
+        return Some(toml);
+    }
+    let legacy = dir.join(".cargo/config");
+    legacy.is_file().then_some(legacy)
+}
+
+fn detect_uv(
+    dir: &Path,
+    names: &BTreeSet<String>,
+    js_primary: Option<Manager>,
+) -> Option<DetectedManager> {
+    let tool_uv = has_tool_table(dir, "uv");
+    if !names.contains("uv.lock") && !tool_uv {
+        return None;
+    }
+    let python_project = tool_uv || has_project_table(dir);
+    let role = if js_primary.is_some() && !python_project {
+        Role::Leftover
+    } else {
+        Role::Primary
+    };
+    let config_path =
+        existing(dir, names, "uv.toml").or_else(|| tool_uv.then(|| dir.join("pyproject.toml")));
+    Some(DetectedManager {
+        manager: Manager::Uv,
+        role,
+        lockfile_path: existing(dir, names, "uv.lock"),
+        config_path,
+    })
+}
+
+fn detect_poetry(
+    dir: &Path,
+    names: &BTreeSet<String>,
+    uv_present: bool,
+) -> Option<DetectedManager> {
+    if !names.contains("poetry.lock") && !has_tool_table(dir, "poetry") {
+        return None;
+    }
+    Some(DetectedManager {
+        manager: Manager::Poetry,
+        role: if uv_present {
+            Role::Leftover
+        } else {
+            Role::Primary
+        },
+        lockfile_path: existing(dir, names, "poetry.lock"),
+        config_path: dir
+            .join("pyproject.toml")
+            .is_file()
+            .then(|| dir.join("pyproject.toml")),
+    })
+}
+
+fn detect_pipenv(dir: &Path, names: &BTreeSet<String>) -> Option<DetectedManager> {
+    if !names.contains("Pipfile") && !names.contains("Pipfile.lock") {
+        return None;
+    }
+    Some(DetectedManager {
+        manager: Manager::Pipenv,
+        role: Role::Primary,
+        lockfile_path: existing(dir, names, "Pipfile.lock"),
+        config_path: existing(dir, names, "Pipfile"),
+    })
+}
+
+fn detect_pip(
+    dir: &Path,
+    names: &BTreeSet<String>,
+    uv_present: bool,
+    poetry_present: bool,
+    pipenv_present: bool,
+) -> Option<DetectedManager> {
+    if uv_present {
+        return None;
+    }
+    let reqs: Vec<&String> = names
+        .iter()
+        .filter(|name| {
+            *name == "requirements.txt"
+                || name
+                    .strip_prefix("requirements-")
+                    .and_then(|rest| rest.strip_suffix(".txt"))
+                    .is_some_and(|middle| !middle.is_empty())
+        })
+        .collect();
+    let from_project =
+        !poetry_present && !pipenv_present && !has_tool_table(dir, "uv") && has_project_table(dir);
+    if reqs.is_empty() && !from_project {
+        return None;
+    }
+    Some(DetectedManager {
+        manager: Manager::Pip,
+        role: Role::Primary,
+        lockfile_path: None,
+        config_path: None,
+    })
+}
+
+fn detect_bundler(dir: &Path, names: &BTreeSet<String>) -> Option<DetectedManager> {
+    if !names.contains("Gemfile") {
+        return None;
+    }
+    let config = dir.join(".bundle/config");
+    Some(DetectedManager {
+        manager: Manager::Bundler,
+        role: Role::Primary,
+        lockfile_path: existing(dir, names, "Gemfile.lock"),
+        config_path: config.is_file().then_some(config),
+    })
+}
+
+fn detect_composer(
+    dir: &Path,
+    names: &BTreeSet<String>,
+    js_primary: Option<Manager>,
+) -> Option<DetectedManager> {
+    let has_json = names.contains("composer.json");
+    if !has_json && !names.contains("composer.lock") {
+        return None;
+    }
+    let role = if has_json || js_primary.is_none() {
+        Role::Primary
+    } else {
+        Role::Leftover
+    };
+    Some(DetectedManager {
+        manager: Manager::Composer,
+        role,
+        lockfile_path: existing(dir, names, "composer.lock"),
+        config_path: has_json.then(|| dir.join("composer.json")),
+    })
+}
+
+fn detect_cargo(
+    dir: &Path,
+    names: &BTreeSet<String>,
+    js_primary: Option<Manager>,
+) -> Option<DetectedManager> {
+    let has_toml = names.contains("Cargo.toml");
+    if !has_toml && !names.contains("Cargo.lock") {
+        return None;
+    }
+    let role = if has_toml || js_primary.is_none() {
+        Role::Primary
+    } else {
+        Role::Leftover
+    };
+    Some(DetectedManager {
+        manager: Manager::Cargo,
+        role,
+        lockfile_path: existing(dir, names, "Cargo.lock"),
+        config_path: cargo_config_path(dir),
+    })
+}
+
 fn detect_managers(dir: &Path) -> Vec<DetectedManager> {
     let names = dir_names(dir);
     let pin = PackageManagerPin::from_manifest(dir);
-    let primary = pick_js_primary(&names, pin.as_ref());
-    [
-        detect_pnpm(dir, &names, primary),
-        detect_yarn(dir, &names, pin.as_ref(), primary),
-        detect_bun(dir, &names, primary),
-        detect_npm(dir, &names, pin.as_ref(), primary),
+    let js_primary = pick_js_primary(&names, pin.as_ref());
+    let mut managers = Vec::new();
+    for detected in [
+        detect_pnpm(dir, &names, js_primary),
+        detect_yarn(dir, &names, pin.as_ref(), js_primary),
+        detect_bun(dir, &names, js_primary),
+        detect_npm(dir, &names, pin.as_ref(), js_primary),
     ]
     .into_iter()
     .flatten()
-    .collect()
+    {
+        managers.push(detected);
+    }
+    let uv = detect_uv(dir, &names, js_primary);
+    let uv_present = uv.is_some();
+    if let Some(detected) = uv {
+        managers.push(detected);
+    }
+    let poetry = detect_poetry(dir, &names, uv_present);
+    let poetry_present = poetry.is_some();
+    if let Some(detected) = poetry {
+        managers.push(detected);
+    }
+    let pipenv = detect_pipenv(dir, &names);
+    let pipenv_present = pipenv.is_some();
+    if let Some(detected) = pipenv {
+        managers.push(detected);
+    }
+    if let Some(detected) = detect_pip(dir, &names, uv_present, poetry_present, pipenv_present) {
+        managers.push(detected);
+    }
+    if let Some(detected) = detect_bundler(dir, &names) {
+        managers.push(detected);
+    }
+    if let Some(detected) = detect_composer(dir, &names, js_primary) {
+        managers.push(detected);
+    }
+    if let Some(detected) = detect_cargo(dir, &names, js_primary) {
+        managers.push(detected);
+    }
+    managers
 }
 
 /// Walks `root`, streaming each discovered project into `sink` as it is found.
@@ -533,5 +724,52 @@ mod tests {
         let m = &projects[0].managers[0];
         assert_eq!(m.manager, Manager::Yarn);
         assert_eq!(m.role, Role::Unsupported);
+    }
+
+    fn roles(projects: &[Project]) -> Vec<(Manager, Role)> {
+        projects[0]
+            .managers
+            .iter()
+            .map(|m| (m.manager, m.role))
+            .collect()
+    }
+
+    #[test]
+    fn cargo_toml_is_cargo_primary() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir(tmp.path().join(".git")).unwrap();
+        write(tmp.path(), "Cargo.toml", "[package]\nname=\"x\"\n");
+        write(tmp.path(), "Cargo.lock", "");
+        let found = roles(&discover(tmp.path()));
+        assert!(found.contains(&(Manager::Cargo, Role::Primary)));
+    }
+
+    #[test]
+    fn uv_lock_is_uv_primary_and_poetry_is_leftover() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir(tmp.path().join(".git")).unwrap();
+        write(tmp.path(), "uv.lock", "");
+        write(
+            tmp.path(),
+            "pyproject.toml",
+            "[tool.uv]\n\n[tool.poetry]\nname=\"x\"\n",
+        );
+        write(tmp.path(), "poetry.lock", "");
+        let found = roles(&discover(tmp.path()));
+        assert!(found.contains(&(Manager::Uv, Role::Primary)));
+        assert!(found.contains(&(Manager::Poetry, Role::Leftover)));
+    }
+
+    #[test]
+    fn composer_and_bundler_and_pip_are_detected() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir(tmp.path().join(".git")).unwrap();
+        write(tmp.path(), "composer.json", "{}");
+        write(tmp.path(), "Gemfile", "source 'https://rubygems.org'");
+        write(tmp.path(), "requirements.txt", "requests\n");
+        let found = roles(&discover(tmp.path()));
+        assert!(found.contains(&(Manager::Composer, Role::Primary)));
+        assert!(found.contains(&(Manager::Bundler, Role::Primary)));
+        assert!(found.contains(&(Manager::Pip, Role::Primary)));
     }
 }

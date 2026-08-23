@@ -77,6 +77,7 @@ struct V7Via {
     version: Option<String>,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn finding(
     package: Option<String>,
     version: Option<&str>,
@@ -85,6 +86,7 @@ fn finding(
     message: String,
     fix: Option<String>,
     path: &str,
+    manager: Manager,
 ) -> Finding {
     Finding {
         kind: FindingKind::Advisory,
@@ -97,7 +99,7 @@ fn finding(
         severity,
         path: path.to_string(),
         fixable: fix.is_some(),
-        manager: Some(Manager::Npm),
+        manager: Some(manager),
         package,
         current_version: version.and_then(concrete_version),
         fix_version: fix,
@@ -107,6 +109,7 @@ fn finding(
 pub fn parse_npm_audit(
     stdout: &str,
     lockfile_path: &str,
+    manager: Manager,
 ) -> Result<Vec<Finding>, serde_json::Error> {
     let report: NpmReport = serde_json::from_str(stdout)?;
     let mut findings = Vec::new();
@@ -146,6 +149,7 @@ pub fn parse_npm_audit(
                 message.clone(),
                 fix.clone(),
                 lockfile_path,
+                manager,
             ));
         }
     }
@@ -169,6 +173,7 @@ pub fn parse_npm_audit(
                 format!("{} {} advisory", key, severity.as_str()),
                 item_fix.clone(),
                 lockfile_path,
+                manager,
             ));
             continue;
         }
@@ -193,6 +198,7 @@ pub fn parse_npm_audit(
                 message,
                 item_fix.clone(),
                 lockfile_path,
+                manager,
             ));
         }
     }
@@ -219,7 +225,7 @@ mod tests {
                 }
             }
         }"#;
-        let findings = parse_npm_audit(stdout, "/p/package-lock.json").unwrap();
+        let findings = parse_npm_audit(stdout, "/p/package-lock.json", Manager::Npm).unwrap();
         assert_eq!(findings.len(), 1);
         let f = &findings[0];
         assert_eq!(f.kind, FindingKind::Advisory);
@@ -253,7 +259,7 @@ mod tests {
                 }
             }
         }"#;
-        let findings = parse_npm_audit(stdout, "/p/package-lock.json").unwrap();
+        let findings = parse_npm_audit(stdout, "/p/package-lock.json", Manager::Npm).unwrap();
         assert_eq!(findings.len(), 1);
         let f = &findings[0];
         assert_eq!(f.code, "GHSA-v7");
@@ -273,7 +279,7 @@ mod tests {
                 }
             }
         }"#;
-        let findings = parse_npm_audit(stdout, "/p/package-lock.json").unwrap();
+        let findings = parse_npm_audit(stdout, "/p/package-lock.json", Manager::Npm).unwrap();
         assert_eq!(findings[0].code, "advisory.unknown");
         // "medium" normalizes to moderate, npm has no fix info here
         assert_eq!(findings[0].severity, Severity::Moderate);
@@ -297,7 +303,7 @@ mod tests {
                 }
             }
         }"#;
-        let findings = parse_npm_audit(stdout, "/p/package-lock.json").unwrap();
+        let findings = parse_npm_audit(stdout, "/p/package-lock.json", Manager::Npm).unwrap();
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].severity, Severity::Low);
         assert_eq!(findings[0].code, "advisory.unknown");
@@ -307,7 +313,7 @@ mod tests {
     fn clean_audit_yields_no_findings() {
         let stdout = r#"{"auditReportVersion": 2, "vulnerabilities": {}}"#;
         assert_eq!(
-            parse_npm_audit(stdout, "/p/package-lock.json")
+            parse_npm_audit(stdout, "/p/package-lock.json", Manager::Npm)
                 .unwrap()
                 .len(),
             0
@@ -316,6 +322,6 @@ mod tests {
 
     #[test]
     fn invalid_json_is_an_error() {
-        assert!(parse_npm_audit("not json at all", "/p/package-lock.json").is_err());
+        assert!(parse_npm_audit("not json at all", "/p/package-lock.json", Manager::Npm).is_err());
     }
 }

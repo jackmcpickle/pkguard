@@ -105,6 +105,76 @@ fn scan_json_format_emits_machine_output() {
     assert!(codes.contains(&"scripts.unrestricted"), "codes: {codes:?}");
 }
 
+fn fake_pnpm(root: &Path, audit_json: &str) -> std::path::PathBuf {
+    let bin = root.join("fakebin");
+    fs::create_dir_all(&bin).unwrap();
+    let script = bin.join("pnpm");
+    fs::write(
+        &script,
+        format!("#!/bin/sh\ncat <<'EOF'\n{audit_json}\nEOF\n"),
+    )
+    .unwrap();
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+    bin
+}
+
+#[test]
+fn scan_reports_pnpm_settings_and_advisories() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("app");
+    fs::create_dir_all(dir.join(".git")).unwrap();
+    fs::write(dir.join("package.json"), "{}").unwrap();
+    fs::write(dir.join("pnpm-lock.yaml"), "lock-app").unwrap();
+    let bin = fake_pnpm(
+        tmp.path(),
+        r#"{"advisories":{"1":{"findings":[{"version":"1.0.0"}],"github_advisory_id":"GHSA-pnpm","module_name":"left-pad","severity":"high","title":"pnpm high advisory"}}}"#,
+    );
+
+    let assert = scan_cmd(tmp.path(), &bin).assert().code(1);
+    let output = String::from_utf8_lossy(&assert.get_output().stdout).into_owned();
+    assert!(output.contains("GHSA-pnpm"), "stdout was: {output}");
+    assert!(output.contains("audit.disabled"), "stdout was: {output}");
+    assert!(
+        output.contains("scripts.unrestricted"),
+        "stdout was: {output}"
+    );
+}
+
+fn fake_yarn(root: &Path, audit_json: &str) -> std::path::PathBuf {
+    let bin = root.join("fakebin");
+    fs::create_dir_all(&bin).unwrap();
+    let script = bin.join("yarn");
+    fs::write(
+        &script,
+        format!("#!/bin/sh\ncat <<'EOF'\n{audit_json}\nEOF\n"),
+    )
+    .unwrap();
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+    bin
+}
+
+#[test]
+fn scan_reports_yarn_settings_and_advisories() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("app");
+    fs::create_dir_all(dir.join(".git")).unwrap();
+    fs::write(dir.join("package.json"), "{}").unwrap();
+    fs::write(dir.join("yarn.lock"), "lock-app").unwrap();
+    fs::write(dir.join(".yarnrc.yml"), "").unwrap();
+    let bin = fake_yarn(
+        tmp.path(),
+        r#"{"value":"left-pad","children":{"ID":"GHSA-yarn","Severity":"high","Issue":"yarn high advisory"}}"#,
+    );
+
+    let assert = scan_cmd(tmp.path(), &bin).assert().code(1);
+    let output = String::from_utf8_lossy(&assert.get_output().stdout).into_owned();
+    assert!(output.contains("GHSA-yarn"), "stdout was: {output}");
+    assert!(
+        output.contains("source.git-unrestricted"),
+        "stdout was: {output}"
+    );
+}
+
 #[test]
 fn version_flag_prints_version() {
     let mut cmd = Command::cargo_bin("pkguard").unwrap();

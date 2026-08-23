@@ -37,11 +37,16 @@ fn parse_output(
         return Err(AdvisoryError::Incomplete);
     }
     match manager {
-        Manager::Npm => {
-            parse::npm::parse_npm_audit(stdout, file_path).map_err(|_| AdvisoryError::Incomplete)
-        }
-        // Remaining manager dialects arrive with M2.
-        _ => Err(AdvisoryError::Incomplete),
+        Manager::Npm | Manager::Pnpm => parse::npm::parse_npm_audit(stdout, file_path, manager)
+            .map_err(|_| AdvisoryError::Incomplete),
+        Manager::Yarn
+        | Manager::Bun
+        | Manager::Uv
+        | Manager::Cargo
+        | Manager::Composer
+        | Manager::Bundler => parse::generic::parse_audit_json(stdout, file_path, manager)
+            .map_err(|_| AdvisoryError::Incomplete),
+        Manager::Poetry | Manager::Pip | Manager::Pipenv => Ok(Vec::new()),
     }
 }
 
