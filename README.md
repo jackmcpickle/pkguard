@@ -37,7 +37,7 @@ Build from source (requires a Rust toolchain):
 cargo install --path crates/pkguard
 ```
 
-Homebrew tap and prebuilt release binaries are coming with the distribution cutover. The old npm package (named `mailclad`, ≤ 0.1.x) is the Bun build and does not match these docs.
+Homebrew tap and prebuilt release binaries are coming with the distribution cutover.
 
 ## Usage
 
