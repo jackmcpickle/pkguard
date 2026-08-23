@@ -30,6 +30,7 @@ import {
         rows={AGENTIC_CATALOG.map((check) => ({
             key: check.code,
             value: `${check.title}. ${check.description}`,
+            note: check.caveat,
         }))}
     />
     <Note>
