@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [1.1.3](https://github.com/jackmcpickle/pkguard/compare/v1.1.2...v1.1.3) (2026-08-24)
+
+### Bug Fixes
+
+* **release:** bump the catalog version alongside Cargo.toml ([#33](https://github.com/jackmcpickle/pkguard/issues/33)) ([a235b05](https://github.com/jackmcpickle/pkguard/commit/a235b0515844f7a7f616087024b74c732dfa6ed6)), references [#24](https://github.com/jackmcpickle/pkguard/issues/24)
 ## [1.1.2](https://github.com/jackmcpickle/pkguard/compare/v1.1.1...v1.1.2) (2026-08-24)
 
 ### Bug Fixes
