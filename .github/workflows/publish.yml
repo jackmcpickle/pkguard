@@ -10,6 +10,7 @@ on:
       - ".versionrc.json"
       - "scripts/cargo-version-updater.cjs"
       - "scripts/cargo-lock-updater.cjs"
+      - "scripts/catalog-version-updater.cjs"
       - ".github/workflows/publish.yml"
       - ".github/workflows/release.yml"
   workflow_dispatch:
@@ -59,6 +60,16 @@ jobs:
           version="$(node -e "const fs=require('fs'); const u=require('./scripts/cargo-version-updater.cjs'); process.stdout.write(u.readVersion(fs.readFileSync('Cargo.toml','utf8')))")"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "released=true" >> "$GITHUB_OUTPUT"
+
+      # Release commits are pushed with a deploy key and produce no workflow
+      # runs, so CI never inspects them. Verify the catalog here instead, before
+      # anything lands — a stale catalog would otherwise fail the next
+      # unrelated PR.
+      - name: Docs catalog is fresh
+        if: steps.release.outputs.released == 'true'
+        run: |
+          cargo run -q -p pkguard -- dump-catalog > site/src/generated/catalog.json
+          git diff --exit-code site/src/generated/catalog.json
 
       - name: Push release commit and tag
         if: steps.release.outputs.released == 'true'
