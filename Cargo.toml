@@ -37,7 +37,7 @@ ignore = "0.4"
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
 clap = { version = "4", features = ["derive"] }
-indicatif = "0.17"
+indicatif = "0.18"
 anstream = "0.6"
 anstyle = "1"
 owo-colors = "4"
