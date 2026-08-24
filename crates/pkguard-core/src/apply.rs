@@ -151,7 +151,37 @@ fn is_forbidden_write(file: &Path, root: &Path) -> bool {
     } else {
         root.join(file)
     };
-    !is_inside(&normalize(&absolute), &normalize(root))
+    let lexical_root = normalize(root);
+    if !is_inside(&normalize(&absolute), &lexical_root) {
+        return true;
+    }
+    !is_inside(&resolve_path(&absolute), &resolve_path(root))
+}
+
+/// Resolve existing prefixes so a symlink inside the project that points
+/// outside it is treated as an escape. Missing path tails stay lexical.
+fn resolve_path(path: &Path) -> PathBuf {
+    if let Ok(real) = std::fs::canonicalize(path) {
+        return real;
+    }
+    let mut cur = path.to_path_buf();
+    let mut suffix = Vec::new();
+    while !cur.exists() {
+        match cur.file_name() {
+            Some(name) => {
+                suffix.push(name.to_os_string());
+                if !cur.pop() {
+                    break;
+                }
+            }
+            None => break,
+        }
+    }
+    let mut base = std::fs::canonicalize(&cur).unwrap_or_else(|_| normalize(&cur));
+    for part in suffix.into_iter().rev() {
+        base.push(part);
+    }
+    base
 }
 
 fn is_inside(file: &Path, root: &Path) -> bool {
@@ -342,6 +372,30 @@ mod tests {
         let plan = plan_fixes(&project(root, None), &findings);
         assert!(plan.files.is_empty());
         assert_eq!(plan.skipped, vec![(escaped, SkipReason::Forbidden)]);
+    }
+
+    #[test]
+    #[test]
+    fn a_symlink_escaping_the_project_root_is_dropped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("proj");
+        let outside = tmp.path().join("outside");
+        fs::create_dir(&root).unwrap();
+        fs::write(&outside, "ignore-scripts=false\n").unwrap();
+        let link = root.join(".npmrc");
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+        let findings = [finding(
+            &root,
+            link.clone(),
+            vec![ConfigEdit::set("ignore-scripts", true)],
+        )];
+        let plan = plan_fixes(&project(&root, None), &findings);
+        assert!(plan.files.is_empty(), "symlink escape must not be planned");
+        assert_eq!(plan.skipped, vec![(link, SkipReason::Forbidden)]);
+        assert_eq!(
+            fs::read_to_string(&outside).unwrap(),
+            "ignore-scripts=false\n"
+        );
     }
 
     #[test]
