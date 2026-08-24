@@ -57,6 +57,17 @@ pub fn advisory_id(
         .unwrap_or_default()
 }
 
+/// The finding code for an advisory id. `advisory_id` returns an empty string
+/// when nothing identifies the advisory; that sentinel is meaningless outside
+/// this fallback, so the two live together.
+pub fn advisory_code(id: String) -> String {
+    if id.is_empty() {
+        "advisory.unknown".to_string()
+    } else {
+        id
+    }
+}
+
 /// npm's fixAvailable is an object {version}, a boolean, or a version string.
 pub fn fix_from_available(value: &Value) -> Option<String> {
     match value {
@@ -87,4 +98,25 @@ pub fn concrete_version(value: &str) -> Option<String> {
         return None;
     }
     Some(trimmed.to_string())
+}
+
+#[cfg(test)]
+mod code_tests {
+    use super::*;
+
+    #[test]
+    fn an_identified_advisory_keeps_its_id_as_the_code() {
+        assert_eq!(advisory_code("GHSA-abcd".into()), "GHSA-abcd");
+        assert_eq!(advisory_code("CVE-2024-1".into()), "CVE-2024-1");
+    }
+
+    #[test]
+    fn an_unidentified_advisory_falls_back_to_a_shared_code() {
+        // `advisory_id` returns "" when nothing identifies the advisory.
+        assert_eq!(advisory_code(String::new()), "advisory.unknown");
+        assert_eq!(
+            advisory_code(advisory_id(None, None, None, None)),
+            "advisory.unknown"
+        );
+    }
 }

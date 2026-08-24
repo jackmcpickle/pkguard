@@ -36,17 +36,23 @@ fn parse_output(
     if stdout.trim().is_empty() {
         return Err(AdvisoryError::Incomplete);
     }
+    // The only place a parser is chosen. `generic` used to sniff the payload
+    // and delegate back to `npm`, which meant two dispatchers disagreeing
+    // about who decides.
     match manager {
         Manager::Npm | Manager::Pnpm => parse::npm::parse_npm_audit(stdout, file_path, manager)
             .map_err(|_| AdvisoryError::Incomplete),
-        Manager::Yarn
-        | Manager::Bun
-        | Manager::Uv
-        | Manager::Cargo
-        | Manager::Composer
-        | Manager::Bundler => parse::generic::parse_audit_json(stdout, file_path, manager)
-            .map_err(|_| AdvisoryError::Incomplete),
         Manager::Poetry | Manager::Pip | Manager::Pipenv => Ok(Vec::new()),
+        other => {
+            let parsed =
+                parse::generic::parse_stdout(stdout).map_err(|_| AdvisoryError::Incomplete)?;
+            if parse::generic::looks_like_npm_report(&parsed) {
+                parse::npm::parse_npm_audit(stdout, file_path, other)
+            } else {
+                parse::generic::parse_value(parsed, file_path, other)
+            }
+            .map_err(|_| AdvisoryError::Incomplete)
+        }
     }
 }
 

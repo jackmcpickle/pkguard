@@ -90,11 +90,7 @@ fn finding(
 ) -> Finding {
     Finding {
         kind: FindingKind::Advisory,
-        code: if id.is_empty() {
-            "advisory.unknown".to_string()
-        } else {
-            id
-        },
+        code: super::advisory_code(id),
         message,
         severity,
         path: path.to_string(),
