@@ -44,7 +44,8 @@ pub struct FixPlan {
 
 impl FixPlan {
     /// True when the plan would neither write nor report anything.
-    pub fn is_empty(&self) -> bool {
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
         self.files.is_empty() && self.changes.is_empty()
     }
 }
@@ -62,11 +63,12 @@ pub enum SkipReason {
 }
 
 impl SkipReason {
-    pub fn as_str(self) -> &'static str {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
         match self {
-            SkipReason::Forbidden => "forbidden",
-            SkipReason::Unparseable => "unparseable",
-            SkipReason::WriteFailed => "write failed",
+            Self::Forbidden => "forbidden",
+            Self::Unparseable => "unparseable",
+            Self::WriteFailed => "write failed",
         }
     }
 }
@@ -79,6 +81,7 @@ pub struct ApplyResult {
     pub blocked: Option<Blocked>,
 }
 
+#[must_use]
 pub fn plan_fixes(project: &Project, findings: &[Finding]) -> FixPlan {
     let mut by_file: BTreeMap<PathBuf, (ConfigFormat, Vec<ConfigEdit>)> = BTreeMap::new();
     let mut skipped = Vec::new();
@@ -229,12 +232,9 @@ fn write_inside_root(file: &Path, body: &str, root: &Path) -> Result<(), SkipRea
         return Err(SkipReason::WriteFailed);
     };
     let wrote = {
-        let mut handle = match dir.open_with(&tmp, OpenOptions::new().write(true)) {
-            Ok(handle) => handle,
-            Err(_) => {
-                let _ = dir.remove_file(&tmp);
-                return Err(SkipReason::WriteFailed);
-            }
+        let Ok(mut handle) = dir.open_with(&tmp, OpenOptions::new().write(true)) else {
+            let _ = dir.remove_file(&tmp);
+            return Err(SkipReason::WriteFailed);
         };
         handle.write_all(body.as_bytes()).is_ok()
     };
@@ -271,8 +271,7 @@ fn create_temp_sibling(dir: &Dir, relative: &Path) -> Option<PathBuf> {
         let nonce = COUNTER.fetch_add(1, Ordering::Relaxed);
         let stamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map(|d| d.subsec_nanos())
-            .unwrap_or(0);
+            .map_or(0, |d| d.subsec_nanos());
         let mut name = base.clone();
         name.push(format!(
             ".{}.{stamp:08x}{nonce:04x}.pkguard-tmp",
@@ -281,7 +280,8 @@ fn create_temp_sibling(dir: &Dir, relative: &Path) -> Option<PathBuf> {
         let candidate = relative.with_file_name(name);
         match dir.open_with(&candidate, OpenOptions::new().write(true).create_new(true)) {
             Ok(_) => return Some(candidate),
-            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
+            // Name collision: fall through to the next candidate.
+            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {}
             Err(_) => return None,
         }
     }
@@ -344,16 +344,14 @@ fn resolve_path_inner(path: &Path, depth: u8) -> Option<PathBuf> {
         let dest = if target.is_absolute() {
             target
         } else {
-            path.parent().unwrap_or(Path::new(".")).join(target)
+            path.parent().unwrap_or_else(|| Path::new(".")).join(target)
         };
         return resolve_path_inner(&dest, depth + 1);
     }
     let mut cur = path.to_path_buf();
     let mut suffix = Vec::new();
     while !cur.exists()
-        && std::fs::symlink_metadata(&cur)
-            .map(|m| !m.file_type().is_symlink())
-            .unwrap_or(true)
+        && std::fs::symlink_metadata(&cur).map_or(true, |m| !m.file_type().is_symlink())
     {
         match cur.file_name() {
             Some(name) => {
@@ -446,7 +444,7 @@ fn current_display(format: ConfigFormat, raw: &str, key: &str) -> String {
             .cloned()
             .unwrap_or_else(|| UNSET.to_string()),
         ConfigFormat::Yaml | ConfigFormat::Toml | ConfigFormat::Json => {
-            walk_dotted(parse_structured(format, raw), key)
+            walk_dotted(&parse_structured(format, raw), key)
         }
     }
 }
@@ -469,8 +467,8 @@ fn parse_structured(format: ConfigFormat, raw: &str) -> serde_json::Value {
     }
 }
 
-fn walk_dotted(value: serde_json::Value, key: &str) -> String {
-    let mut current = &value;
+fn walk_dotted(value: &serde_json::Value, key: &str) -> String {
+    let mut current = value;
     for part in key.split('.') {
         current = match current.get(part) {
             Some(child) => child,

@@ -6,7 +6,20 @@ members = ["crates/pkguard-core", "crates/pkguard"]
 version = "1.1.0"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/jackmcpickle/security-audit-tool"
+repository = "https://github.com/jackmcpickle/pkguard"
+
+# Lints live here, not only in a CI command line, so a bare `cargo clippy`
+# gives the same answer locally as it does in CI.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+# priority = -1 lets the individual entries below override the group.
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+# Rewrites a readable `match` on an Option into map_or/map_or_else. In the
+# settings checks these matches read as tables; the closure form is worse.
+option_if_let_else = "allow"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -15,7 +28,6 @@ serde_yaml = "0.9"
 toml = "0.8"
 toml_edit = "0.22"
 thiserror = "2"
-anyhow = "1"
 semver = "1"
 sha2 = "0.10"
 hex = "0.4"

@@ -45,6 +45,10 @@ pub struct ScanSummary {
     pub exit: ExitCode,
 }
 
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "one field per CLI flag; the mapping from `ScanArgs` is deliberately flat"
+)]
 #[derive(Debug, Clone)]
 pub struct ScanOptions {
     pub preset_override: Option<Preset>,
@@ -76,10 +80,9 @@ impl Default for ScanOptions {
     }
 }
 
+#[must_use]
 pub fn default_jobs() -> usize {
-    std::thread::available_parallelism()
-        .map(|n| (n.get() * 2).min(16))
-        .unwrap_or(8)
+    std::thread::available_parallelism().map_or(8, |n| (n.get() * 2).min(16))
 }
 
 fn read_config(path: &Path) -> Option<ConfigFile> {
@@ -192,29 +195,26 @@ async fn audit_project(
                 });
                 continue;
             }
-            match run_manager_advisories(&project.root, manager, runner, cache, &advisory_opts)
-                .await
+            if let Ok(outcome) =
+                run_manager_advisories(&project.root, manager, runner, cache, &advisory_opts).await
             {
-                Ok(outcome) => {
-                    findings.extend(outcome.findings.clone());
-                    let _ = events.send(AuditEvent::ManagerFinished {
-                        root: project.root.clone(),
-                        manager: manager.manager,
-                        findings: outcome.findings,
-                        from_cache: outcome.from_cache,
-                        incomplete: false,
-                    });
-                }
-                Err(_) => {
-                    incomplete = true;
-                    let _ = events.send(AuditEvent::ManagerFinished {
-                        root: project.root.clone(),
-                        manager: manager.manager,
-                        findings: Vec::new(),
-                        from_cache: false,
-                        incomplete: true,
-                    });
-                }
+                findings.extend(outcome.findings.clone());
+                let _ = events.send(AuditEvent::ManagerFinished {
+                    root: project.root.clone(),
+                    manager: manager.manager,
+                    findings: outcome.findings,
+                    from_cache: outcome.from_cache,
+                    incomplete: false,
+                });
+            } else {
+                incomplete = true;
+                let _ = events.send(AuditEvent::ManagerFinished {
+                    root: project.root.clone(),
+                    manager: manager.manager,
+                    findings: Vec::new(),
+                    from_cache: false,
+                    incomplete: true,
+                });
             }
         }
     }
@@ -257,6 +257,11 @@ pub fn scan(
 
 /// `scan` against a chosen clock. Only uv's `exclude-newer` date check and the
 /// advisory cache TTL consult it.
+///
+/// # Panics
+///
+/// Panics if the internal concurrency semaphore is closed, which cannot happen
+/// while the scan task holds it.
 pub fn scan_with_clock(
     root: PathBuf,
     runner: Arc<dyn CommandRunner>,

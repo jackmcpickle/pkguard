@@ -37,6 +37,7 @@ fn requirement(manager: Manager) -> String {
 ///
 /// Takes the parsed pin rather than a pre-computed boolean, so the pin rule and
 /// the message it produces stay in one place.
+#[must_use]
 pub fn check(
     required: bool,
     pin: Option<&PackageManagerPin>,

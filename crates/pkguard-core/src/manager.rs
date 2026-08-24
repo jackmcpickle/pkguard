@@ -2,9 +2,11 @@ use crate::fix::ConfigFormat;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-/// The single registry of package-manager knowledge. Every capability is an
-/// exhaustive `match`, so adding a manager without wiring a consumer is a
-/// compile error (the TS version kept three hand-synced registries).
+/// The single registry of package-manager knowledge.
+///
+/// Every capability is an exhaustive `match`, so adding a manager without
+/// wiring a consumer is a compile error (the TS version kept three hand-synced
+/// registries).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Manager {
@@ -32,7 +34,7 @@ pub struct PackageManagerPin {
 }
 
 fn int_prefix(part: &str) -> Option<i64> {
-    let digits: String = part.chars().take_while(|c| c.is_ascii_digit()).collect();
+    let digits: String = part.chars().take_while(char::is_ascii_digit).collect();
     if digits.is_empty() {
         None
     } else {
@@ -57,17 +59,20 @@ impl PackageManagerPin {
     }
 
     /// True when this pin is at least `major.minor`.
-    pub fn at_least(&self, major: i64, minor: i64) -> bool {
+    #[must_use]
+    pub const fn at_least(&self, major: i64, minor: i64) -> bool {
         self.major > major || (self.major == major && self.minor >= minor)
     }
 
     /// Unpinned (or a pin for a different manager) is treated as a current
     /// release — `pm.unpinned` already covers the missing pin itself.
+    #[must_use]
     pub fn at_least_or_unknown(pin: Option<&Self>, major: i64, minor: i64) -> bool {
         pin.is_none_or(|p| p.at_least(major, minor))
     }
 
-    pub fn at_least_patch(&self, major: i64, minor: i64, patch: i64) -> bool {
+    #[must_use]
+    pub const fn at_least_patch(&self, major: i64, minor: i64, patch: i64) -> bool {
         if self.major != major {
             return self.major > major;
         }
@@ -77,6 +82,7 @@ impl PackageManagerPin {
         self.patch >= patch
     }
 
+    #[must_use]
     pub fn at_least_patch_or_unknown(
         pin: Option<&Self>,
         major: i64,
@@ -95,105 +101,113 @@ impl PackageManagerPin {
             .and_then(Self::parse)
     }
 
+    #[must_use]
     pub fn manager(&self) -> Option<Manager> {
         Manager::from_name(&self.name)
     }
 }
 
 impl Manager {
-    pub const ALL: [Manager; 11] = [
-        Manager::Npm,
-        Manager::Pnpm,
-        Manager::Yarn,
-        Manager::Bun,
-        Manager::Uv,
-        Manager::Cargo,
-        Manager::Composer,
-        Manager::Poetry,
-        Manager::Pip,
-        Manager::Pipenv,
-        Manager::Bundler,
+    pub const ALL: [Self; 11] = [
+        Self::Npm,
+        Self::Pnpm,
+        Self::Yarn,
+        Self::Bun,
+        Self::Uv,
+        Self::Cargo,
+        Self::Composer,
+        Self::Poetry,
+        Self::Pip,
+        Self::Pipenv,
+        Self::Bundler,
     ];
 
-    pub fn name(self) -> &'static str {
+    #[must_use]
+    pub const fn name(self) -> &'static str {
         match self {
-            Manager::Npm => "npm",
-            Manager::Pnpm => "pnpm",
-            Manager::Yarn => "yarn",
-            Manager::Bun => "bun",
-            Manager::Uv => "uv",
-            Manager::Cargo => "cargo",
-            Manager::Composer => "composer",
-            Manager::Poetry => "poetry",
-            Manager::Pip => "pip",
-            Manager::Pipenv => "pipenv",
-            Manager::Bundler => "bundler",
+            Self::Npm => "npm",
+            Self::Pnpm => "pnpm",
+            Self::Yarn => "yarn",
+            Self::Bun => "bun",
+            Self::Uv => "uv",
+            Self::Cargo => "cargo",
+            Self::Composer => "composer",
+            Self::Poetry => "poetry",
+            Self::Pip => "pip",
+            Self::Pipenv => "pipenv",
+            Self::Bundler => "bundler",
         }
     }
 
-    pub fn from_name(name: &str) -> Option<Manager> {
-        Manager::ALL.into_iter().find(|m| m.name() == name)
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|m| m.name() == name)
     }
 
     /// poetry / pip / pipenv only ever produce a `python.not-uv` finding.
-    pub fn is_legacy_python(self) -> bool {
-        matches!(self, Manager::Poetry | Manager::Pip | Manager::Pipenv)
+    #[must_use]
+    pub const fn is_legacy_python(self) -> bool {
+        matches!(self, Self::Poetry | Self::Pip | Self::Pipenv)
     }
 
     /// Binary checked at preflight; for bundler this is the audit tool itself.
-    pub fn binary(self) -> Option<&'static str> {
+    #[must_use]
+    pub const fn binary(self) -> Option<&'static str> {
         match self {
-            Manager::Npm => Some("npm"),
-            Manager::Pnpm => Some("pnpm"),
-            Manager::Yarn => Some("yarn"),
-            Manager::Bun => Some("bun"),
-            Manager::Uv => Some("uv"),
-            Manager::Cargo => Some("cargo"),
-            Manager::Composer => Some("composer"),
-            Manager::Bundler => Some("bundle-audit"),
-            Manager::Poetry | Manager::Pip | Manager::Pipenv => None,
+            Self::Npm => Some("npm"),
+            Self::Pnpm => Some("pnpm"),
+            Self::Yarn => Some("yarn"),
+            Self::Bun => Some("bun"),
+            Self::Uv => Some("uv"),
+            Self::Cargo => Some("cargo"),
+            Self::Composer => Some("composer"),
+            Self::Bundler => Some("bundle-audit"),
+            Self::Poetry | Self::Pip | Self::Pipenv => None,
         }
     }
 
+    #[must_use]
     pub fn audit_argv(self) -> Option<Vec<&'static str>> {
         match self {
-            Manager::Npm => Some(vec!["npm", "audit", "--json"]),
-            Manager::Pnpm => Some(vec!["pnpm", "audit", "--json"]),
-            Manager::Yarn => Some(vec!["yarn", "npm", "audit", "--json"]),
-            Manager::Bun => Some(vec!["bun", "audit", "--json"]),
-            Manager::Uv => Some(vec!["uv", "audit", "--output-format", "json", "--frozen"]),
-            Manager::Cargo => Some(vec!["cargo", "audit", "--json"]),
-            Manager::Bundler => Some(vec!["bundle-audit", "check", "--format", "json"]),
-            Manager::Composer => Some(vec!["composer", "audit", "--format", "json", "--locked"]),
-            Manager::Poetry | Manager::Pip | Manager::Pipenv => None,
+            Self::Npm => Some(vec!["npm", "audit", "--json"]),
+            Self::Pnpm => Some(vec!["pnpm", "audit", "--json"]),
+            Self::Yarn => Some(vec!["yarn", "npm", "audit", "--json"]),
+            Self::Bun => Some(vec!["bun", "audit", "--json"]),
+            Self::Uv => Some(vec!["uv", "audit", "--output-format", "json", "--frozen"]),
+            Self::Cargo => Some(vec!["cargo", "audit", "--json"]),
+            Self::Bundler => Some(vec!["bundle-audit", "check", "--format", "json"]),
+            Self::Composer => Some(vec!["composer", "audit", "--format", "json", "--locked"]),
+            Self::Poetry | Self::Pip | Self::Pipenv => None,
         }
     }
 
-    pub fn lockfile_names(self) -> &'static [&'static str] {
+    #[must_use]
+    pub const fn lockfile_names(self) -> &'static [&'static str] {
         match self {
-            Manager::Npm => &["package-lock.json"],
-            Manager::Pnpm => &["pnpm-lock.yaml"],
-            Manager::Yarn => &["yarn.lock"],
-            Manager::Bun => &["bun.lock", "bun.lockb"],
-            Manager::Uv => &["uv.lock"],
-            Manager::Cargo => &["Cargo.lock"],
-            Manager::Composer => &["composer.lock"],
-            Manager::Bundler => &["Gemfile.lock"],
-            Manager::Poetry | Manager::Pip | Manager::Pipenv => &[],
+            Self::Npm => &["package-lock.json"],
+            Self::Pnpm => &["pnpm-lock.yaml"],
+            Self::Yarn => &["yarn.lock"],
+            Self::Bun => &["bun.lock", "bun.lockb"],
+            Self::Uv => &["uv.lock"],
+            Self::Cargo => &["Cargo.lock"],
+            Self::Composer => &["composer.lock"],
+            Self::Bundler => &["Gemfile.lock"],
+            Self::Poetry | Self::Pip | Self::Pipenv => &[],
         }
     }
 
-    pub fn config_names(self) -> &'static [&'static str] {
+    #[must_use]
+    pub const fn config_names(self) -> &'static [&'static str] {
         match self {
-            Manager::Npm => &[".npmrc"],
-            Manager::Pnpm => &["pnpm-workspace.yaml"],
-            Manager::Yarn => &[".yarnrc.yml"],
-            Manager::Bun => &["bunfig.toml"],
-            Manager::Uv => &["uv.toml", "pyproject.toml"],
-            Manager::Cargo => &[".cargo/config.toml", ".cargo/config"],
-            Manager::Composer => &["composer.json"],
-            Manager::Bundler => &[".bundle/config"],
-            Manager::Poetry | Manager::Pip | Manager::Pipenv => &[],
+            Self::Npm => &[".npmrc"],
+            Self::Pnpm => &["pnpm-workspace.yaml"],
+            Self::Yarn => &[".yarnrc.yml"],
+            Self::Bun => &["bunfig.toml"],
+            Self::Uv => &["uv.toml", "pyproject.toml"],
+            Self::Cargo => &[".cargo/config.toml", ".cargo/config"],
+            Self::Composer => &["composer.json"],
+            Self::Bundler => &[".bundle/config"],
+            Self::Poetry | Self::Pip | Self::Pipenv => &[],
         }
     }
 
@@ -202,41 +216,45 @@ impl Manager {
     /// `settings::audit_manager_settings` and `advisories::parse_output`;
     /// `dump-catalog` reads it so the docs site cannot claim support the
     /// binary does not have.
-    pub fn ported(self) -> bool {
+    #[must_use]
+    pub const fn ported(self) -> bool {
         matches!(
             self,
-            Manager::Npm
-                | Manager::Pnpm
-                | Manager::Yarn
-                | Manager::Bun
-                | Manager::Uv
-                | Manager::Cargo
-                | Manager::Composer
-                | Manager::Bundler
+            Self::Npm
+                | Self::Pnpm
+                | Self::Yarn
+                | Self::Bun
+                | Self::Uv
+                | Self::Cargo
+                | Self::Composer
+                | Self::Bundler
         )
     }
 
     /// The config format `--fix` writes for this manager. Exactly one format
     /// per manager, stated here and nowhere else, so no check module has to
     /// decide (or re-decide) that e.g. yarn is YAML.
-    pub fn config_format(self) -> Option<ConfigFormat> {
+    #[must_use]
+    pub const fn config_format(self) -> Option<ConfigFormat> {
         match self {
-            Manager::Npm => Some(ConfigFormat::Npmrc),
-            Manager::Pnpm | Manager::Yarn => Some(ConfigFormat::Yaml),
-            Manager::Bun | Manager::Uv | Manager::Cargo => Some(ConfigFormat::Toml),
-            Manager::Composer => Some(ConfigFormat::Json),
-            Manager::Bundler => Some(ConfigFormat::BundleConfig),
-            Manager::Poetry | Manager::Pip | Manager::Pipenv => None,
+            Self::Npm => Some(ConfigFormat::Npmrc),
+            Self::Pnpm | Self::Yarn => Some(ConfigFormat::Yaml),
+            Self::Bun | Self::Uv | Self::Cargo => Some(ConfigFormat::Toml),
+            Self::Composer => Some(ConfigFormat::Json),
+            Self::Bundler => Some(ConfigFormat::BundleConfig),
+            Self::Poetry | Self::Pip | Self::Pipenv => None,
         }
     }
 
     /// Where this manager's config sits when discovery found none.
+    #[must_use]
     pub fn default_config_path(self, project_root: &Path) -> Option<PathBuf> {
         self.write_config_name().map(|name| project_root.join(name))
     }
 
     /// Where this manager's lockfile sits when discovery found none: the first
     /// accepted name.
+    #[must_use]
     pub fn default_lockfile_path(self, project_root: &Path) -> Option<PathBuf> {
         self.lockfile_names()
             .first()
@@ -245,6 +263,7 @@ impl Manager {
 
     /// Names every lockfile this manager accepts, so the message cannot drift
     /// from `lockfile_names`.
+    #[must_use]
     pub fn lockfile_required_message(self) -> Option<String> {
         let names = self.lockfile_names();
         if names.is_empty() {
@@ -253,18 +272,24 @@ impl Manager {
         Some(format!("{} is required", names.join(" or ")))
     }
 
-    pub fn write_config_name(self) -> Option<&'static str> {
+    #[must_use]
+    #[expect(
+        clippy::match_same_arms,
+        reason = "uv is None for a different reason than the legacy Python three; \
+                  merging the arms would lose that distinction"
+    )]
+    pub const fn write_config_name(self) -> Option<&'static str> {
         match self {
-            Manager::Npm => Some(".npmrc"),
-            Manager::Pnpm => Some("pnpm-workspace.yaml"),
-            Manager::Yarn => Some(".yarnrc.yml"),
-            Manager::Bun => Some("bunfig.toml"),
-            Manager::Cargo => Some(".cargo/config.toml"),
-            Manager::Composer => Some("composer.json"),
-            Manager::Bundler => Some(".bundle/config"),
+            Self::Npm => Some(".npmrc"),
+            Self::Pnpm => Some("pnpm-workspace.yaml"),
+            Self::Yarn => Some(".yarnrc.yml"),
+            Self::Bun => Some("bunfig.toml"),
+            Self::Cargo => Some(".cargo/config.toml"),
+            Self::Composer => Some("composer.json"),
+            Self::Bundler => Some(".bundle/config"),
             // uv's write target depends on which config exists; see write_target
-            Manager::Uv => None,
-            Manager::Poetry | Manager::Pip | Manager::Pipenv => None,
+            Self::Uv => None,
+            Self::Poetry | Self::Pip | Self::Pipenv => None,
         }
     }
 
@@ -274,10 +299,11 @@ impl Manager {
     ///
     /// The format half always comes from `config_format`, so the path and the
     /// format cannot disagree.
+    #[must_use]
     pub fn write_target(self, project_root: &Path) -> Option<(PathBuf, ConfigFormat)> {
         let format = self.config_format()?;
         let path = match self {
-            Manager::Uv => {
+            Self::Uv => {
                 let uv_toml = project_root.join("uv.toml");
                 if uv_toml.is_file() {
                     uv_toml
@@ -292,6 +318,7 @@ impl Manager {
 
     /// Dotted-key prefix for uv settings. `pyproject.toml` stores them under
     /// `[tool.uv]`; `uv.toml` is a bare uv config.
+    #[must_use]
     pub fn uv_key_prefix(write_file: &Path) -> &'static str {
         if write_file
             .file_name()

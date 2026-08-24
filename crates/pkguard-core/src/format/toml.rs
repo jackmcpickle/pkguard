@@ -72,6 +72,11 @@ fn unset_path(table: &mut dyn TableLike, key: &str) {
     }
 }
 
+/// Apply edits to a TOML config, preserving comments and key order.
+///
+/// # Errors
+///
+/// Returns [`EditError::Unparseable`] if `raw` is not valid TOML.
 pub fn edit(raw: &str, edits: &[ConfigEdit]) -> Result<String, EditError> {
     let mut doc = raw
         .parse::<DocumentMut>()
@@ -148,7 +153,7 @@ mod tests {
         let out = edit(
             "",
             &[
-                ConfigEdit::set("install.minimumReleaseAge", 604800i64),
+                ConfigEdit::set("install.minimumReleaseAge", 604_800_i64),
                 ConfigEdit::set("source.allowed", ConfigValue::List(vec!["registry".into()])),
             ],
         )
@@ -156,7 +161,7 @@ mod tests {
         let parsed: toml::Value = toml::from_str(&out).unwrap();
         assert_eq!(
             parsed["install"]["minimumReleaseAge"].as_integer(),
-            Some(604800)
+            Some(604_800)
         );
         assert_eq!(parsed["source"]["allowed"].as_array().unwrap().len(), 1);
     }

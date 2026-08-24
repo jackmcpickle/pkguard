@@ -12,16 +12,17 @@ fn cache_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("PKGUARD_CACHE_DIR") {
         return PathBuf::from(dir);
     }
-    directories::ProjectDirs::from("dev", "pkguard", "pkguard")
-        .map(|dirs| dirs.cache_dir().to_path_buf())
-        .unwrap_or_else(|| std::env::temp_dir().join("pkguard-cache"))
+    directories::ProjectDirs::from("dev", "pkguard", "pkguard").map_or_else(
+        || std::env::temp_dir().join("pkguard-cache"),
+        |dirs| dirs.cache_dir().to_path_buf(),
+    )
 }
 
 fn user_config_path() -> Option<PathBuf> {
     crate::paths::user_config_if_present()
 }
 
-fn preset_of(arg: PresetArg) -> Preset {
+const fn preset_of(arg: PresetArg) -> Preset {
     match arg {
         PresetArg::Relaxed => Preset::Relaxed,
         PresetArg::Standard => Preset::Standard,
@@ -33,6 +34,11 @@ fn color_enabled() -> bool {
     std::env::var_os("NO_COLOR").is_none() && std::io::stdout().is_terminal()
 }
 
+#[expect(
+    clippy::future_not_send,
+    reason = "holds a Box<dyn Reporter> across an await; awaited directly from \
+              main and never spawned, so Send is not required"
+)]
 pub async fn run(args: ScanArgs) -> i32 {
     let root = args.path.clone().unwrap_or_else(|| PathBuf::from("."));
     let opts = ScanOptions {

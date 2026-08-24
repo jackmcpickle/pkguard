@@ -5,7 +5,9 @@ use crate::format::yaml::{self, Yaml};
 use crate::manager::{Manager, PackageManagerPin};
 use std::path::Path;
 
-const TRUST_POLICY_IGNORE_AFTER_MINUTES: f64 = 90.0 * 24.0 * 60.0;
+/// 90 days. Held as an integer so both the comparison and the written value
+/// derive from it losslessly.
+const TRUST_POLICY_IGNORE_AFTER_MINUTES: i32 = 90 * 24 * 60;
 
 pub fn pnpm_checks(yaml: &Yaml, yaml_path: &Path, pin: Option<&PackageManagerPin>) -> Vec<Finding> {
     let mut findings = Vec::new();
@@ -15,7 +17,7 @@ pub fn pnpm_checks(yaml: &Yaml, yaml_path: &Path, pin: Option<&PackageManagerPin
             &["trustPolicyIgnoreAfter", "trust-policy-ignore-after"],
         )
         .and_then(yaml::as_f64);
-        if !minutes.is_some_and(|m| m >= TRUST_POLICY_IGNORE_AFTER_MINUTES) {
+        if !minutes.is_some_and(|m| m >= f64::from(TRUST_POLICY_IGNORE_AFTER_MINUTES)) {
             findings.push(fixable_finding(
                 "provenance.ignore-after",
                 format!(
@@ -28,7 +30,7 @@ pub fn pnpm_checks(yaml: &Yaml, yaml_path: &Path, pin: Option<&PackageManagerPin
                     yaml_path,
                     vec![ConfigEdit::set(
                         "trustPolicyIgnoreAfter",
-                        TRUST_POLICY_IGNORE_AFTER_MINUTES as i64,
+                        i64::from(TRUST_POLICY_IGNORE_AFTER_MINUTES),
                     )],
                 ),
             ));

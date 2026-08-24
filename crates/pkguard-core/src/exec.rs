@@ -27,11 +27,11 @@ pub struct TokioRunner;
 #[async_trait]
 impl CommandRunner for TokioRunner {
     async fn run(&self, argv: &[String], cwd: &Path) -> std::io::Result<CommandOutput> {
-        let (program, args) = argv
+        let (program, rest) = argv
             .split_first()
             .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "empty argv"))?;
         let output = tokio::process::Command::new(program)
-            .args(args)
+            .args(rest)
             .current_dir(cwd)
             .stdin(Stdio::null())
             .output()
@@ -51,9 +51,11 @@ impl CommandRunner for TokioRunner {
     }
 }
 
-/// Test double: replays canned output keyed by argv; unknown argv errors like
-/// a missing binary would. Call history is shared across clones so a scan
-/// can take ownership while the test still inspects `run` calls.
+/// Test double: replays canned output keyed by argv.
+///
+/// Unknown argv errors like a missing binary would. Call history is shared
+/// across clones so a scan can take ownership while the test still inspects
+/// `run` calls.
 #[derive(Clone, Default)]
 pub struct CannedRunner {
     responses: Arc<Mutex<HashMap<Vec<String>, CommandOutput>>>,
@@ -61,18 +63,33 @@ pub struct CannedRunner {
 }
 
 impl CannedRunner {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Register the output to replay for `argv`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the response map is poisoned by another thread panicking
+    /// while holding the lock.
+    #[must_use]
     pub fn with(self, argv: &[&str], output: CommandOutput) -> Self {
-        self.responses
-            .lock()
-            .unwrap()
-            .insert(argv.iter().map(|s| s.to_string()).collect(), output);
+        self.responses.lock().unwrap().insert(
+            argv.iter().map(std::string::ToString::to_string).collect(),
+            output,
+        );
         self
     }
 
+    /// Every argv `run` was called with, in order.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the call log is poisoned by another thread panicking while
+    /// holding the lock.
+    #[must_use]
     pub fn run_calls(&self) -> Vec<Vec<String>> {
         self.calls.lock().unwrap().clone()
     }

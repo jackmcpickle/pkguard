@@ -11,7 +11,6 @@ path = "src/main.rs"
 
 [dependencies]
 pkguard-core = { path = "../pkguard-core" }
-anyhow = { workspace = true }
 directories = { workspace = true }
 clap = { workspace = true }
 tokio = { workspace = true }
@@ -27,3 +26,6 @@ insta = { workspace = true }
 assert_cmd = { workspace = true }
 predicates = { workspace = true }
 tempfile = { workspace = true }
+
+[lints]
+workspace = true

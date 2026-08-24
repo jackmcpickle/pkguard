@@ -39,6 +39,7 @@ fn is_structural(trimmed: &str) -> bool {
     trimmed.is_empty() || trimmed == "---" || trimmed.starts_with('#')
 }
 
+#[must_use]
 pub fn parse(raw: &str) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     for line in raw.lines() {
@@ -76,6 +77,7 @@ fn resolve(edits: &[ConfigEdit]) -> (Vec<(String, String)>, BTreeSet<String>) {
     (updates, removed)
 }
 
+#[must_use]
 pub fn edit(raw: &str, edits: &[ConfigEdit]) -> String {
     let (updates, removed) = resolve(edits);
     let lookup: BTreeMap<&str, &str> = updates

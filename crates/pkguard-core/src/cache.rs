@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 pub const DEFAULT_TTL_SECS: u64 = 24 * 60 * 60;
 
+#[must_use]
 pub fn lockfile_digest(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
@@ -28,6 +29,7 @@ pub struct AdvisoryCache {
 }
 
 impl AdvisoryCache {
+    #[must_use]
     pub fn new(dir: PathBuf) -> Self {
         Self {
             dir,
@@ -36,11 +38,13 @@ impl AdvisoryCache {
         }
     }
 
-    pub fn with_ttl(mut self, ttl_secs: u64) -> Self {
+    #[must_use]
+    pub const fn with_ttl(mut self, ttl_secs: u64) -> Self {
         self.ttl_secs = ttl_secs;
         self
     }
 
+    #[must_use]
     pub fn with_clock(mut self, clock: Arc<dyn Clock>) -> Self {
         self.clock = clock;
         self
@@ -50,6 +54,7 @@ impl AdvisoryCache {
         self.dir.join(format!("{key}.json"))
     }
 
+    #[must_use]
     pub fn get(&self, key: &str) -> Option<Vec<Finding>> {
         let raw = std::fs::read_to_string(self.entry_path(key)).ok()?;
         let envelope: Envelope = serde_json::from_str(&raw).ok()?;
@@ -59,6 +64,12 @@ impl AdvisoryCache {
         Some(envelope.findings)
     }
 
+    /// Store advisories under `key`, stamped with the current time.
+    ///
+    /// # Errors
+    ///
+    /// Returns the underlying I/O error if the cache directory cannot be
+    /// created or the entry cannot be written.
     pub fn put(&self, key: &str, findings: &[Finding]) -> std::io::Result<()> {
         std::fs::create_dir_all(&self.dir)?;
         let envelope = Envelope {

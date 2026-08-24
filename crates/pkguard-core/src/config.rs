@@ -13,23 +13,24 @@ pub struct PresetDefaults {
 }
 
 impl PresetDefaults {
-    pub fn for_preset(preset: Preset) -> Self {
+    #[must_use]
+    pub const fn for_preset(preset: Preset) -> Self {
         match preset {
-            Preset::Relaxed => PresetDefaults {
+            Preset::Relaxed => Self {
                 audit_level: Severity::Critical,
                 ignore_scripts: false,
                 min_release_age_days: 0,
                 require_lockfile: true,
                 require_pm_pin: false,
             },
-            Preset::Standard => PresetDefaults {
+            Preset::Standard => Self {
                 audit_level: Severity::High,
                 ignore_scripts: true,
                 min_release_age_days: 1,
                 require_lockfile: true,
                 require_pm_pin: true,
             },
-            Preset::Strict => PresetDefaults {
+            Preset::Strict => Self {
                 audit_level: Severity::Moderate,
                 ignore_scripts: true,
                 min_release_age_days: 14,
@@ -71,6 +72,12 @@ pub struct ConfigFile {
     pub manager: BTreeMap<String, PolicyOverrides>,
 }
 
+/// Parse a `pkguard.toml` config file.
+///
+/// # Errors
+///
+/// Returns the `toml` deserialization error if `text` is not valid TOML or
+/// does not match the config schema.
 pub fn parse_config(text: &str) -> Result<ConfigFile, toml::de::Error> {
     toml::from_str(text)
 }
@@ -119,6 +126,11 @@ pub fn layer_configs<'a>(layers: impl IntoIterator<Item = &'a ConfigFile>) -> Co
     out
 }
 
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "one field per independently configurable setting; grouping them \
+              into enums would decouple this from the config schema it mirrors"
+)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedSettings {
     pub preset: Preset,
@@ -134,6 +146,7 @@ pub struct ResolvedSettings {
 }
 
 /// Preset defaults < [policy] overrides < [manager.<name>] table.
+#[must_use]
 pub fn resolve_settings(cfg: &ConfigFile, manager: &str) -> ResolvedSettings {
     let preset = cfg.preset.unwrap_or(Preset::Standard);
     let defaults = PresetDefaults::for_preset(preset);

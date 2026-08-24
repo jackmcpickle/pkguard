@@ -5,13 +5,10 @@ use std::path::PathBuf;
 
 const STARTER: &str = include_str!("config.default.toml");
 
-pub fn run(args: InitArgs) -> i32 {
-    let target = match resolve_target(args.local) {
-        Some(path) => path,
-        None => {
-            let _ = writeln!(io::stderr(), "could not resolve the user config directory");
-            return 2;
-        }
+pub fn run(args: &InitArgs) -> i32 {
+    let Some(target) = resolve_target(args.local) else {
+        let _ = writeln!(io::stderr(), "could not resolve the user config directory");
+        return 2;
     };
     if target.exists() && !args.force {
         let _ = writeln!(

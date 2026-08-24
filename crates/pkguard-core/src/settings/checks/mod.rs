@@ -23,6 +23,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 /// Severity for "you're relying on a safe default instead of pinning it".
+#[must_use]
 pub fn default_reliance_severity(preset: Preset) -> Severity {
     if preset == Preset::Strict {
         Severity::Moderate
@@ -32,6 +33,7 @@ pub fn default_reliance_severity(preset: Preset) -> Severity {
 }
 
 /// Severity for missing pins (registry, packageManager).
+#[must_use]
 pub fn pin_severity(preset: Preset) -> Severity {
     if preset == Preset::Strict {
         Severity::High
@@ -85,8 +87,11 @@ pub fn fixable_finding(
 /// `Manager::config_format`, so a check module states *which manager* it is
 /// checking — never which format that manager happens to use.
 ///
+/// # Panics
+///
 /// Panics only for managers that cannot be written (`is_legacy_python`), which
 /// never reach a check module.
+#[must_use]
 pub fn fix_for(manager: Manager, file: &Path, edits: Vec<ConfigEdit>) -> SettingsFix {
     let format = manager
         .config_format()
@@ -201,6 +206,7 @@ fn role_path(project_root: &Path, manager: &DetectedManager) -> std::path::PathB
         .unwrap_or_else(|| project_root.to_path_buf())
 }
 
+#[must_use]
 pub fn leftover_finding(project_root: &Path, manager: &DetectedManager) -> Finding {
     lockfile::leftover(&role_path(project_root, manager), manager.manager)
 }
@@ -249,6 +255,7 @@ fn multiple_pm_finding(
 
 /// Cross-manager findings from the TS `auditSettings` entry: leftover yarn
 /// next to pnpm still counts as two node managers.
+#[must_use]
 pub fn multiple_pm_findings(project: &Project) -> Vec<Finding> {
     [
         multiple_pm_finding(project, "pm.multiple-node", "node", &NODE_MANAGERS),
@@ -259,6 +266,7 @@ pub fn multiple_pm_findings(project: &Project) -> Vec<Finding> {
     .collect()
 }
 
+#[must_use]
 pub fn unsupported_finding(project_root: &Path, manager: &DetectedManager) -> Finding {
     lockfile::unsupported(&role_path(project_root, manager), manager.manager)
 }
@@ -287,8 +295,7 @@ pub fn pnpm_settings(
 ) -> Vec<Finding> {
     let yaml_path = config_path_for(project_root, manager);
     let yaml_value = std::fs::read_to_string(&yaml_path)
-        .map(|raw| yaml::parse(&raw))
-        .unwrap_or_else(|_| yaml::parse(""));
+        .map_or_else(|_| yaml::parse(""), |raw| yaml::parse(&raw));
     let pin = PackageManagerPin::from_manifest(project_root).filter(|p| p.name == "pnpm");
     let uses_allow_builds = PackageManagerPin::at_least_or_unknown(pin.as_ref(), 11, 0);
     let preset = settings.preset;
@@ -355,7 +362,7 @@ fn read_toml(path: &Path) -> toml::Value {
     std::fs::read_to_string(path)
         .ok()
         .and_then(|raw| raw.parse().ok())
-        .unwrap_or(toml::Value::Table(toml::map::Map::new()))
+        .unwrap_or_else(|| toml::Value::Table(toml::map::Map::new()))
 }
 
 fn read_uv_config(project_root: &Path) -> toml::Value {
@@ -419,6 +426,10 @@ fn json_bool(value: Option<&serde_json::Value>, fallback: bool) -> bool {
 ///
 /// Named fields rather than a tuple: these are eight adjacent booleans, and
 /// positional destructuring let any two of them be swapped silently.
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "the eight booleans are the point; see the doc comment above"
+)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ComposerSecurity {
     pub allow_plugins_all: bool,
@@ -457,8 +468,7 @@ fn composer_security(manifest: &serde_json::Value) -> ComposerSecurity {
     let malware_block = policy
         .and_then(serde_json::Value::as_object)
         .and_then(|p| p.get("malware"))
-        .map(|m| json_bool(m.get("block"), true))
-        .unwrap_or(true);
+        .is_none_or(|m| json_bool(m.get("block"), true));
     let mut http_repos = Vec::new();
     if let Some(repos) = manifest.get("repositories") {
         let entries: Vec<&serde_json::Value> = match repos {
@@ -487,6 +497,7 @@ fn composer_security(manifest: &serde_json::Value) -> ComposerSecurity {
     }
 }
 
+#[must_use]
 pub fn python_not_uv(project_root: &Path, manager: Manager) -> Finding {
     Finding {
         kind: FindingKind::NotUsingUv,
@@ -510,8 +521,7 @@ pub fn yarn_settings(
 ) -> Vec<Finding> {
     let yarnrc_path = config_path_for(project_root, manager);
     let yarnrc = std::fs::read_to_string(&yarnrc_path)
-        .map(|raw| yaml::parse(&raw))
-        .unwrap_or_else(|_| yaml::parse(""));
+        .map_or_else(|_| yaml::parse(""), |raw| yaml::parse(&raw));
     let pin = PackageManagerPin::from_manifest(project_root).filter(|p| p.name == "yarn");
     let preset = settings.preset;
     let registry = yaml::get(&yarnrc, "npmRegistryServer")
@@ -607,8 +617,7 @@ pub fn uv_settings(
 ) -> Vec<Finding> {
     let config_path = Manager::Uv
         .write_target(project_root)
-        .map(|(path, _)| path)
-        .unwrap_or_else(|| project_root.join("pyproject.toml"));
+        .map_or_else(|| project_root.join("pyproject.toml"), |(path, _)| path);
     let key_prefix = Manager::uv_key_prefix(&config_path);
     let cfg = read_uv_config(project_root);
     let pin = PackageManagerPin::from_manifest(project_root).filter(|p| p.name == "uv");
@@ -688,8 +697,7 @@ pub fn cargo_settings(
     ));
     let write_path = Manager::Cargo
         .write_target(project_root)
-        .map(|(path, _)| path)
-        .unwrap_or(config_path);
+        .map_or(config_path, |(path, _)| path);
     findings.extend(min_age::cargo_check(settings, install, &write_path));
     findings
 }
@@ -760,8 +768,7 @@ pub fn bundler_settings(
 ) -> Vec<Finding> {
     let config_path = Manager::Bundler
         .write_target(project_root)
-        .map(|(path, _)| path)
-        .unwrap_or_else(|| project_root.join(".bundle/config"));
+        .map_or_else(|| project_root.join(".bundle/config"), |(path, _)| path);
     let raw = std::fs::read_to_string(&config_path).unwrap_or_default();
     let config = bundle_config::parse(&raw);
     let cooldown = config.get("BUNDLE_COOLDOWN").and_then(|v| v.parse().ok());

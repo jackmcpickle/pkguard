@@ -473,19 +473,16 @@ fn detect_pip(
     if uv_present {
         return None;
     }
-    let reqs: Vec<&String> = names
-        .iter()
-        .filter(|name| {
-            *name == "requirements.txt"
-                || name
-                    .strip_prefix("requirements-")
-                    .and_then(|rest| rest.strip_suffix(".txt"))
-                    .is_some_and(|middle| !middle.is_empty())
-        })
-        .collect();
+    let has_reqs = names.iter().any(|name| {
+        name == "requirements.txt"
+            || name
+                .strip_prefix("requirements-")
+                .and_then(|rest| rest.strip_suffix(".txt"))
+                .is_some_and(|middle| !middle.is_empty())
+    });
     let from_project =
         !poetry_present && !pipenv_present && !has_tool_table(dir, "uv") && has_project_table(dir);
-    if reqs.is_empty() && !from_project {
+    if !has_reqs && !from_project {
         return None;
     }
     Some(DetectedManager {

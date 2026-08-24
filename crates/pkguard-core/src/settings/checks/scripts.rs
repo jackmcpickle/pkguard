@@ -117,6 +117,7 @@ pub fn npm_checks(
     findings
 }
 
+#[must_use]
 pub fn pnpm_checks(
     settings: &ResolvedSettings,
     yaml: &Yaml,
@@ -194,6 +195,7 @@ fn pnpm_builds_findings(
     Vec::new()
 }
 
+#[must_use]
 pub fn yarn_check(
     settings: &ResolvedSettings,
     yarnrc: &Yaml,
@@ -288,6 +290,7 @@ pub fn bun_check(
     }
 }
 
+#[must_use]
 pub fn composer_check(
     settings: &ResolvedSettings,
     allow_plugins: Option<&serde_json::Value>,

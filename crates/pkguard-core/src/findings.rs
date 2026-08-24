@@ -11,13 +11,14 @@ pub enum Severity {
 }
 
 impl Severity {
-    pub fn as_str(self) -> &'static str {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
         match self {
-            Severity::Critical => "critical",
-            Severity::High => "high",
-            Severity::Moderate => "moderate",
-            Severity::Low => "low",
-            Severity::Info => "info",
+            Self::Critical => "critical",
+            Self::High => "high",
+            Self::Moderate => "moderate",
+            Self::Low => "low",
+            Self::Info => "info",
         }
     }
 }
@@ -42,11 +43,9 @@ pub enum FindingKind {
 }
 
 impl FindingKind {
-    pub fn is_advisory(self) -> bool {
-        matches!(
-            self,
-            FindingKind::Advisory | FindingKind::Deprecated | FindingKind::Quarantine
-        )
+    #[must_use]
+    pub const fn is_advisory(self) -> bool {
+        matches!(self, Self::Advisory | Self::Deprecated | Self::Quarantine)
     }
 }
 

@@ -7,10 +7,11 @@ use crate::findings::Finding;
 use crate::manager::Manager;
 use std::path::Path;
 
-/// Pure-file settings audit for one detected manager. Reads config files under
-/// the project root; never spawns anything.
-/// `clock` is only consulted by uv's `exclude-newer` date check, but it is
-/// taken here so the whole settings audit can be driven at a fixed instant.
+/// Pure-file settings audit for one detected manager.
+///
+/// Reads config files under the project root; never spawns anything. `clock`
+/// is only consulted by uv's `exclude-newer` date check, but it is taken here
+/// so the whole settings audit can be driven at a fixed instant.
 pub fn audit_manager_settings(
     project_root: &Path,
     manager: &DetectedManager,
@@ -449,11 +450,11 @@ registry: https://registry.npmjs.org/
         assert!(found.contains(&"registry.unpinned"));
     }
 
-    fn audit_named(fx: &Fixture, manager: DetectedManager, name: &str) -> Vec<Finding> {
+    fn audit_named(fx: &Fixture, manager: &DetectedManager, name: &str) -> Vec<Finding> {
         let cfg: ConfigFile = parse_config("preset = \"standard\"").unwrap();
         audit_manager_settings(
             &fx.root,
-            &manager,
+            manager,
             &resolve_settings(&cfg, name),
             &test_clock(),
         )
@@ -482,7 +483,7 @@ registry: https://registry.npmjs.org/
     #[test]
     fn bare_yarn_repo_under_standard_preset_flags_the_baseline_set() {
         let fx = yarn_fixture();
-        let findings = audit_named(&fx, yarn_manager(&fx.root), "yarn");
+        let findings = audit_named(&fx, &yarn_manager(&fx.root), "yarn");
         assert_eq!(
             codes(&findings),
             vec![
@@ -512,7 +513,7 @@ registry: https://registry.npmjs.org/
         )
         .unwrap();
         assert_eq!(
-            audit_named(&fx, yarn_manager(&fx.root), "yarn"),
+            audit_named(&fx, &yarn_manager(&fx.root), "yarn"),
             Vec::<Finding>::new()
         );
     }
@@ -540,7 +541,7 @@ registry: https://registry.npmjs.org/
     #[test]
     fn bare_bun_repo_under_standard_preset_flags_the_baseline_set() {
         let fx = bun_fixture();
-        let findings = audit_named(&fx, bun_manager(&fx.root), "bun");
+        let findings = audit_named(&fx, &bun_manager(&fx.root), "bun");
         assert_eq!(
             codes(&findings),
             vec![
@@ -568,7 +569,7 @@ registry: https://registry.npmjs.org/
         )
         .unwrap();
         assert_eq!(
-            audit_named(&fx, bun_manager(&fx.root), "bun"),
+            audit_named(&fx, &bun_manager(&fx.root), "bun"),
             Vec::<Finding>::new()
         );
     }
@@ -593,7 +594,7 @@ registry: https://registry.npmjs.org/
     #[test]
     fn bare_uv_repo_under_standard_preset_flags_the_baseline_set() {
         let fx = uv_fixture();
-        let findings = audit_named(&fx, uv_manager(&fx.root), "uv");
+        let findings = audit_named(&fx, &uv_manager(&fx.root), "uv");
         assert_eq!(
             codes(&findings),
             vec!["audit.malware-disabled", "min-age.disabled"]
@@ -609,7 +610,7 @@ registry: https://registry.npmjs.org/
         )
         .unwrap();
         assert_eq!(
-            audit_named(&fx, uv_manager(&fx.root), "uv"),
+            audit_named(&fx, &uv_manager(&fx.root), "uv"),
             Vec::<Finding>::new()
         );
     }
@@ -626,7 +627,7 @@ registry: https://registry.npmjs.org/
             lockfile_path: None,
             config_path: Some(fx.root.join("pyproject.toml")),
         };
-        let findings = audit_named(&fx, manager, "poetry");
+        let findings = audit_named(&fx, &manager, "poetry");
         assert_eq!(codes(&findings), vec!["python.not-uv"]);
         assert_eq!(findings[0].severity, Severity::High);
         assert!(!findings[0].fixable);
@@ -659,7 +660,7 @@ registry: https://registry.npmjs.org/
     #[test]
     fn bare_cargo_repo_under_standard_preset_flags_min_age() {
         let fx = cargo_fixture();
-        let findings = audit_named(&fx, cargo_manager(&fx.root), "cargo");
+        let findings = audit_named(&fx, &cargo_manager(&fx.root), "cargo");
         assert_eq!(codes(&findings), vec!["min-age.disabled"]);
     }
 
@@ -673,7 +674,7 @@ registry: https://registry.npmjs.org/
         )
         .unwrap();
         assert_eq!(
-            audit_named(&fx, cargo_manager(&fx.root), "cargo"),
+            audit_named(&fx, &cargo_manager(&fx.root), "cargo"),
             Vec::<Finding>::new()
         );
     }
@@ -699,7 +700,7 @@ registry: https://registry.npmjs.org/
     fn bare_composer_repo_uses_secure_defaults() {
         let fx = composer_fixture();
         assert_eq!(
-            audit_named(&fx, composer_manager(&fx.root), "composer"),
+            audit_named(&fx, &composer_manager(&fx.root), "composer"),
             Vec::<Finding>::new()
         );
     }
@@ -712,7 +713,7 @@ registry: https://registry.npmjs.org/
             r#"{"config":{"allow-plugins":true,"disable-tls":true,"policy":false,"source-fallback":true}}"#,
         )
         .unwrap();
-        let findings = audit_named(&fx, composer_manager(&fx.root), "composer");
+        let findings = audit_named(&fx, &composer_manager(&fx.root), "composer");
         assert_eq!(
             codes(&findings),
             vec![
@@ -744,10 +745,26 @@ registry: https://registry.npmjs.org/
         }
     }
 
+    fn poetry_fixture() -> Fixture {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().to_path_buf();
+        fs::write(root.join("pyproject.toml"), "[tool.poetry]\nname = \"x\"\n").unwrap();
+        Fixture { _tmp: tmp, root }
+    }
+
+    fn poetry_manager(root: &Path) -> DetectedManager {
+        DetectedManager {
+            manager: Manager::Poetry,
+            role: Role::Primary,
+            lockfile_path: None,
+            config_path: Some(root.join("pyproject.toml")),
+        }
+    }
+
     #[test]
     fn bare_bundler_repo_under_standard_preset_flags_min_age() {
         let fx = bundler_fixture();
-        let findings = audit_named(&fx, bundler_manager(&fx.root), "bundler");
+        let findings = audit_named(&fx, &bundler_manager(&fx.root), "bundler");
         assert_eq!(codes(&findings), vec!["min-age.disabled"]);
     }
 
@@ -757,21 +774,21 @@ registry: https://registry.npmjs.org/
         fs::create_dir_all(fx.root.join(".bundle")).unwrap();
         fs::write(fx.root.join(".bundle/config"), "BUNDLE_COOLDOWN: \"1\"\n").unwrap();
         assert_eq!(
-            audit_named(&fx, bundler_manager(&fx.root), "bundler"),
+            audit_named(&fx, &bundler_manager(&fx.root), "bundler"),
             Vec::<Finding>::new()
         );
     }
 
     fn audit_preset(
         fx: &Fixture,
-        manager: DetectedManager,
+        manager: &DetectedManager,
         name: &str,
         toml: &str,
     ) -> Vec<Finding> {
         let cfg: ConfigFile = parse_config(toml).unwrap();
         audit_manager_settings(
             &fx.root,
-            &manager,
+            manager,
             &resolve_settings(&cfg, name),
             &test_clock(),
         )
@@ -790,7 +807,7 @@ registry: https://registry.npmjs.org/
             r#"{"packageManager":"yarn@4.13.0"}"#,
         )
         .unwrap();
-        let old = audit_named(&fx, yarn_manager(&fx.root), "yarn");
+        let old = audit_named(&fx, &yarn_manager(&fx.root), "yarn");
         assert_eq!(
             old.iter()
                 .find(|f| f.code == "scripts.unrestricted")
@@ -804,7 +821,7 @@ registry: https://registry.npmjs.org/
             r#"{"packageManager":"yarn@4.15.0"}"#,
         )
         .unwrap();
-        let current = audit_named(&fx, yarn_manager(&fx.root), "yarn");
+        let current = audit_named(&fx, &yarn_manager(&fx.root), "yarn");
         assert_eq!(
             current
                 .iter()
@@ -816,7 +833,7 @@ registry: https://registry.npmjs.org/
         assert!(!codes(&current).contains(&"min-age.disabled"));
         assert!(!codes(&audit_preset(
             &fx,
-            yarn_manager(&fx.root),
+            &yarn_manager(&fx.root),
             "yarn",
             "preset = \"strict\""
         ))
@@ -837,7 +854,7 @@ registry: https://registry.npmjs.org/
         )
         .unwrap();
         assert_eq!(
-            audit_named(&fx, yarn_manager(&fx.root), "yarn"),
+            audit_named(&fx, &yarn_manager(&fx.root), "yarn"),
             Vec::<Finding>::new()
         );
 
@@ -846,7 +863,7 @@ registry: https://registry.npmjs.org/
             "enableScripts: false\nnpmMinimalAgeGate: 1440\napprovedGitRepositories:\n  - \"*\"\nnpmRegistryServer: https://registry.npmjs.org/\n",
         )
         .unwrap();
-        assert!(codes(&audit_named(&fx, yarn_manager(&fx.root), "yarn"))
+        assert!(codes(&audit_named(&fx, &yarn_manager(&fx.root), "yarn"))
             .contains(&"source.git-unrestricted"));
     }
 
@@ -859,7 +876,7 @@ registry: https://registry.npmjs.org/
         )
         .unwrap();
         assert_eq!(
-            audit_named(&fx, bun_manager(&fx.root), "bun"),
+            audit_named(&fx, &bun_manager(&fx.root), "bun"),
             Vec::<Finding>::new()
         );
         fs::write(
@@ -868,7 +885,7 @@ registry: https://registry.npmjs.org/
         )
         .unwrap();
         assert!(
-            codes(&audit_named(&fx, bun_manager(&fx.root), "bun")).contains(&"min-age.disabled")
+            codes(&audit_named(&fx, &bun_manager(&fx.root), "bun")).contains(&"min-age.disabled")
         );
     }
 
@@ -882,7 +899,7 @@ registry: https://registry.npmjs.org/
         )
         .unwrap();
         assert_eq!(
-            audit_named(&fx, cargo_manager(&fx.root), "cargo"),
+            audit_named(&fx, &cargo_manager(&fx.root), "cargo"),
             Vec::<Finding>::new()
         );
         fs::write(
@@ -891,7 +908,7 @@ registry: https://registry.npmjs.org/
         )
         .unwrap();
         assert_eq!(
-            audit_named(&fx, cargo_manager(&fx.root), "cargo"),
+            audit_named(&fx, &cargo_manager(&fx.root), "cargo"),
             Vec::<Finding>::new()
         );
         fs::write(
@@ -899,7 +916,7 @@ registry: https://registry.npmjs.org/
             "[install]\nminimum-release-age = \"12h\"\n",
         )
         .unwrap();
-        assert!(codes(&audit_named(&fx, cargo_manager(&fx.root), "cargo"))
+        assert!(codes(&audit_named(&fx, &cargo_manager(&fx.root), "cargo"))
             .contains(&"min-age.disabled"));
         fs::write(
             fx.root.join(".cargo/config.toml"),
@@ -907,7 +924,7 @@ registry: https://registry.npmjs.org/
         )
         .unwrap();
         assert_eq!(
-            audit_named(&fx, cargo_manager(&fx.root), "cargo"),
+            audit_named(&fx, &cargo_manager(&fx.root), "cargo"),
             Vec::<Finding>::new()
         );
 
@@ -921,7 +938,7 @@ registry: https://registry.npmjs.org/
             config_path: None,
             ..cargo_manager(&fx.root)
         };
-        assert_eq!(audit_named(&fx, no_path, "cargo"), Vec::<Finding>::new());
+        assert_eq!(audit_named(&fx, &no_path, "cargo"), Vec::<Finding>::new());
     }
 
     #[test]
@@ -933,7 +950,7 @@ registry: https://registry.npmjs.org/
         )
         .unwrap();
         assert_eq!(
-            audit_named(&fx, uv_manager(&fx.root), "uv"),
+            audit_named(&fx, &uv_manager(&fx.root), "uv"),
             Vec::<Finding>::new()
         );
         fs::write(
@@ -941,7 +958,7 @@ registry: https://registry.npmjs.org/
             "[tool.uv]\nexclude-newer = \"12 hours\"\n\n[tool.uv.audit]\nmalware-check = true\n",
         )
         .unwrap();
-        assert!(codes(&audit_named(&fx, uv_manager(&fx.root), "uv")).contains(&"min-age.disabled"));
+        assert!(codes(&audit_named(&fx, &uv_manager(&fx.root), "uv")).contains(&"min-age.disabled"));
 
         fs::write(fx.root.join("pyproject.toml"), "[project]\nname = \"x\"\n").unwrap();
         fs::write(
@@ -950,7 +967,7 @@ registry: https://registry.npmjs.org/
         )
         .unwrap();
         assert_eq!(
-            audit_named(&fx, uv_manager(&fx.root), "uv"),
+            audit_named(&fx, &uv_manager(&fx.root), "uv"),
             Vec::<Finding>::new()
         );
     }
@@ -964,7 +981,7 @@ registry: https://registry.npmjs.org/
         )
         .unwrap();
         assert_eq!(
-            audit_named(&fx, composer_manager(&fx.root), "composer"),
+            audit_named(&fx, &composer_manager(&fx.root), "composer"),
             Vec::<Finding>::new()
         );
         fs::write(
@@ -972,7 +989,7 @@ registry: https://registry.npmjs.org/
             r#"{"repositories":[{"type":"composer","url":"http://packagist.example"}]}"#,
         )
         .unwrap();
-        let findings = audit_named(&fx, composer_manager(&fx.root), "composer");
+        let findings = audit_named(&fx, &composer_manager(&fx.root), "composer");
         let http = findings
             .iter()
             .find(|f| f.code == "registry.unpinned")
@@ -981,7 +998,7 @@ registry: https://registry.npmjs.org/
         assert!(!http.fixable);
         let strict = audit_preset(
             &fx,
-            composer_manager(&fx.root),
+            &composer_manager(&fx.root),
             "composer",
             "preset = \"strict\"",
         );
@@ -1001,7 +1018,7 @@ registry: https://registry.npmjs.org/
         fs::create_dir_all(fx.root.join(".bundle")).unwrap();
         fs::write(fx.root.join(".bundle/config"), "---\nBUNDLE_COOLDOWN: 7\n").unwrap();
         assert_eq!(
-            audit_named(&fx, bundler_manager(&fx.root), "bundler"),
+            audit_named(&fx, &bundler_manager(&fx.root), "bundler"),
             Vec::<Finding>::new()
         );
     }
@@ -1130,22 +1147,22 @@ registry: https://registry.npmjs.org/
         ));
 
         let yarn = yarn_fixture();
-        all.extend(audit_named(&yarn, yarn_manager(&yarn.root), "yarn"));
+        all.extend(audit_named(&yarn, &yarn_manager(&yarn.root), "yarn"));
         fs::write(
             yarn.root.join(".yarnrc.yml"),
             "enableScripts: true\naudit: false\nnpmAudit: false\nchecksumBehavior: update\nenableStrictSsl: false\nenableHardenedMode: false\nnpmPreapprovedPackages:\n  - \"*\"\n",
         )
         .unwrap();
-        all.extend(audit_named(&yarn, yarn_manager(&yarn.root), "yarn"));
+        all.extend(audit_named(&yarn, &yarn_manager(&yarn.root), "yarn"));
 
         let bun = bun_fixture();
-        all.extend(audit_named(&bun, bun_manager(&bun.root), "bun"));
+        all.extend(audit_named(&bun, &bun_manager(&bun.root), "bun"));
 
         let uv = uv_fixture();
-        all.extend(audit_named(&uv, uv_manager(&uv.root), "uv"));
+        all.extend(audit_named(&uv, &uv_manager(&uv.root), "uv"));
 
         let cargo = cargo_fixture();
-        all.extend(audit_named(&cargo, cargo_manager(&cargo.root), "cargo"));
+        all.extend(audit_named(&cargo, &cargo_manager(&cargo.root), "cargo"));
 
         let composer = composer_fixture();
         fs::write(
@@ -1155,31 +1172,21 @@ registry: https://registry.npmjs.org/
         .unwrap();
         all.extend(audit_named(
             &composer,
-            composer_manager(&composer.root),
+            &composer_manager(&composer.root),
             "composer",
         ));
 
         let bundler = bundler_fixture();
         all.extend(audit_named(
             &bundler,
-            bundler_manager(&bundler.root),
+            &bundler_manager(&bundler.root),
             "bundler",
         ));
 
-        let poetry = {
-            let tmp = tempfile::tempdir().unwrap();
-            let root = tmp.path().to_path_buf();
-            fs::write(root.join("pyproject.toml"), "[tool.poetry]\nname = \"x\"\n").unwrap();
-            Fixture { _tmp: tmp, root }
-        };
+        let poetry = poetry_fixture();
         all.extend(audit_named(
             &poetry,
-            DetectedManager {
-                manager: Manager::Poetry,
-                role: Role::Primary,
-                lockfile_path: None,
-                config_path: Some(poetry.root.join("pyproject.toml")),
-            },
+            &poetry_manager(&poetry.root),
             "poetry",
         ));
 
@@ -1216,7 +1223,7 @@ registry: https://registry.npmjs.org/
         }
     }
 
-    fn assert_manager_fixes(label: &str, fx: &Fixture, manager: DetectedManager) {
+    fn assert_manager_fixes(label: &str, fx: &Fixture, manager: &DetectedManager) {
         let findings = audit_named(fx, manager, label);
         assert!(
             findings.iter().any(|f| f.fix.is_some()),
@@ -1229,22 +1236,22 @@ registry: https://registry.npmjs.org/
     #[test]
     fn each_manager_fix_targets_its_write_file_and_format() {
         let npm = fixture();
-        assert_manager_fixes("npm", &npm, npm_manager(&npm.root, true));
+        assert_manager_fixes("npm", &npm, &npm_manager(&npm.root, true));
 
         let pnpm = pnpm_fixture();
-        assert_manager_fixes("pnpm", &pnpm, pnpm_manager(&pnpm.root, true));
+        assert_manager_fixes("pnpm", &pnpm, &pnpm_manager(&pnpm.root, true));
 
         let yarn = yarn_fixture();
-        assert_manager_fixes("yarn", &yarn, yarn_manager(&yarn.root));
+        assert_manager_fixes("yarn", &yarn, &yarn_manager(&yarn.root));
 
         let bun = bun_fixture();
-        assert_manager_fixes("bun", &bun, bun_manager(&bun.root));
+        assert_manager_fixes("bun", &bun, &bun_manager(&bun.root));
 
         let uv = uv_fixture();
-        assert_manager_fixes("uv", &uv, uv_manager(&uv.root));
+        assert_manager_fixes("uv", &uv, &uv_manager(&uv.root));
 
         let cargo = cargo_fixture();
-        assert_manager_fixes("cargo", &cargo, cargo_manager(&cargo.root));
+        assert_manager_fixes("cargo", &cargo, &cargo_manager(&cargo.root));
 
         let composer = composer_fixture();
         fs::write(
@@ -1252,10 +1259,10 @@ registry: https://registry.npmjs.org/
             r#"{"config":{"allow-plugins":true,"disable-tls":true,"policy":false}}"#,
         )
         .unwrap();
-        assert_manager_fixes("composer", &composer, composer_manager(&composer.root));
+        assert_manager_fixes("composer", &composer, &composer_manager(&composer.root));
 
         let bundler = bundler_fixture();
-        assert_manager_fixes("bundler", &bundler, bundler_manager(&bundler.root));
+        assert_manager_fixes("bundler", &bundler, &bundler_manager(&bundler.root));
     }
 
     #[test]
@@ -1309,7 +1316,7 @@ registry: https://registry.npmjs.org/
     fn uv_write_target_follows_uv_toml_when_present() {
         let fx = uv_fixture();
         fs::write(fx.root.join("uv.toml"), "").unwrap();
-        let findings = audit_named(&fx, uv_manager(&fx.root), "uv");
+        let findings = audit_named(&fx, &uv_manager(&fx.root), "uv");
         let min_age = findings
             .iter()
             .find(|f| f.code == "min-age.disabled")
@@ -1327,7 +1334,7 @@ registry: https://registry.npmjs.org/
         );
 
         let py = uv_fixture();
-        let findings = audit_named(&py, uv_manager(&py.root), "uv");
+        let findings = audit_named(&py, &uv_manager(&py.root), "uv");
         let min_age = findings
             .iter()
             .find(|f| f.code == "min-age.disabled")

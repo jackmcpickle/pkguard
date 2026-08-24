@@ -1,10 +1,11 @@
 //! JSON config editing (`composer.json`, `package.json`). Key order is
-//! preserved via serde_json's `preserve_order` feature so diffs stay small.
+//! preserved via `serde_json`'s `preserve_order` feature so diffs stay small.
 
 use super::EditError;
 use crate::fix::{ConfigEdit, ConfigValue};
 use serde_json::{Map, Value};
 
+#[must_use]
 pub fn to_json(value: &ConfigValue) -> Value {
     match value {
         ConfigValue::Str(s) => Value::String(s.clone()),
@@ -65,6 +66,12 @@ pub fn apply(table: &mut Map<String, Value>, edits: &[ConfigEdit]) {
     }
 }
 
+/// Apply edits to a JSON config. An empty input starts from an empty object.
+///
+/// # Errors
+///
+/// Returns [`EditError::Unparseable`] if `raw` is neither empty nor a valid
+/// JSON object.
 pub fn edit(raw: &str, edits: &[ConfigEdit]) -> Result<String, EditError> {
     let mut table = if raw.trim().is_empty() {
         Map::new()

@@ -4,11 +4,17 @@ pkguard is a Rust workspace (`crates/pkguard-core` + `crates/pkguard`) with an A
 
 `CONTEXT.md` defines the domain language — read it before naming anything.
 
+## Setup
+
+```bash
+brew install prek && prek install   # git pre-commit hooks (cargo fmt + clippy)
+```
+
 ## Commands
 
 ```bash
 cargo test --workspace                              # test
-cargo clippy --workspace --all-targets -- -D warnings
+cargo clippy --workspace --all-targets --all-features --locked
 cargo fmt                                           # format
 cargo run -p pkguard -- scan .                      # run the CLI
 cargo run -q -p pkguard -- dump-catalog > site/src/generated/catalog.json  # refresh docs data
@@ -25,3 +31,4 @@ npm run check --prefix site && npm run build --prefix site                 # sit
 - A manager's config file and format come from `Manager` (`config_format`, `write_target`). Never restate them in a check module.
 - The core has exactly two injection seams: `CommandRunner` (subprocesses) and `Clock` (the current date). Anything else that reaches outside the process needs a decision first.
 - The docs domain is pkguard.dev.
+- Lints live in the workspace `[lints]` table, not in a CI flag, so a bare `cargo clippy` matches CI. `pedantic` and `nursery` are denied. Silence a lint with `#[expect(..., reason = "...")]` at the narrowest scope that works — never a bare `#[allow]`.
