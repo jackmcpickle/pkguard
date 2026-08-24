@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [1.1.0](https://github.com/jackmcpickle/pkguard/compare/v1.0.3...v1.1.0) (2026-08-24)
+
+### Features
+
+* **site:** improve AI readiness (79 → target 90+) ([#22](https://github.com/jackmcpickle/pkguard/issues/22)) ([b595f1b](https://github.com/jackmcpickle/pkguard/commit/b595f1b91066f959aea6d3cf0f2bda31eed476a1))
 ## [1.0.3](https://github.com/jackmcpickle/pkguard/compare/v1.0.2...v1.0.3) (2026-08-24)
 ## [1.0.2](https://github.com/jackmcpickle/pkguard/compare/v1.0.1...v1.0.2) (2026-08-24)
 ## [1.0.1](https://github.com/jackmcpickle/pkguard/compare/v0.1.11...v1.0.1) (2026-08-23)
