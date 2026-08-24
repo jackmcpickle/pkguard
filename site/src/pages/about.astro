@@ -1,0 +1,190 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import { APP_NAME, APP_VERSION } from "@/lib/catalog";
+import {
+  AUTHOR_NAME,
+  AUTHOR_URL,
+  CHANGELOG_URL,
+  DISCUSSIONS_URL,
+  GITHUB_URL,
+  ISSUES_URL,
+  LICENSE_NAME,
+  LICENSE_URL,
+  RELEASES_URL,
+  SITE_NAME,
+  SITE_UPDATED,
+  SITE_URL,
+} from "@/lib/site";
+
+const description = `Who builds ${APP_NAME}, what it costs, how it is licensed, and where to get help.`;
+
+const aboutSchema = {
+  "@type": "AboutPage",
+  "@id": `${SITE_URL}/about#page`,
+  name: `About ${SITE_NAME}`,
+  description,
+  url: `${SITE_URL}/about`,
+  dateModified: SITE_UPDATED,
+  isPartOf: { "@id": `${SITE_URL}/#website` },
+  about: { "@id": `${SITE_URL}/#software` },
+  author: {
+    "@type": "Person",
+    name: AUTHOR_NAME,
+    url: AUTHOR_URL,
+  },
+};
+
+const breadcrumbSchema = {
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: SITE_URL },
+    {
+      "@type": "ListItem",
+      position: 2,
+      name: "About",
+      item: `${SITE_URL}/about`,
+    },
+  ],
+};
+
+const contacts = [
+  {
+    label: "Bugs and feature requests",
+    value: "GitHub issues",
+    href: ISSUES_URL,
+  },
+  { label: "Questions", value: "GitHub discussions", href: DISCUSSIONS_URL },
+  { label: "Source code", value: GITHUB_URL, href: GITHUB_URL },
+  { label: "Maintainer", value: AUTHOR_NAME, href: AUTHOR_URL },
+] as const;
+---
+
+<BaseLayout
+  title={`About ${SITE_NAME}`}
+  description={description}
+  current="about"
+  schemas={[aboutSchema, breadcrumbSchema]}
+>
+  <main class="px-4 py-16 sm:px-6">
+    <nav aria-label="Breadcrumb" class="mx-auto max-w-[68ch]">
+      <ol class="flex gap-2 font-mono text-xs tracking-[1.2px] text-body-mid uppercase">
+        <li><a href="/" class="hover:text-ink">Home</a></li>
+        <li aria-hidden="true">/</li>
+        <li aria-current="page" class="text-ink">About</li>
+      </ol>
+    </nav>
+
+    <article class="mx-auto mt-8 max-w-[68ch]">
+      <h1 class="text-4xl leading-[1.1] font-normal tracking-tight md:text-5xl">
+        About {APP_NAME}
+      </h1>
+
+      <p class="mt-6 text-lg leading-7 text-body">
+        {APP_NAME} is a free, open-source command-line tool. It audits every package
+        manager in a folder of repos. It reads the settings you keep in git, then runs
+        each manager's own audit. You get one report instead of one per project.
+      </p>
+
+      <p class="mt-4 text-base leading-6 text-body-mid">
+        Last updated <time datetime={SITE_UPDATED}>{SITE_UPDATED}</time>. Current
+        version <span class="font-mono">{APP_VERSION}</span>.
+      </p>
+
+      <section class="mt-12" aria-labelledby="why">
+        <h2 id="why" class="text-2xl leading-tight font-normal tracking-tight">
+          Why it exists
+        </h2>
+        <p class="mt-4 text-base leading-6 text-body">
+          Most audit tools work on one project at a time. If you keep twenty repos in
+          one folder, you have to open each one and run its own audit by hand. Some use
+          npm, some use uv, some use cargo. {APP_NAME} walks the folder once and reports
+          on all of them.
+        </p>
+        <p class="mt-4 text-base leading-6 text-body">
+          It also checks the config files that live in git. Those files decide whether
+          install scripts run, whether a lockfile is required, and where the cache sits.
+          A bad setting is a risk even when no advisory exists. So {APP_NAME} checks
+          settings first and advisories second.
+        </p>
+      </section>
+
+      <section class="mt-12" aria-labelledby="who">
+        <h2 id="who" class="text-2xl leading-tight font-normal tracking-tight">
+          Who builds it
+        </h2>
+        <p class="mt-4 text-base leading-6 text-body">
+          {APP_NAME} is written and maintained by
+          <a href={AUTHOR_URL} class="text-ink underline" rel="noopener">
+            {AUTHOR_NAME}
+          </a>. It is not a company product. Work happens in the open on GitHub, and
+          pull requests are welcome.
+        </p>
+      </section>
+
+      <section class="mt-12" aria-labelledby="cost">
+        <h2 id="cost" class="text-2xl leading-tight font-normal tracking-tight">
+          Price and licence
+        </h2>
+        <p class="mt-4 text-base leading-6 text-body">
+          {APP_NAME} is free. There is no paid tier, no account, and no telemetry. It is
+          released under the
+          <a href={LICENSE_URL} class="text-ink underline" rel="noopener">
+            {LICENSE_NAME} license
+          </a>, so you can use it at work, fork it, and ship it inside your own tools.
+        </p>
+      </section>
+
+      <section class="mt-12" aria-labelledby="privacy">
+        <h2 id="privacy" class="text-2xl leading-tight font-normal tracking-tight">
+          Your data
+        </h2>
+        <p class="mt-4 text-base leading-6 text-body">
+          {APP_NAME} runs on your machine. It does not upload your code, your lockfiles,
+          or your config. The only network traffic comes from the package managers
+          themselves when they fetch advisories, and <span class="font-mono"
+            >--no-audit</span
+          > turns that off. This website sets no cookies and runs no analytics.
+        </p>
+      </section>
+
+      <section class="mt-12" aria-labelledby="contact">
+        <h2 id="contact" class="text-2xl leading-tight font-normal tracking-tight">
+          Contact
+        </h2>
+        <p class="mt-4 text-base leading-6 text-body">
+          The fastest way to reach the project is GitHub.
+        </p>
+        <ul class="mt-6 flex flex-col">
+          {
+            contacts.map((contact) => (
+              <li class="grid gap-1 border-t border-hairline py-4 sm:grid-cols-[16rem_minmax(0,1fr)] sm:items-baseline sm:gap-6">
+                <span class="font-mono text-xs tracking-[1.2px] text-body-mid uppercase">
+                  {contact.label}
+                </span>
+                <a href={contact.href} class="text-ink underline" rel="noopener">
+                  {contact.value}
+                </a>
+              </li>
+            ))
+          }
+        </ul>
+      </section>
+
+      <section class="mt-12" aria-labelledby="releases">
+        <h2 id="releases" class="text-2xl leading-tight font-normal tracking-tight">
+          Releases
+        </h2>
+        <p class="mt-4 text-base leading-6 text-body">
+          Every version is tagged on GitHub. Read the
+          <a href={RELEASES_URL} class="text-ink underline" rel="noopener">
+            release notes
+          </a>
+          or the full
+          <a href={CHANGELOG_URL} class="text-ink underline" rel="noopener">
+            changelog
+          </a>.
+        </p>
+      </section>
+    </article>
+  </main>
+</BaseLayout>

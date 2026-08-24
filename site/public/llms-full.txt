@@ -1,0 +1,208 @@
+# pkguard
+
+> pkguard is a free, open-source (MIT) command-line tool that audits package
+> managers across a whole folder of repositories. It finds every
+> package-manager root under a path, reads the settings that are committed to
+> git, and runs each manager's own audit command. `pkguard scan` is read-only
+> unless you pass `--fix`.
+
+- Site: https://pkguard.dev
+- Docs: https://pkguard.dev/docs
+- About and contact: https://pkguard.dev/about
+- Source: https://github.com/jackmcpickle/pkguard
+- Issues: https://github.com/jackmcpickle/pkguard/issues
+- Releases and release notes: https://github.com/jackmcpickle/pkguard/releases
+- Changelog: https://github.com/jackmcpickle/pkguard/blob/main/CHANGELOG.md
+- License: MIT (https://github.com/jackmcpickle/pkguard/blob/main/LICENSE)
+- Maintainer: Jack McNicol (https://github.com/jackmcpickle)
+- Price: free. There is no paid tier, no account, and no telemetry.
+- Written in: Rust. Ships as a single binary.
+
+## What problem it solves
+
+Most audit tools run inside one project. If you keep twenty repos in one
+folder, you have to enter each one and run its own audit by hand. Some repos
+use npm, some use uv, some use cargo. pkguard walks the folder once and reports
+on all of them together.
+
+It also checks the settings files that are committed to git. Those files decide
+whether install scripts run, whether a lockfile is required, and where the
+package cache lives. A bad setting is a risk even when no advisory exists, so
+pkguard checks settings first and advisories second.
+
+## How it works
+
+1. **Find each root.** pkguard walks the path you pass and stops at every
+   package-manager root it finds.
+2. **Read committed settings.** It parses the config files that are in git. A
+   missing manager binary does not skip this step.
+3. **Run the native audit.** If the manager binary is on your PATH, pkguard
+   shells out to that manager's own audit command and collects the result.
+
+## Install
+
+Homebrew is the main way to install pkguard.
+
+```
+brew install jackmcpickle/pkguard/pkguard
+```
+
+Or tap first:
+
+```
+brew tap jackmcpickle/pkguard
+brew trust jackmcpickle/pkguard
+brew install pkguard
+```
+
+Cargo is the fallback if you already have a Rust toolchain:
+
+```
+cargo install --git https://github.com/jackmcpickle/pkguard pkguard
+```
+
+Full install notes: https://pkguard.dev/docs/install
+
+## Commands
+
+### `pkguard scan [path]`
+
+Alias: `pkguard audit`. Audits one directory tree. Read-only unless `--fix` is
+passed. `path` defaults to the current directory.
+
+| Flag | Value | What it does |
+| --- | --- | --- |
+| `--preset` | `relaxed\|standard\|strict` | Policy preset |
+| `--jobs` | number | Max concurrent audits (defaults to `min(cpus*2, 16)`) |
+| `--format` | `human\|json` | Output format |
+| `--refresh` | — | Ignore cached advisory results for this run and re-fetch |
+| `--no-cache` | — | Disable the advisory cache entirely (no reads, no writes) |
+| `-q`, `--quiet` | — | Suppress progress output |
+| `--fix` | — | Write the safe settings into each manager's config file |
+| `--force` | — | Allow `--fix` on a dirty git tree |
+| `--dry-run` | — | With `--fix`, show the changes and write nothing |
+| `--no-audit` | — | Skip every live package-manager audit (run offline) |
+| `-h`, `--help` | — | Print help |
+
+### `pkguard init`
+
+Writes a starter config file.
+
+| Flag | What it does |
+| --- | --- |
+| `--local` | Write `.pkguard.toml` in the current directory instead of the user config |
+| `--force` | Overwrite an existing file |
+| `-h`, `--help` | Print help |
+
+Command reference: https://pkguard.dev/docs/commands/scan
+
+## Supported package managers
+
+pkguard has full settings checks and a native audit for: **npm, pnpm, yarn,
+bun, uv, cargo, composer, bundler**.
+
+It detects but does not yet fully check: **poetry, pip, pipenv**.
+
+By language:
+
+- JavaScript: npm, pnpm, yarn, bun
+- Python: uv (full), poetry, pip, pipenv (detect only)
+- Rust: cargo
+- PHP: composer
+- Ruby: bundler
+
+Each manager maps to its own lockfile, config file, and audit command. For
+example npm uses `package-lock.json`, `.npmrc`, and `npm audit --json`; pnpm
+uses `pnpm-lock.yaml`, `pnpm-workspace.yaml`, and `pnpm audit --json`; cargo
+uses `Cargo.lock` and `cargo audit`.
+
+Manager profiles: https://pkguard.dev/docs/managers
+
+## Policy presets
+
+| Setting | relaxed | standard | strict |
+| --- | --- | --- | --- |
+| Audit level | critical | high | moderate |
+| Ignore install scripts | no | yes | yes |
+| Minimum release age (days) | 0 | 1 | 14 |
+| Require a lockfile | yes | yes | yes |
+| Require a pinned package manager | no | yes | yes |
+
+`standard` is the default. Preset details: https://pkguard.dev/docs/presets
+
+## Configuration
+
+The config file is named `.pkguard.toml`.
+
+- User config on Linux: `~/.config/pkguard/config.toml`
+- User config on macOS: `~/Library/Application Support/dev.pkguard.pkguard/config.toml`
+- Cache directory environment variable: `PKGUARD_CACHE_DIR`
+
+Search order: pkguard reads the user config, then `.pkguard.toml` at the scan
+root, then `.pkguard.toml` in each repo. Closer files win. Command-line flags
+win over every file.
+
+Config reference: https://pkguard.dev/docs/config
+
+## Agentic checks
+
+These checks catch settings that break AI coding agents and CI, even when no
+security advisory is involved.
+
+- `cache.path-committed` — Committed store or cache path. A project file pins
+  `storeDir`, `cache`, `cacheFolder`, or `install.cache.dir`. Shared caches
+  belong in user config; a committed home path breaks CI and other agents.
+- `agentic.cache-disabled` — Global cache disabled. Yarn's
+  `enableGlobalCache` is false. Leave it true unless the team vendors
+  `.yarn/cache` (Zero-Installs).
+- `overrides.present` — Version override precedent. `overrides`,
+  `resolutions`, or pnpm workspace overrides force a version the manifest does
+  not show. The next agent will copy this instead of upgrading.
+- `overrides.legacy-location` — Legacy pnpm overrides location.
+  `package.json#pnpm.overrides` on pnpm 11 or later is ignored by pnpm.
+- `layout.shamefully-hoist` — Shameful hoist. `shamefullyHoist` is true, or
+  `publicHoistPattern` contains `*`. This makes `require()` succeed for
+  undeclared deps, so the next isolated install breaks.
+- `layout.pnp` — Plug'n'Play linker. Yarn or pnpm `nodeLinker` is `pnp`. Most
+  agents assume `node_modules` and run `node`, not `yarn node`.
+
+Agentic docs: https://pkguard.dev/docs/agentic
+
+## Frequently asked questions
+
+**What is pkguard?**
+A command-line tool that audits every package manager in a folder of repos. It
+reads committed settings and runs each manager's own audit.
+
+**Is it safe to run?**
+Yes. `pkguard scan` never writes files. Writing only happens when you pass
+`--fix`, and `--fix` refuses to run on a dirty git tree unless you add
+`--force`. Use `--fix --dry-run` to preview the changes.
+
+**Does it cost anything?**
+No. pkguard is free and open source under the MIT license. There is no paid
+tier and no account.
+
+**Can it run offline?**
+Yes. Pass `--no-audit` to skip every live package-manager audit. Settings
+checks still run because they only read files.
+
+**Does it send my code anywhere?**
+No. pkguard runs locally. The only network traffic comes from the package
+managers themselves when they fetch advisories, and `--no-audit` turns that off.
+
+**Which managers does it support?**
+npm, pnpm, yarn, bun, uv, cargo, composer, and bundler are fully supported.
+poetry, pip, and pipenv are detected only.
+
+**How do I use it in CI?**
+Run `pkguard scan . --preset strict --format json`. The JSON output is stable
+and meant for machines. The exit code is non-zero when a check fails.
+
+**Who maintains it?**
+Jack McNicol (https://github.com/jackmcpickle). Bugs and questions go to
+https://github.com/jackmcpickle/pkguard/issues.
+
+**Where are the release notes?**
+https://github.com/jackmcpickle/pkguard/releases and
+https://github.com/jackmcpickle/pkguard/blob/main/CHANGELOG.md

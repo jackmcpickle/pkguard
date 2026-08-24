@@ -1,0 +1,81 @@
+---
+import { APP_NAME, APP_VERSION, CONFIG_FILE_NAME } from "@/lib/catalog";
+import {
+    AUTHOR_NAME,
+    AUTHOR_URL,
+    CHANGELOG_URL,
+    ISSUES_URL,
+    LICENSE_NAME,
+    LICENSE_URL,
+    RELEASES_URL,
+} from "@/lib/site";
+
+interface Fact {
+    label: string;
+    value: string;
+    href?: string;
+}
+
+const rows: Fact[] = [
+    { label: "Price", value: "Free. No paid tier, no account, no telemetry." },
+    { label: "License", value: LICENSE_NAME, href: LICENSE_URL },
+    { label: "Latest version", value: APP_VERSION, href: RELEASES_URL },
+    { label: "Maintainer", value: AUTHOR_NAME, href: AUTHOR_URL },
+    { label: "Written in", value: "Rust. One binary, no runtime to install." },
+    { label: "Config file", value: CONFIG_FILE_NAME, href: "/docs/config" },
+    { label: "Release notes", value: "CHANGELOG.md", href: CHANGELOG_URL },
+    { label: "Support", value: "GitHub issues", href: ISSUES_URL },
+];
+---
+
+<section
+    id="project"
+    class="border-t border-hairline"
+    aria-labelledby="project-heading"
+>
+    <div
+        class="mx-auto grid max-w-[1400px] gap-12 px-4 py-20 sm:px-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-start"
+    >
+        <div>
+            <h2
+                id="project-heading"
+                class="text-3xl leading-tight font-normal tracking-tight md:text-5xl md:leading-[1.1]"
+            >
+                The project, in&nbsp;plain terms.
+            </h2>
+            <p class="mt-6 max-w-[42ch] text-base leading-6 text-body">
+                {APP_NAME} is open source. One person maintains it in the open, and every
+                release is public. Read the code, file a bug, or send a patch.
+            </p>
+            <p class="mt-4 max-w-[42ch] text-base leading-6 text-body-mid">
+                More on the <a href="/about" class="text-ink underline">about page</a>.
+            </p>
+        </div>
+        <table class="w-full text-left text-sm">
+            <caption class="sr-only">Facts about the {APP_NAME} project</caption>
+            <tbody>
+                {
+                    rows.map((row) => (
+                        <tr class="border-t border-hairline">
+                            <th
+                                scope="row"
+                                class="py-4 pr-6 align-top font-mono text-xs font-normal tracking-[1.2px] text-body-mid uppercase"
+                            >
+                                {row.label}
+                            </th>
+                            <td class="py-4 leading-6 text-body">
+                                {row.href ? (
+                                    <a href={row.href} class="text-ink underline" rel="noopener">
+                                        {row.value}
+                                    </a>
+                                ) : (
+                                    row.value
+                                )}
+                            </td>
+                        </tr>
+                    ))
+                }
+            </tbody>
+        </table>
+    </div>
+</section>

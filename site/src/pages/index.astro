@@ -2,20 +2,28 @@
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import {
   Commands,
+  Faq,
   Hero,
   InstallBand,
   Managers,
+  ProjectFacts,
   Run,
+  faqSchema,
 } from "@/modules/home";
 import { SITE_NAME } from "@/lib/site";
 ---
 
-<BaseLayout title={`${SITE_NAME} - package-manager security audit`}>
+<BaseLayout
+  title={`${SITE_NAME} - package-manager security audit`}
+  schemas={[faqSchema()]}
+>
   <main>
     <Hero />
     <Run />
     <Managers />
     <Commands />
+    <ProjectFacts />
+    <Faq />
     <InstallBand />
   </main>
 </BaseLayout>
