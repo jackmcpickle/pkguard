@@ -82,9 +82,7 @@ impl Default for ScanOptions {
 
 #[must_use]
 pub fn default_jobs() -> usize {
-    std::thread::available_parallelism()
-        .map(|n| (n.get() * 2).min(16))
-        .unwrap_or(8)
+    std::thread::available_parallelism().map_or(8, |n| (n.get() * 2).min(16))
 }
 
 fn read_config(path: &Path) -> Option<ConfigFile> {

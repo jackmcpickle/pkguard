@@ -271,8 +271,7 @@ fn create_temp_sibling(dir: &Dir, relative: &Path) -> Option<PathBuf> {
         let nonce = COUNTER.fetch_add(1, Ordering::Relaxed);
         let stamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map(|d| d.subsec_nanos())
-            .unwrap_or(0);
+            .map_or(0, |d| d.subsec_nanos());
         let mut name = base.clone();
         name.push(format!(
             ".{}.{stamp:08x}{nonce:04x}.pkguard-tmp",
@@ -352,9 +351,7 @@ fn resolve_path_inner(path: &Path, depth: u8) -> Option<PathBuf> {
     let mut cur = path.to_path_buf();
     let mut suffix = Vec::new();
     while !cur.exists()
-        && std::fs::symlink_metadata(&cur)
-            .map(|m| !m.file_type().is_symlink())
-            .unwrap_or(true)
+        && std::fs::symlink_metadata(&cur).map_or(true, |m| !m.file_type().is_symlink())
     {
         match cur.file_name() {
             Some(name) => {
