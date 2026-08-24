@@ -54,7 +54,7 @@ fn unit_to_hours(amount: f64, unit: &str) -> f64 {
     }
 }
 
-pub(super) fn parse_age_hours_str(input: &str) -> Option<f64> {
+fn parse_age_hours_str(input: &str) -> Option<f64> {
     let trimmed = input.trim();
     let split = trimmed.find(|c: char| c.is_ascii_alphabetic());
     let (num, unit) = match split {
@@ -65,7 +65,7 @@ pub(super) fn parse_age_hours_str(input: &str) -> Option<f64> {
     Some(unit_to_hours(amount, unit))
 }
 
-pub(super) fn parse_pnpm_age_hours(value: &Yaml) -> Option<f64> {
+fn parse_pnpm_age_hours(value: &Yaml) -> Option<f64> {
     if let Some(number) = yaml::as_f64(value) {
         return Some(number / 60.0);
     }
@@ -431,5 +431,100 @@ pub fn bundler_check(
                 )],
             ),
         )]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_unix_epoch_is_day_zero() {
+        assert_eq!(days_since_ymd(1970, 1, 1), Some(0));
+    }
+
+    #[test]
+    fn days_since_ymd_matches_known_offsets() {
+        assert_eq!(days_since_ymd(1970, 1, 2), Some(1));
+        assert_eq!(days_since_ymd(1971, 1, 1), Some(365));
+        // 1972 is a leap year, so 1973-01-01 is 366 days after 1972-01-01.
+        assert_eq!(days_since_ymd(1972, 1, 1), Some(730));
+        assert_eq!(days_since_ymd(1973, 1, 1), Some(1096));
+        assert_eq!(days_since_ymd(2000, 1, 1), Some(10957));
+        assert_eq!(days_since_ymd(2024, 2, 29), Some(19782));
+    }
+
+    #[test]
+    fn dates_before_the_epoch_go_negative() {
+        assert_eq!(days_since_ymd(1969, 12, 31), Some(-1));
+    }
+
+    #[test]
+    fn leap_day_rules_hold_across_century_boundaries() {
+        // 2000 was a leap year (divisible by 400); 1900 was not.
+        let feb28 = days_since_ymd(2000, 2, 28).unwrap();
+        assert_eq!(days_since_ymd(2000, 3, 1), Some(feb28 + 2));
+        let feb28_1900 = days_since_ymd(1900, 2, 28).unwrap();
+        assert_eq!(days_since_ymd(1900, 3, 1), Some(feb28_1900 + 1));
+    }
+
+    #[test]
+    fn out_of_range_months_and_days_are_rejected() {
+        assert_eq!(days_since_ymd(2024, 0, 1), None);
+        assert_eq!(days_since_ymd(2024, 13, 1), None);
+        assert_eq!(days_since_ymd(2024, 1, 0), None);
+        assert_eq!(days_since_ymd(2024, 1, 32), None);
+    }
+
+    #[test]
+    fn durations_convert_to_hours_by_unit() {
+        assert_eq!(unit_to_hours(2.0, "w"), 336.0);
+        assert_eq!(unit_to_hours(3.0, "d"), 72.0);
+        assert_eq!(unit_to_hours(90.0, "m"), 1.5);
+        assert_eq!(unit_to_hours(5.0, "h"), 5.0);
+    }
+
+    #[test]
+    fn a_bare_number_is_read_as_minutes() {
+        assert_eq!(parse_age_hours_str("120"), Some(2.0));
+        assert_eq!(parse_age_hours_str(" 7d "), Some(168.0));
+        assert_eq!(parse_age_hours_str("2 weeks"), Some(336.0));
+        assert_eq!(parse_age_hours_str("nonsense"), None);
+    }
+
+    #[test]
+    fn a_star_anywhere_is_a_blanket_exclude() {
+        assert!(toml_is_blanket(Some(&toml::Value::String("*".into()))));
+        assert!(toml_is_blanket(Some(&toml::Value::Array(vec![
+            toml::Value::String("lodash".into()),
+            toml::Value::String("*".into()),
+        ]))));
+        assert!(!toml_is_blanket(Some(&toml::Value::Array(vec![
+            toml::Value::String("lodash".into()),
+        ]))));
+        assert!(!toml_is_blanket(None));
+    }
+
+    #[test]
+    fn exclude_newer_accepts_numbers_and_durations() {
+        assert!(uv_exclude_newer_meets(Some(&toml::Value::Integer(10)), 7));
+        assert!(!uv_exclude_newer_meets(Some(&toml::Value::Integer(3)), 7));
+        assert!(uv_exclude_newer_meets(
+            Some(&toml::Value::String("14d".into())),
+            7
+        ));
+        assert!(!uv_exclude_newer_meets(
+            Some(&toml::Value::String("".into())),
+            7
+        ));
+        assert!(!uv_exclude_newer_meets(None, 7));
+    }
+
+    #[test]
+    fn a_non_date_string_is_not_read_as_a_date() {
+        assert_eq!(uv_date_meets("nodashes", 7), None);
+        // A well-formed date long past always meets any threshold.
+        assert_eq!(uv_date_meets("2000-01-01", 7), Some(true));
+        assert_eq!(uv_date_meets("2000-01-01-01", 7), None);
     }
 }

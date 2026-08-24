@@ -1,4 +1,4 @@
-use super::{fix_for, fixable_finding};
+use super::{fix_for, fixable_finding, ComposerSecurity};
 use crate::config::ResolvedSettings;
 use crate::findings::{Finding, Severity};
 use crate::fix::ConfigEdit;
@@ -168,15 +168,11 @@ pub fn uv_malware(
     }
 }
 
-pub fn composer_policy(
-    policy_disabled: bool,
-    advisories_audit_ignore: bool,
-    advisories_block: bool,
-    malware_block: bool,
-    config_path: &Path,
-) -> Vec<Finding> {
+/// Composer's audit-gate findings, read straight off the parsed manifest
+/// settings rather than from four positional booleans.
+pub fn composer_policy(security: &ComposerSecurity, config_path: &Path) -> Vec<Finding> {
     let mut findings = Vec::new();
-    if policy_disabled || advisories_audit_ignore {
+    if security.policy_disabled || security.advisories_ignore {
         findings.push(fixable_finding(
             "audit.disabled",
             "composer policy.advisories.audit must not be ignore",
@@ -194,7 +190,7 @@ pub fn composer_policy(
             ),
         ));
     }
-    if !advisories_block {
+    if !security.advisories_block {
         findings.push(fixable_finding(
             "audit.blocking-disabled",
             "composer policy.advisories.block must be true",
@@ -208,7 +204,7 @@ pub fn composer_policy(
             ),
         ));
     }
-    if !malware_block {
+    if !security.malware_block {
         findings.push(fixable_finding(
             "audit.malware-disabled",
             "composer policy.malware.block must be true",
@@ -223,4 +219,42 @@ pub fn composer_policy(
         ));
     }
     findings
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_enabled_audit_always_meets_the_gate() {
+        assert!(audit_meets_gate(true, None, Severity::Critical));
+        assert!(audit_meets_gate(true, Some("low"), Severity::Info));
+    }
+
+    #[test]
+    fn a_disabled_audit_without_a_level_never_meets_the_gate() {
+        assert!(!audit_meets_gate(false, None, Severity::Info));
+        assert!(!audit_meets_gate(false, Some("nonsense"), Severity::Info));
+    }
+
+    #[test]
+    fn a_level_at_or_below_the_gate_passes() {
+        // A level stricter than the gate would miss findings the gate requires.
+        assert!(audit_meets_gate(false, Some("low"), Severity::High));
+        assert!(audit_meets_gate(false, Some("high"), Severity::High));
+        assert!(!audit_meets_gate(false, Some("critical"), Severity::High));
+    }
+
+    #[test]
+    fn levels_are_matched_case_insensitively() {
+        assert!(audit_meets_gate(false, Some("HIGH"), Severity::High));
+        assert!(audit_meets_gate(false, Some("Moderate"), Severity::High));
+    }
+
+    #[test]
+    fn severity_names_map_to_every_severity() {
+        assert_eq!(severity_of("critical"), Some(Severity::Critical));
+        assert_eq!(severity_of("info"), Some(Severity::Info));
+        assert_eq!(severity_of("bogus"), None);
+    }
 }

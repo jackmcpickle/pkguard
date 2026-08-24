@@ -179,22 +179,16 @@ pub fn npm_settings(
         npmrc.get("registry").map(String::as_str),
         settings,
         "registry must be set in .npmrc",
-        preset,
         &npmrc_path,
         Manager::Npm,
         registry_url_fix(Manager::Npm, &npmrc_path, "registry", settings),
     ));
     findings.extend(pm_pin::check(
         settings.require_pm_pin,
-        manifest
-            .as_ref()
-            .and_then(|m| m.get("packageManager"))
-            .and_then(|v| v.as_str())
-            .is_some_and(|v| v.starts_with("npm@")),
-        "package.json packageManager must start with npm@",
-        preset,
-        &project_root.join("package.json"),
+        PackageManagerPin::from_manifest(project_root).as_ref(),
         Manager::Npm,
+        preset,
+        project_root,
     ));
     findings
 }
@@ -342,22 +336,16 @@ pub fn pnpm_settings(
         registry.as_deref(),
         settings,
         "registry or registries.default must be set",
-        preset,
         &yaml_path,
         Manager::Pnpm,
         registry_url_fix(Manager::Pnpm, &yaml_path, "registry", settings),
     ));
     findings.extend(pm_pin::check(
         settings.require_pm_pin,
-        manifest_json(project_root)
-            .as_ref()
-            .and_then(|m| m.get("packageManager"))
-            .and_then(|v| v.as_str())
-            .is_some_and(|v| v.starts_with("pnpm@")),
-        "package.json packageManager must start with pnpm@",
-        preset,
-        &project_root.join("package.json"),
+        PackageManagerPin::from_manifest(project_root).as_ref(),
         Manager::Pnpm,
+        preset,
+        project_root,
     ));
     findings
 }
@@ -426,9 +414,24 @@ fn json_bool(value: Option<&serde_json::Value>, fallback: bool) -> bool {
         .unwrap_or(fallback)
 }
 
-fn composer_security(
-    manifest: &serde_json::Value,
-) -> (bool, bool, bool, bool, bool, bool, bool, bool, Vec<String>) {
+/// Composer's security-relevant manifest settings, read once.
+///
+/// Named fields rather than a tuple: these are eight adjacent booleans, and
+/// positional destructuring let any two of them be swapped silently.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ComposerSecurity {
+    pub allow_plugins_all: bool,
+    pub disable_tls: bool,
+    pub secure_http: bool,
+    pub source_fallback: bool,
+    pub policy_disabled: bool,
+    pub advisories_block: bool,
+    pub advisories_ignore: bool,
+    pub malware_block: bool,
+    pub http_repos: Vec<String>,
+}
+
+fn composer_security(manifest: &serde_json::Value) -> ComposerSecurity {
     let config = manifest.get("config").unwrap_or(&serde_json::Value::Null);
     let allow_plugins_all = config.get("allow-plugins") == Some(&serde_json::Value::Bool(true));
     let disable_tls = json_bool(config.get("disable-tls"), false);
@@ -470,7 +473,7 @@ fn composer_security(
             }
         }
     }
-    (
+    ComposerSecurity {
         allow_plugins_all,
         disable_tls,
         secure_http,
@@ -480,7 +483,7 @@ fn composer_security(
         advisories_ignore,
         malware_block,
         http_repos,
-    )
+    }
 }
 
 pub fn python_not_uv(project_root: &Path, manager: Manager) -> Finding {
@@ -548,18 +551,16 @@ pub fn yarn_settings(
         registry.as_deref(),
         settings,
         "npmRegistryServer must be set",
-        preset,
         &yarnrc_path,
         Manager::Yarn,
         registry_url_fix(Manager::Yarn, &yarnrc_path, "npmRegistryServer", settings),
     ));
     findings.extend(pm_pin::check(
         settings.require_pm_pin,
-        pin.as_ref().is_some_and(|p| p.major >= 2),
-        "package.json packageManager must be yarn@ major >= 2",
-        preset,
-        &project_root.join("package.json"),
+        pin.as_ref(),
         Manager::Yarn,
+        preset,
+        project_root,
     ));
     findings
 }
@@ -590,7 +591,6 @@ pub fn bun_settings(
         registry.as_deref(),
         settings,
         "install.registry must be set",
-        settings.preset,
         &bunfig_path,
         Manager::Bun,
         registry_url_fix(Manager::Bun, &bunfig_path, "install.registry", settings),
@@ -626,7 +626,6 @@ pub fn uv_settings(
             None,
             settings,
             "extra indexes require index-strategy = \"first-index\"",
-            settings.preset,
             &config_path,
             Manager::Uv,
             Some(fix_for(
@@ -697,17 +696,7 @@ pub fn composer_settings(
         .ok()
         .and_then(|raw| serde_json::from_str(&raw).ok())
         .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
-    let (
-        allow_plugins_all,
-        disable_tls,
-        secure_http,
-        source_fallback,
-        policy_disabled,
-        advisories_block,
-        advisories_ignore,
-        malware_block,
-        http_repos,
-    ) = composer_security(&manifest);
+    let security = composer_security(&manifest);
 
     let mut findings = Vec::new();
     findings.extend(lockfile::check(
@@ -718,12 +707,14 @@ pub fn composer_settings(
     ));
     findings.extend(scripts::composer_check(
         settings,
-        allow_plugins_all.then_some(&serde_json::Value::Bool(true)),
+        security
+            .allow_plugins_all
+            .then_some(&serde_json::Value::Bool(true)),
         &config_path,
     ));
-    if disable_tls || !secure_http {
+    if security.disable_tls || !security.secure_http {
         let mut edits = Vec::new();
-        if disable_tls {
+        if security.disable_tls {
             edits.push(ConfigEdit::unset("config.disable-tls"));
         }
         edits.push(ConfigEdit::set("config.secure-http", true));
@@ -736,7 +727,7 @@ pub fn composer_settings(
             fix_for(Manager::Composer, &config_path, edits),
         ));
     }
-    if let Some(url) = http_repos.first() {
+    if let Some(url) = security.http_repos.first() {
         findings.push(advice_finding(
             "registry.unpinned",
             format!("composer repositories must use https ({url})"),
@@ -745,15 +736,9 @@ pub fn composer_settings(
             Manager::Composer,
         ));
     }
-    findings.extend(audit_gate::composer_policy(
-        policy_disabled,
-        advisories_ignore,
-        advisories_block,
-        malware_block,
-        &config_path,
-    ));
+    findings.extend(audit_gate::composer_policy(&security, &config_path));
     findings.extend(source::composer_source_fallback(
-        source_fallback,
+        security.source_fallback,
         settings.preset,
         &config_path,
     ));
@@ -781,4 +766,79 @@ pub fn bundler_settings(
     ));
     findings.extend(min_age::bundler_check(settings, cooldown, &config_path));
     findings
+}
+
+#[cfg(test)]
+mod composer_security_tests {
+    use super::*;
+
+    fn read(json: &str) -> ComposerSecurity {
+        composer_security(&serde_json::from_str(json).unwrap())
+    }
+
+    #[test]
+    fn an_empty_manifest_uses_composers_safe_defaults() {
+        let s = read("{}");
+        assert!(!s.allow_plugins_all);
+        assert!(!s.disable_tls);
+        assert!(s.secure_http);
+        assert!(!s.source_fallback);
+        assert!(!s.policy_disabled);
+        assert!(s.advisories_block);
+        assert!(!s.advisories_ignore);
+        assert!(s.malware_block);
+        assert!(s.http_repos.is_empty());
+    }
+
+    #[test]
+    fn each_flag_is_read_from_its_own_key() {
+        let s = read(
+            r#"{"config":{"allow-plugins":true,"disable-tls":true,
+                 "secure-http":false,"source-fallback":true}}"#,
+        );
+        assert!(s.allow_plugins_all);
+        assert!(s.disable_tls);
+        assert!(!s.secure_http);
+        assert!(s.source_fallback);
+    }
+
+    #[test]
+    fn policy_false_disables_the_whole_policy() {
+        assert!(read(r#"{"config":{"policy":false}}"#).policy_disabled);
+        assert!(!read(r#"{"config":{"policy":{}}}"#).policy_disabled);
+    }
+
+    #[test]
+    fn advisories_audit_ignore_is_detected() {
+        let s = read(r#"{"config":{"policy":{"advisories":{"audit":"ignore"}}}}"#);
+        assert!(s.advisories_ignore);
+        assert!(
+            !read(r#"{"config":{"policy":{"advisories":{"audit":"fail"}}}}"#).advisories_ignore
+        );
+    }
+
+    #[test]
+    fn advisories_block_falls_back_to_legacy_audit_block_insecure() {
+        assert!(!read(r#"{"config":{"audit":{"block-insecure":false}}}"#).advisories_block);
+        // The modern key wins over the legacy fallback.
+        let s = read(
+            r#"{"config":{"audit":{"block-insecure":false},
+                 "policy":{"advisories":{"block":true}}}}"#,
+        );
+        assert!(s.advisories_block);
+    }
+
+    #[test]
+    fn malware_block_defaults_true_but_can_be_turned_off() {
+        assert!(read(r#"{"config":{"policy":{}}}"#).malware_block);
+        assert!(!read(r#"{"config":{"policy":{"malware":{"block":false}}}}"#).malware_block);
+    }
+
+    #[test]
+    fn plaintext_repositories_are_collected_from_arrays_and_objects() {
+        let from_array = read(r#"{"repositories":[{"url":"http://a"},{"url":"https://b"}]}"#);
+        assert_eq!(from_array.http_repos, vec!["http://a".to_string()]);
+        let from_object = read(r#"{"repositories":{"one":{"url":"http://c"}}}"#);
+        assert_eq!(from_object.http_repos, vec!["http://c".to_string()]);
+    }
 }
