@@ -1,6 +1,6 @@
 pub mod parse;
 
-use crate::cache::{lockfile_digest, AdvisoryCache, DEFAULT_TTL_SECS};
+use crate::cache::{lockfile_digest, AdvisoryCache};
 use crate::discover::DetectedManager;
 use crate::exec::CommandRunner;
 use crate::findings::Finding;
@@ -72,7 +72,7 @@ pub async fn run_manager_advisories(
 
     if let Some(key) = digest.as_deref() {
         if !opts.refresh && !opts.no_cache {
-            if let Some(mut findings) = cache.get(key, DEFAULT_TTL_SECS) {
+            if let Some(mut findings) = cache.get(key) {
                 for finding in &mut findings {
                     finding.path = file_path.clone();
                 }

@@ -488,6 +488,12 @@ fn walk_dotted(value: serde_json::Value, key: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    /// 2024-06-01. uv's `exclude-newer` date check consults the clock, so tests
+    /// pin it rather than drifting with the wall clock.
+    fn test_clock() -> crate::clock::FixedClock {
+        crate::clock::FixedClock::at_day(19_875)
+    }
     use super::*;
     use crate::config::{parse_config, resolve_settings};
     use crate::discover::{DetectedManager, Role};
@@ -1058,14 +1064,14 @@ mod tests {
             config_path: None,
         };
         let settings = resolve_settings(&parse_config("preset = \"standard\"").unwrap(), "npm");
-        let findings = audit_manager_settings(root, &manager, &settings);
+        let findings = audit_manager_settings(root, &manager, &settings, &test_clock());
         assert!(findings.iter().any(|f| f.fix.is_some()));
         let proj = project(root, None);
         let plan = plan_fixes(&proj, &findings);
         let first = apply_fixes(&proj, &plan, &CannedRunner::new(), false, ApplyMode::Write).await;
         assert!(!first.written.is_empty());
 
-        let findings = audit_manager_settings(root, &manager, &settings);
+        let findings = audit_manager_settings(root, &manager, &settings, &test_clock());
         let plan = plan_fixes(&proj, &findings);
         assert!(
             plan.files.is_empty(),

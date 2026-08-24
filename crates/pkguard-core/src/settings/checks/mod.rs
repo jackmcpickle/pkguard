@@ -11,6 +11,7 @@ pub mod registry;
 pub mod scripts;
 pub mod source;
 
+use crate::clock::Clock;
 use crate::config::ResolvedSettings;
 use crate::discover::{DetectedManager, Project};
 use crate::findings::{Finding, FindingKind, Severity};
@@ -602,6 +603,7 @@ pub fn uv_settings(
     project_root: &Path,
     manager: &DetectedManager,
     settings: &ResolvedSettings,
+    clock: &dyn Clock,
 ) -> Vec<Finding> {
     let config_path = Manager::Uv
         .write_target(project_root)
@@ -617,7 +619,13 @@ pub fn uv_settings(
         &lockfile_path_for(project_root, manager),
         Manager::Uv,
     ));
-    findings.extend(min_age::uv_checks(settings, &cfg, &config_path, key_prefix));
+    findings.extend(min_age::uv_checks(
+        settings,
+        &cfg,
+        &config_path,
+        key_prefix,
+        clock,
+    ));
     if settings.preset == crate::policy::Preset::Strict
         && uv_has_extra_indexes(&cfg)
         && cfg.get("index-strategy").and_then(toml::Value::as_str) != Some("first-index")
