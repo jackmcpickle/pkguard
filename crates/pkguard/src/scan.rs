@@ -1,9 +1,9 @@
 use crate::cli::{Format, PresetArg, ScanArgs};
-use pkguard_core::apply::{ApplyResult, Blocked};
+use crate::report::{HumanReporter, JsonReporter, ProjectReport, Reporter};
+use pkguard_core::apply::Blocked;
 use pkguard_core::exec::TokioRunner;
 use pkguard_core::pipeline::{scan, AuditEvent, ScanOptions};
 use pkguard_core::policy::Preset;
-use serde_json::{json, Value};
 use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -61,15 +61,13 @@ pub async fn run(args: ScanArgs) -> i32 {
         None
     };
 
-    let mut render_opts = crate::render::RenderOptions {
-        color: color_enabled(),
-        audits_skipped: args.no_audit,
-        ..Default::default()
+    let mut reporter: Box<dyn Reporter> = if human {
+        Box::new(HumanReporter::new(color_enabled(), args.no_audit))
+    } else {
+        Box::new(JsonReporter::new())
     };
-    let mut counts = crate::render::SeverityCounts::default();
     let mut discovered = 0usize;
     let mut finished = 0usize;
-    let mut projects_json = Vec::new();
     let mut exit = 0i32;
 
     while let Some(event) = rx.recv().await {
@@ -90,43 +88,26 @@ pub async fn run(args: ScanArgs) -> i32 {
                 applied,
             } => {
                 finished += 1;
-                for finding in &findings {
-                    counts.add(finding.severity);
-                }
                 if let Some(applied) = &applied {
-                    render_opts.settings_fixed += applied.changes.len();
                     if matches!(applied.blocked, Some(Blocked::DirtyGit(_))) {
                         eprintln!("refusing to write: dirty git tree (use --force)");
                     }
                 }
-                if human {
-                    render_opts.applied = applied;
-                    let block = crate::render::project_block(
-                        &root,
-                        &findings,
-                        incomplete,
-                        preset,
-                        &config_sources,
-                        &render_opts,
-                    );
+                let report = ProjectReport {
+                    root,
+                    findings,
+                    incomplete,
+                    preset,
+                    config_sources,
+                    applied,
+                };
+                if let Some(text) = reporter.project(&report) {
                     if let Some(bar) = &progress {
-                        bar.suspend(|| print!("{block}"));
+                        bar.suspend(|| print!("{text}"));
                         bar.set_message(format!("auditing {finished}/{discovered} projects"));
                     } else {
-                        print!("{block}");
+                        print!("{text}");
                     }
-                } else {
-                    let mut project = json!({
-                        "root": root,
-                        "incomplete": incomplete,
-                        "preset": preset,
-                        "configSources": config_sources,
-                        "findings": findings,
-                    });
-                    if let Some(applied) = &applied {
-                        project["applied"] = applied_json(applied);
-                    }
-                    projects_json.push(project);
                 }
             }
             AuditEvent::Done(summary) => {
@@ -134,43 +115,9 @@ pub async fn run(args: ScanArgs) -> i32 {
                 if let Some(bar) = &progress {
                     bar.finish_and_clear();
                 }
-                if human {
-                    print!(
-                        "{}",
-                        crate::render::summary_block(&summary, &counts, &render_opts)
-                    );
-                } else {
-                    let doc = json!({
-                        "schemaVersion": 2,
-                        "exitCode": summary.exit.code(),
-                        "incomplete": summary.incomplete,
-                        "policyFailure": summary.policy_failure,
-                        "projects": projects_json,
-                    });
-                    println!("{}", serde_json::to_string_pretty(&doc).unwrap());
-                    projects_json = Vec::new();
-                }
+                print!("{}", reporter.finish(&summary));
             }
         }
     }
     exit
-}
-
-fn applied_json(applied: &ApplyResult) -> Value {
-    json!({
-        "written": applied.written,
-        "changes": applied.changes.iter().map(|change| {
-            json!({
-                "file": change.file,
-                "setting": change.setting,
-                "current": change.current,
-                "next": change.next,
-            })
-        }).collect::<Vec<_>>(),
-        "blocked": match &applied.blocked {
-            Some(Blocked::DirtyGit(path)) => json!({"dirtyGit": path}),
-            Some(Blocked::Nothing) => json!("nothing"),
-            None => Value::Null,
-        },
-    })
 }

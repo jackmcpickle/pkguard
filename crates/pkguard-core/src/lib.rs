@@ -1,6 +1,7 @@
 pub mod advisories;
 pub mod apply;
 pub mod cache;
+pub mod clock;
 pub mod config;
 pub mod discover;
 pub mod exec;

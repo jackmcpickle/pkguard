@@ -1,5 +1,6 @@
 pub mod checks;
 
+use crate::clock::Clock;
 use crate::config::ResolvedSettings;
 use crate::discover::{DetectedManager, Role};
 use crate::findings::Finding;
@@ -8,10 +9,13 @@ use std::path::Path;
 
 /// Pure-file settings audit for one detected manager. Reads config files under
 /// the project root; never spawns anything.
+/// `clock` is only consulted by uv's `exclude-newer` date check, but it is
+/// taken here so the whole settings audit can be driven at a fixed instant.
 pub fn audit_manager_settings(
     project_root: &Path,
     manager: &DetectedManager,
     settings: &ResolvedSettings,
+    clock: &dyn Clock,
 ) -> Vec<Finding> {
     match manager.role {
         Role::Leftover => vec![checks::leftover_finding(project_root, manager)],
@@ -21,7 +25,7 @@ pub fn audit_manager_settings(
             Manager::Pnpm => checks::pnpm_settings(project_root, manager, settings),
             Manager::Yarn => checks::yarn_settings(project_root, manager, settings),
             Manager::Bun => checks::bun_settings(project_root, manager, settings),
-            Manager::Uv => checks::uv_settings(project_root, manager, settings),
+            Manager::Uv => checks::uv_settings(project_root, manager, settings, clock),
             Manager::Cargo => checks::cargo_settings(project_root, manager, settings),
             Manager::Composer => checks::composer_settings(project_root, manager, settings),
             Manager::Bundler => checks::bundler_settings(project_root, manager, settings),
@@ -34,6 +38,12 @@ pub fn audit_manager_settings(
 
 #[cfg(test)]
 mod tests {
+
+    /// 2024-06-01. uv's `exclude-newer` date check consults the clock, so tests
+    /// pin it rather than drifting with the wall clock.
+    fn test_clock() -> crate::clock::FixedClock {
+        crate::clock::FixedClock::at_day(19_875)
+    }
     use super::*;
     use crate::config::{parse_config, resolve_settings, ConfigFile};
     use crate::discover::Role;
@@ -78,7 +88,12 @@ mod tests {
 
     fn audit(fx: &Fixture, config_toml: &str) -> Vec<Finding> {
         let manager = npm_manager(&fx.root, fx.root.join("package-lock.json").exists());
-        audit_manager_settings(&fx.root, &manager, &settings_for(config_toml))
+        audit_manager_settings(
+            &fx.root,
+            &manager,
+            &settings_for(config_toml),
+            &test_clock(),
+        )
     }
 
     #[test]
@@ -237,7 +252,12 @@ mod tests {
     fn audit_pnpm(fx: &Fixture, config_toml: &str) -> Vec<Finding> {
         let cfg: ConfigFile = parse_config(config_toml).unwrap();
         let manager = pnpm_manager(&fx.root, fx.root.join("pnpm-lock.yaml").exists());
-        audit_manager_settings(&fx.root, &manager, &resolve_settings(&cfg, "pnpm"))
+        audit_manager_settings(
+            &fx.root,
+            &manager,
+            &resolve_settings(&cfg, "pnpm"),
+            &test_clock(),
+        )
     }
 
     #[test]
@@ -389,8 +409,12 @@ registry: https://registry.npmjs.org/
             lockfile_path: Some(fx.root.join("package-lock.json")),
             config_path: None,
         };
-        let findings =
-            audit_manager_settings(&fx.root, &leftover, &settings_for("preset = \"standard\""));
+        let findings = audit_manager_settings(
+            &fx.root,
+            &leftover,
+            &settings_for("preset = \"standard\""),
+            &test_clock(),
+        );
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].code, "lockfile.leftover");
         assert_eq!(findings[0].severity, Severity::High);
@@ -427,7 +451,12 @@ registry: https://registry.npmjs.org/
 
     fn audit_named(fx: &Fixture, manager: DetectedManager, name: &str) -> Vec<Finding> {
         let cfg: ConfigFile = parse_config("preset = \"standard\"").unwrap();
-        audit_manager_settings(&fx.root, &manager, &resolve_settings(&cfg, name))
+        audit_manager_settings(
+            &fx.root,
+            &manager,
+            &resolve_settings(&cfg, name),
+            &test_clock(),
+        )
     }
 
     fn yarn_fixture() -> Fixture {
@@ -740,7 +769,12 @@ registry: https://registry.npmjs.org/
         toml: &str,
     ) -> Vec<Finding> {
         let cfg: ConfigFile = parse_config(toml).unwrap();
-        audit_manager_settings(&fx.root, &manager, &resolve_settings(&cfg, name))
+        audit_manager_settings(
+            &fx.root,
+            &manager,
+            &resolve_settings(&cfg, name),
+            &test_clock(),
+        )
     }
 
     #[test]
@@ -1092,6 +1126,7 @@ registry: https://registry.npmjs.org/
             &pnpm.root,
             &leftover,
             &settings_for("preset = \"standard\""),
+            &test_clock(),
         ));
 
         let yarn = yarn_fixture();
@@ -1161,23 +1196,12 @@ registry: https://registry.npmjs.org/
         assert_fix_consistency(&findings);
     }
 
-    fn expected_write(manager: Manager) -> (&'static str, ConfigFormat) {
-        match manager {
-            Manager::Npm => (".npmrc", ConfigFormat::Npmrc),
-            Manager::Pnpm => ("pnpm-workspace.yaml", ConfigFormat::Yaml),
-            Manager::Yarn => (".yarnrc.yml", ConfigFormat::Yaml),
-            Manager::Bun => ("bunfig.toml", ConfigFormat::Toml),
-            Manager::Uv => ("pyproject.toml", ConfigFormat::Toml),
-            Manager::Cargo => (".cargo/config.toml", ConfigFormat::Toml),
-            Manager::Composer => ("composer.json", ConfigFormat::Json),
-            Manager::Bundler => (".bundle/config", ConfigFormat::BundleConfig),
-            other => panic!("{other:?} has no write target in this test"),
-        }
-    }
-
     fn assert_fixes_target(findings: &[Finding], root: &std::path::Path, manager: Manager) {
-        let (rel, format) = expected_write(manager);
-        let expected = root.join(rel);
+        // Ask the production mapping rather than restating it: a test that
+        // keeps its own copy can only catch the checks drifting from the copy.
+        let (expected, format) = manager
+            .write_target(root)
+            .unwrap_or_else(|| panic!("{manager:?} has no write target"));
         for finding in findings.iter().filter(|f| f.fix.is_some()) {
             let fix = finding.fix.as_ref().unwrap();
             assert_eq!(

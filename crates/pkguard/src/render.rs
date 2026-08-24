@@ -1,16 +1,16 @@
+use crate::report::ProjectReport;
 use owo_colors::{OwoColorize, Style};
-use pkguard_core::apply::ApplyResult;
 use pkguard_core::findings::{Finding, Severity};
 use pkguard_core::pipeline::ScanSummary;
 use pkguard_core::policy::Preset;
 use std::path::{Path, PathBuf};
 
+/// Run-scoped output settings. Per-project data is an argument, not a field —
+/// these values are true for the whole run.
 #[derive(Default)]
 pub struct RenderOptions {
     pub color: bool,
     pub audits_skipped: bool,
-    pub applied: Option<ApplyResult>,
-    pub settings_fixed: usize,
 }
 
 fn paint(text: &str, style: Style, opts: &RenderOptions) -> String {
@@ -82,14 +82,12 @@ fn config_line(preset: Preset, config_sources: &[PathBuf], opts: &RenderOptions)
 
 /// One project's result block: header, dim config provenance, and a
 /// severity-sorted findings table with stable column alignment.
-pub fn project_block(
-    root: &Path,
-    findings: &[Finding],
-    incomplete: bool,
-    preset: Preset,
-    config_sources: &[PathBuf],
-    opts: &RenderOptions,
-) -> String {
+pub fn project_block(report: &ProjectReport, opts: &RenderOptions) -> String {
+    let root = report.root.as_path();
+    let findings = report.findings.as_slice();
+    let incomplete = report.incomplete;
+    let preset = report.preset;
+    let config_sources = report.config_sources.as_slice();
     let name = display_name(root);
     if findings.is_empty() && !incomplete {
         let mut out = format!(
@@ -102,7 +100,7 @@ pub fn project_block(
                 opts
             ),
         );
-        write_fixed_lines(&mut out, root, opts);
+        write_fixed_lines(&mut out, root, report, opts);
         return out;
     }
 
@@ -147,7 +145,7 @@ pub fn project_block(
         show_headers,
         opts,
     );
-    write_fixed_lines(&mut out, root, opts);
+    write_fixed_lines(&mut out, root, report, opts);
     out
 }
 
@@ -212,10 +210,18 @@ fn write_group(
     }
 }
 
-fn write_fixed_lines(out: &mut String, root: &Path, opts: &RenderOptions) {
-    let Some(applied) = &opts.applied else {
+fn write_fixed_lines(out: &mut String, root: &Path, report: &ProjectReport, opts: &RenderOptions) {
+    let Some(applied) = &report.applied else {
         return;
     };
+    for (file, reason) in &applied.skipped {
+        let path = file.strip_prefix(root).unwrap_or(file.as_path());
+        let line = format!("skipped  {}: {}", path.display(), reason.as_str());
+        out.push_str(&format!(
+            "  {}\n",
+            paint(&line, Style::new().yellow(), opts)
+        ));
+    }
     for change in &applied.changes {
         let file = change
             .file
@@ -280,6 +286,7 @@ impl SeverityCounts {
 pub fn summary_block(
     summary: &ScanSummary,
     counts: &SeverityCounts,
+    settings_fixed: usize,
     opts: &RenderOptions,
 ) -> String {
     let findings_part = {
@@ -306,13 +313,12 @@ pub fn summary_block(
         line.push_str(" · ");
         line.push_str(&paint("audit incomplete", Style::new().red(), opts));
     }
-    if opts.settings_fixed > 0 {
+    if settings_fixed > 0 {
         line.push_str(" · ");
         line.push_str(&paint(
             &format!(
-                "{} setting{} fixed",
-                opts.settings_fixed,
-                if opts.settings_fixed == 1 { "" } else { "s" }
+                "{settings_fixed} setting{} fixed",
+                if settings_fixed == 1 { "" } else { "s" }
             ),
             Style::new().dimmed(),
             opts,
@@ -371,9 +377,51 @@ mod tests {
         RenderOptions {
             color: false,
             audits_skipped: false,
-            applied: None,
-            settings_fixed: 0,
         }
+    }
+
+    /// Assemble a `ProjectReport` so each test still reads as "these findings,
+    /// rendered this way".
+    fn block(
+        root: &Path,
+        findings: &[Finding],
+        incomplete: bool,
+        preset: Preset,
+        config_sources: &[PathBuf],
+        opts: &RenderOptions,
+    ) -> String {
+        block_applied(
+            root,
+            findings,
+            incomplete,
+            preset,
+            config_sources,
+            None,
+            opts,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn block_applied(
+        root: &Path,
+        findings: &[Finding],
+        incomplete: bool,
+        preset: Preset,
+        config_sources: &[PathBuf],
+        applied: Option<ApplyResult>,
+        opts: &RenderOptions,
+    ) -> String {
+        project_block(
+            &ProjectReport {
+                root: root.to_path_buf(),
+                findings: findings.to_vec(),
+                incomplete,
+                preset,
+                config_sources: config_sources.to_vec(),
+                applied,
+            },
+            opts,
+        )
     }
 
     #[test]
@@ -382,7 +430,7 @@ mod tests {
             finding("GHSA-v7", Severity::High, Some("left-pad"), Some("1.3.0")),
             finding("scripts.pin-missing", Severity::Info, None, None),
         ];
-        let block = project_block(
+        let block = block(
             Path::new("/scan/app"),
             &findings,
             false,
@@ -411,7 +459,7 @@ mod tests {
             finding("a-crit", Severity::Critical, None, None),
             finding("a-low", Severity::Low, None, None),
         ];
-        let block = project_block(
+        let block = block(
             Path::new("/scan/app"),
             &findings,
             false,
@@ -428,7 +476,7 @@ mod tests {
 
     #[test]
     fn clean_project_is_a_single_ok_line() {
-        let block = project_block(
+        let block = block(
             Path::new("/scan/app"),
             &[],
             false,
@@ -441,7 +489,7 @@ mod tests {
 
     #[test]
     fn incomplete_project_is_flagged() {
-        let block = project_block(
+        let block = block(
             Path::new("/scan/app"),
             &[],
             true,
@@ -455,7 +503,7 @@ mod tests {
     #[test]
     fn color_mode_dims_config_and_colors_severities() {
         let findings = vec![finding("GHSA-v7", Severity::Critical, None, None)];
-        let block = project_block(
+        let block = block(
             Path::new("/scan/app"),
             &findings,
             false,
@@ -492,6 +540,7 @@ mod tests {
                 exit: ExitCode::PolicyFailure,
             },
             &counts,
+            0,
             &plain(),
         );
         assert!(text.contains("3 projects"));
@@ -509,7 +558,7 @@ mod tests {
             finding("GHSA-v7", Severity::High, Some("left-pad"), Some("1.3.0")),
             settings_finding("scripts.pin-missing", Severity::Info),
         ];
-        let block = project_block(
+        let block = block(
             Path::new("/scan/app"),
             &findings,
             false,
@@ -534,7 +583,7 @@ mod tests {
     #[test]
     fn settings_only_project_omits_group_headers() {
         let findings = vec![settings_finding("scripts.pin-missing", Severity::Info)];
-        let block = project_block(
+        let block = block(
             Path::new("/scan/app"),
             &findings,
             false,
@@ -561,7 +610,7 @@ mod tests {
             Some("left-pad"),
             Some("1.3.0"),
         )];
-        let block = project_block(
+        let block = block(
             Path::new("/scan/app"),
             &findings,
             false,
@@ -589,7 +638,7 @@ mod tests {
             finding("GHSA-v7", Severity::High, Some("left-pad"), Some("1.3.0")),
             settings_finding("scripts.pin-missing", Severity::Info),
         ];
-        let block = project_block(
+        let block = block(
             Path::new("/scan/app"),
             &findings,
             false,
@@ -636,16 +685,14 @@ mod tests {
             ],
             blocked: None,
         };
-        let block = project_block(
+        let block = block_applied(
             Path::new("/scan/app"),
             &[],
             true,
             Preset::Standard,
             &[],
-            &RenderOptions {
-                applied: Some(applied),
-                ..plain()
-            },
+            Some(applied),
+            &plain(),
         );
         let lines: Vec<&str> = block.lines().collect();
         assert!(
@@ -661,7 +708,7 @@ mod tests {
     #[test]
     fn audits_skipped_marker_appears_on_config_line_only_when_skipped() {
         let findings = vec![settings_finding("scripts.pin-missing", Severity::Info)];
-        let skipped = project_block(
+        let skipped = block(
             Path::new("/scan/app"),
             &findings,
             false,
@@ -676,7 +723,7 @@ mod tests {
             skipped.lines().nth(1),
             Some("  preset standard · config .pkguard.toml · audits skipped")
         );
-        let live = project_block(
+        let live = block(
             Path::new("/scan/app"),
             &findings,
             false,
@@ -689,7 +736,7 @@ mod tests {
             Some("  preset standard · config .pkguard.toml")
         );
         assert!(!live.contains("audits skipped"));
-        let clean_offline = project_block(
+        let clean_offline = block(
             Path::new("/scan/app"),
             &[],
             false,
@@ -713,10 +760,8 @@ mod tests {
                 exit: ExitCode::Clean,
             },
             &SeverityCounts::default(),
-            &RenderOptions {
-                settings_fixed: 2,
-                ..plain()
-            },
+            2,
+            &plain(),
         );
         assert!(text.contains("2 settings fixed"), "{text}");
         let none = summary_block(
@@ -727,6 +772,7 @@ mod tests {
                 exit: ExitCode::Clean,
             },
             &SeverityCounts::default(),
+            0,
             &plain(),
         );
         assert!(!none.contains("settings fixed"), "{none}");

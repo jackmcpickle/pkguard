@@ -3,7 +3,7 @@ use crate::findings::{Finding, FindingKind, Severity};
 use crate::manager::Manager;
 use serde_json::{Map, Value};
 
-fn parse_stdout(stdout: &str) -> Result<Value, serde_json::Error> {
+pub(crate) fn parse_stdout(stdout: &str) -> Result<Value, serde_json::Error> {
     if let Ok(value) = serde_json::from_str(stdout) {
         return Ok(value);
     }
@@ -22,9 +22,12 @@ fn parse_stdout(stdout: &str) -> Result<Value, serde_json::Error> {
     Ok(Value::Array(items))
 }
 
-/// npm-shaped reports keep the dedicated parser. Cargo's `{vulnerabilities:
-/// {list: [...]}}` is not npm v7 and must stay on this walker.
-fn looks_like_npm_report(value: &Value) -> bool {
+/// npm-shaped reports need the dedicated npm parser. Cargo's
+/// `{vulnerabilities: {list: [...]}}` is not npm v7 and must stay on this
+/// walker.
+///
+/// The caller acts on this; `parse_output` is the only dispatcher.
+pub(crate) fn looks_like_npm_report(value: &Value) -> bool {
     if value.get("advisories").is_some_and(Value::is_object)
         || value.get("auditReportVersion").is_some()
     {
@@ -73,11 +76,7 @@ fn yarn_tree_finding(item: &Value, path: &str, manager: Manager) -> Option<Findi
         .and_then(concrete_version);
     Some(Finding {
         kind: FindingKind::Advisory,
-        code: if id.is_empty() {
-            "advisory.unknown".into()
-        } else {
-            id
-        },
+        code: super::advisory_code(id),
         message,
         severity,
         path: path.to_string(),
@@ -150,11 +149,7 @@ fn advisory_like(item: &Value, path: &str, manager: Manager) -> Option<Finding> 
         });
     Some(Finding {
         kind: FindingKind::Advisory,
-        code: if id.is_empty() {
-            "advisory.unknown".into()
-        } else {
-            id
-        },
+        code: super::advisory_code(id),
         message,
         severity,
         path: path.to_string(),
@@ -254,15 +249,13 @@ fn walk_audit_roots(
     }
 }
 
-pub fn parse_audit_json(
-    stdout: &str,
+/// Walk an already-parsed audit payload. Takes the `Value` so the dispatcher
+/// can inspect the shape without this module parsing it twice.
+pub(crate) fn parse_value(
+    parsed: Value,
     lockfile_path: &str,
     manager: Manager,
 ) -> Result<Vec<Finding>, serde_json::Error> {
-    let parsed = parse_stdout(stdout)?;
-    if looks_like_npm_report(&parsed) {
-        return crate::advisories::parse::npm::parse_npm_audit(stdout, lockfile_path, manager);
-    }
     let mut findings = Vec::new();
     match parsed {
         Value::Array(_) => walk_collection(&parsed, lockfile_path, manager, &mut findings),
@@ -281,6 +274,17 @@ pub fn parse_audit_json(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Parse then walk. Deliberately not a production entry point: walking a
+    /// payload and *choosing* which walker it needs are separate jobs, and only
+    /// `advisories::parse_output` does the choosing.
+    fn parse_audit_json(
+        stdout: &str,
+        lockfile_path: &str,
+        manager: Manager,
+    ) -> Result<Vec<Finding>, serde_json::Error> {
+        parse_value(parse_stdout(stdout)?, lockfile_path, manager)
+    }
 
     #[test]
     fn parses_yarn_tree_node() {

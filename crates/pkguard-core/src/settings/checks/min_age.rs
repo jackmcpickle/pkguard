@@ -1,4 +1,5 @@
-use super::{bundle_fix, fixable_finding, npmrc_fix, setting_finding, toml_fix, yaml_fix};
+use super::{fix_for, fixable_finding, setting_finding};
+use crate::clock::Clock;
 use crate::config::ResolvedSettings;
 use crate::findings::{Finding, Severity};
 use crate::fix::ConfigEdit;
@@ -31,7 +32,8 @@ pub fn npm_check(
         Severity::High,
         npmrc_path,
         Manager::Npm,
-        npmrc_fix(
+        fix_for(
+            Manager::Npm,
             npmrc_path,
             vec![ConfigEdit::set(
                 "min-release-age",
@@ -53,7 +55,7 @@ fn unit_to_hours(amount: f64, unit: &str) -> f64 {
     }
 }
 
-pub(super) fn parse_age_hours_str(input: &str) -> Option<f64> {
+fn parse_age_hours_str(input: &str) -> Option<f64> {
     let trimmed = input.trim();
     let split = trimmed.find(|c: char| c.is_ascii_alphabetic());
     let (num, unit) = match split {
@@ -64,7 +66,7 @@ pub(super) fn parse_age_hours_str(input: &str) -> Option<f64> {
     Some(unit_to_hours(amount, unit))
 }
 
-pub(super) fn parse_pnpm_age_hours(value: &Yaml) -> Option<f64> {
+fn parse_pnpm_age_hours(value: &Yaml) -> Option<f64> {
     if let Some(number) = yaml::as_f64(value) {
         return Some(number / 60.0);
     }
@@ -97,7 +99,8 @@ pub fn pnpm_checks(
             Severity::High,
             yaml_path,
             Manager::Pnpm,
-            yaml_fix(
+            fix_for(
+                Manager::Pnpm,
                 yaml_path,
                 vec![ConfigEdit::set(
                     "minimumReleaseAge",
@@ -113,7 +116,8 @@ pub fn pnpm_checks(
             Severity::High,
             yaml_path,
             Manager::Pnpm,
-            yaml_fix(
+            fix_for(
+                Manager::Pnpm,
                 yaml_path,
                 vec![ConfigEdit::set("minimumReleaseAgeStrict", true)],
             ),
@@ -137,7 +141,8 @@ pub fn pnpm_checks(
             Severity::Moderate,
             yaml_path,
             Manager::Pnpm,
-            yaml_fix(
+            fix_for(
+                Manager::Pnpm,
                 yaml_path,
                 vec![ConfigEdit::set("minimumReleaseAgeIgnoreMissingTime", false)],
             ),
@@ -176,7 +181,8 @@ pub fn yarn_checks(
             Severity::High,
             yarnrc_path,
             Manager::Yarn,
-            yaml_fix(
+            fix_for(
+                Manager::Yarn,
                 yarnrc_path,
                 vec![ConfigEdit::set(
                     "npmMinimalAgeGate",
@@ -217,7 +223,8 @@ pub fn bun_checks(
             Severity::High,
             bunfig_path,
             Manager::Bun,
-            toml_fix(
+            fix_for(
+                Manager::Bun,
                 bunfig_path,
                 vec![ConfigEdit::set(
                     "install.minimumReleaseAge",
@@ -261,7 +268,7 @@ fn days_since_ymd(year: i32, month: u32, day: u32) -> Option<i64> {
     Some(era * 146_097 + doe - 719_468)
 }
 
-fn uv_date_meets(trimmed: &str, min_days: u32) -> Option<bool> {
+fn uv_date_meets(trimmed: &str, min_days: u32, clock: &dyn Clock) -> Option<bool> {
     if !trimmed.contains(['T', 't', '-']) {
         return None;
     }
@@ -274,15 +281,10 @@ fn uv_date_meets(trimmed: &str, min_days: u32) -> Option<bool> {
         return None;
     }
     let then = days_since_ymd(year, month, day)?;
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .ok()?
-        .as_secs() as i64
-        / 86_400;
-    Some(now.saturating_sub(then) >= i64::from(min_days))
+    Some(clock.today().saturating_sub(then) >= i64::from(min_days))
 }
 
-fn uv_exclude_newer_meets(value: Option<&toml::Value>, min_days: u32) -> bool {
+fn uv_exclude_newer_meets(value: Option<&toml::Value>, min_days: u32, clock: &dyn Clock) -> bool {
     let min = f64::from(min_days);
     match value {
         Some(toml::Value::Integer(n)) => *n as f64 >= min,
@@ -297,7 +299,7 @@ fn uv_exclude_newer_meets(value: Option<&toml::Value>, min_days: u32) -> bool {
                     return number >= min;
                 }
             }
-            if let Some(meets) = uv_date_meets(trimmed, min_days) {
+            if let Some(meets) = uv_date_meets(trimmed, min_days, clock) {
                 return meets;
             }
             parse_age_hours_str(trimmed).is_some_and(|hours| hours / 24.0 >= min)
@@ -311,12 +313,17 @@ pub fn uv_checks(
     cfg: &toml::Value,
     config_path: &Path,
     key_prefix: &str,
+    clock: &dyn Clock,
 ) -> Vec<Finding> {
     if settings.min_release_age_days == 0 {
         return Vec::new();
     }
     let mut findings = Vec::new();
-    if !uv_exclude_newer_meets(cfg.get("exclude-newer"), settings.min_release_age_days) {
+    if !uv_exclude_newer_meets(
+        cfg.get("exclude-newer"),
+        settings.min_release_age_days,
+        clock,
+    ) {
         findings.push(fixable_finding(
             "min-age.disabled",
             format!(
@@ -326,7 +333,8 @@ pub fn uv_checks(
             Severity::High,
             config_path,
             Manager::Uv,
-            toml_fix(
+            fix_for(
+                Manager::Uv,
                 config_path,
                 vec![ConfigEdit::set(
                     format!("{key_prefix}exclude-newer"),
@@ -383,7 +391,8 @@ pub fn cargo_check(
             Severity::High,
             config_path,
             Manager::Cargo,
-            toml_fix(
+            fix_for(
+                Manager::Cargo,
                 config_path,
                 vec![ConfigEdit::set(
                     "install.minimum-release-age",
@@ -414,7 +423,8 @@ pub fn bundler_check(
             Severity::High,
             config_path,
             Manager::Bundler,
-            bundle_fix(
+            fix_for(
+                Manager::Bundler,
                 config_path,
                 vec![ConfigEdit::set(
                     "BUNDLE_COOLDOWN",
@@ -422,5 +432,153 @@ pub fn bundler_check(
                 )],
             ),
         )]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::clock::FixedClock;
+
+    /// 2024-06-01, so date assertions do not drift with the wall clock.
+    fn clock() -> FixedClock {
+        FixedClock::at_day(19_875)
+    }
+
+    #[test]
+    fn the_unix_epoch_is_day_zero() {
+        assert_eq!(days_since_ymd(1970, 1, 1), Some(0));
+    }
+
+    #[test]
+    fn days_since_ymd_matches_known_offsets() {
+        assert_eq!(days_since_ymd(1970, 1, 2), Some(1));
+        assert_eq!(days_since_ymd(1971, 1, 1), Some(365));
+        // 1972 is a leap year, so 1973-01-01 is 366 days after 1972-01-01.
+        assert_eq!(days_since_ymd(1972, 1, 1), Some(730));
+        assert_eq!(days_since_ymd(1973, 1, 1), Some(1096));
+        assert_eq!(days_since_ymd(2000, 1, 1), Some(10957));
+        assert_eq!(days_since_ymd(2024, 2, 29), Some(19782));
+    }
+
+    #[test]
+    fn dates_before_the_epoch_go_negative() {
+        assert_eq!(days_since_ymd(1969, 12, 31), Some(-1));
+    }
+
+    #[test]
+    fn leap_day_rules_hold_across_century_boundaries() {
+        // 2000 was a leap year (divisible by 400); 1900 was not.
+        let feb28 = days_since_ymd(2000, 2, 28).unwrap();
+        assert_eq!(days_since_ymd(2000, 3, 1), Some(feb28 + 2));
+        let feb28_1900 = days_since_ymd(1900, 2, 28).unwrap();
+        assert_eq!(days_since_ymd(1900, 3, 1), Some(feb28_1900 + 1));
+    }
+
+    #[test]
+    fn out_of_range_months_and_days_are_rejected() {
+        assert_eq!(days_since_ymd(2024, 0, 1), None);
+        assert_eq!(days_since_ymd(2024, 13, 1), None);
+        assert_eq!(days_since_ymd(2024, 1, 0), None);
+        assert_eq!(days_since_ymd(2024, 1, 32), None);
+    }
+
+    #[test]
+    fn durations_convert_to_hours_by_unit() {
+        assert_eq!(unit_to_hours(2.0, "w"), 336.0);
+        assert_eq!(unit_to_hours(3.0, "d"), 72.0);
+        assert_eq!(unit_to_hours(90.0, "m"), 1.5);
+        assert_eq!(unit_to_hours(5.0, "h"), 5.0);
+    }
+
+    #[test]
+    fn a_bare_number_is_read_as_minutes() {
+        assert_eq!(parse_age_hours_str("120"), Some(2.0));
+        assert_eq!(parse_age_hours_str(" 7d "), Some(168.0));
+        assert_eq!(parse_age_hours_str("2 weeks"), Some(336.0));
+        assert_eq!(parse_age_hours_str("nonsense"), None);
+    }
+
+    #[test]
+    fn a_star_anywhere_is_a_blanket_exclude() {
+        assert!(toml_is_blanket(Some(&toml::Value::String("*".into()))));
+        assert!(toml_is_blanket(Some(&toml::Value::Array(vec![
+            toml::Value::String("lodash".into()),
+            toml::Value::String("*".into()),
+        ]))));
+        assert!(!toml_is_blanket(Some(&toml::Value::Array(vec![
+            toml::Value::String("lodash".into()),
+        ]))));
+        assert!(!toml_is_blanket(None));
+    }
+
+    #[test]
+    fn exclude_newer_accepts_numbers_and_durations() {
+        assert!(uv_exclude_newer_meets(
+            Some(&toml::Value::Integer(10)),
+            7,
+            &clock()
+        ));
+        assert!(!uv_exclude_newer_meets(
+            Some(&toml::Value::Integer(3)),
+            7,
+            &clock()
+        ));
+        assert!(uv_exclude_newer_meets(
+            Some(&toml::Value::String("14d".into())),
+            7,
+            &clock()
+        ));
+        assert!(!uv_exclude_newer_meets(
+            Some(&toml::Value::String("".into())),
+            7,
+            &clock()
+        ));
+        assert!(!uv_exclude_newer_meets(None, 7, &clock()));
+    }
+
+    #[test]
+    fn a_non_date_string_is_not_read_as_a_date() {
+        assert_eq!(uv_date_meets("nodashes", 7, &clock()), None);
+        // A well-formed date long past always meets any threshold.
+        assert_eq!(uv_date_meets("2000-01-01", 7, &clock()), Some(true));
+        assert_eq!(uv_date_meets("2000-01-01-01", 7, &clock()), None);
+    }
+
+    #[test]
+    fn a_date_is_measured_against_the_injected_clock() {
+        // Clock is 2024-06-01 (day 19875). 2024-05-01 is day 19844, so the
+        // exclude-newer date is 31 days old.
+        let at = FixedClock::at_day(19_875);
+        assert_eq!(uv_date_meets("2024-05-01", 30, &at), Some(true));
+        assert_eq!(uv_date_meets("2024-05-01", 31, &at), Some(true));
+        assert_eq!(uv_date_meets("2024-05-01", 32, &at), Some(false));
+    }
+
+    #[test]
+    fn a_future_date_never_meets_a_threshold() {
+        let at = FixedClock::at_day(19_875);
+        assert_eq!(uv_date_meets("2025-01-01", 1, &at), Some(false));
+    }
+
+    #[test]
+    fn the_same_date_gives_different_answers_at_different_times() {
+        // The whole point of the seam: this assertion is impossible against
+        // the wall clock.
+        let date = "2024-05-01";
+        assert_eq!(
+            uv_date_meets(date, 60, &FixedClock::at_day(19_875)),
+            Some(false)
+        );
+        assert_eq!(
+            uv_date_meets(date, 60, &FixedClock::at_day(19_950)),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn timestamps_are_read_down_to_the_date() {
+        let at = FixedClock::at_day(19_875);
+        assert_eq!(uv_date_meets("2024-05-01T12:00:00Z", 30, &at), Some(true));
     }
 }

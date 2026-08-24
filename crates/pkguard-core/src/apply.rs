@@ -35,15 +35,40 @@ pub enum Blocked {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FixPlan {
-    pub files: Vec<(PathBuf, String)>,
+    /// Rendered file bodies. Private: what a file will look like after the
+    /// edit is `apply_fixes`'s business, not a caller's.
+    files: Vec<(PathBuf, String)>,
     pub changes: Vec<PlannedChange>,
     pub skipped: Vec<(PathBuf, SkipReason)>,
 }
 
+impl FixPlan {
+    /// True when the plan would neither write nor report anything.
+    pub fn is_empty(&self) -> bool {
+        self.files.is_empty() && self.changes.is_empty()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SkipReason {
+    /// The target would be written outside the project root.
     Forbidden,
+    /// The existing file could not be parsed, so it was left alone.
     Unparseable,
+    /// The write itself failed (permissions, a directory in the way, a full
+    /// disk). Reported rather than swallowed, so `--fix` cannot silently
+    /// leave a setting unfixed.
+    WriteFailed,
+}
+
+impl SkipReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SkipReason::Forbidden => "forbidden",
+            SkipReason::Unparseable => "unparseable",
+            SkipReason::WriteFailed => "write failed",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,18 +118,40 @@ pub fn plan_fixes(project: &Project, findings: &[Finding]) -> FixPlan {
     }
 }
 
+/// Whether to carry the plan out or only report it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApplyMode {
+    /// Write the planned files.
+    Write,
+    /// Report what would change, touching nothing on disk.
+    DryRun,
+}
+
+/// Turn a plan into a result. Every `ApplyResult` in the system comes from
+/// here, in both modes, so the two cannot describe the same plan differently.
 pub async fn apply_fixes(
     project: &Project,
     plan: &FixPlan,
     runner: &dyn CommandRunner,
     force: bool,
+    mode: ApplyMode,
 ) -> ApplyResult {
-    if plan.files.is_empty() && plan.changes.is_empty() {
+    if plan.is_empty() {
         return ApplyResult {
             written: Vec::new(),
             skipped: plan.skipped.clone(),
             changes: Vec::new(),
             blocked: Some(Blocked::Nothing),
+        };
+    }
+    if mode == ApplyMode::DryRun {
+        // Nothing is written, so every planned change is reported and the
+        // working tree is never consulted.
+        return ApplyResult {
+            written: Vec::new(),
+            skipped: plan.skipped.clone(),
+            changes: plan.changes.clone(),
+            blocked: None,
         };
     }
     if let Some(dirty) = dirty_git_root(project, runner).await {
@@ -121,12 +168,16 @@ pub async fn apply_fixes(
     let mut written = Vec::new();
     let mut skipped = plan.skipped.clone();
     for (file, body) in &plan.files {
+        // Re-checked here as well as at plan time: the target could have been
+        // swapped in between. `write_inside_root` is what actually enforces
+        // containment; this only classifies the refusal for reporting.
         if is_forbidden_write(file, &project.root) {
             skipped.push((file.clone(), SkipReason::Forbidden));
             continue;
         }
-        if write_inside_root(file, body, &project.root) {
-            written.push(file.clone());
+        match write_inside_root(file, body, &project.root) {
+            Ok(()) => written.push(file.clone()),
+            Err(reason) => skipped.push((file.clone(), reason)),
         }
     }
     let changes = plan
@@ -153,12 +204,16 @@ pub async fn apply_fixes(
 ///
 /// The body lands in a fresh temp sibling opened `create_new` (`O_EXCL`, which
 /// never follows a symlink), then a sandboxed rename puts it in place.
-fn write_inside_root(file: &Path, body: &str, root: &Path) -> bool {
+///
+/// This is the authoritative containment check — `is_forbidden_write` runs
+/// earlier only so a refusal can be classified and reported before any write
+/// is attempted.
+fn write_inside_root(file: &Path, body: &str, root: &Path) -> Result<(), SkipReason> {
     let Some(relative) = relative_to_root(file, root) else {
-        return false;
+        return Err(SkipReason::Forbidden);
     };
     let Ok(dir) = Dir::open_ambient_dir(root, ambient_authority()) else {
-        return false;
+        return Err(SkipReason::WriteFailed);
     };
     if let Some(parent) = relative.parent().filter(|p| !p.as_os_str().is_empty()) {
         // A parent that is a symlink reports `AlreadyExists` rather than
@@ -167,27 +222,27 @@ fn write_inside_root(file: &Path, body: &str, root: &Path) -> bool {
         match dir.create_dir_all(parent) {
             Ok(()) => {}
             Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {}
-            Err(_) => return false,
+            Err(_) => return Err(SkipReason::WriteFailed),
         }
     }
     let Some(tmp) = create_temp_sibling(&dir, &relative) else {
-        return false;
+        return Err(SkipReason::WriteFailed);
     };
     let wrote = {
         let mut handle = match dir.open_with(&tmp, OpenOptions::new().write(true)) {
             Ok(handle) => handle,
             Err(_) => {
                 let _ = dir.remove_file(&tmp);
-                return false;
+                return Err(SkipReason::WriteFailed);
             }
         };
         handle.write_all(body.as_bytes()).is_ok()
     };
     if wrote && dir.rename(&tmp, &dir, &relative).is_ok() {
-        return true;
+        return Ok(());
     }
     let _ = dir.remove_file(&tmp);
-    false
+    Err(SkipReason::WriteFailed)
 }
 
 /// Lexical path of `file` beneath `root`, or `None` when it is not beneath it.
@@ -433,6 +488,12 @@ fn walk_dotted(value: serde_json::Value, key: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    /// 2024-06-01. uv's `exclude-newer` date check consults the clock, so tests
+    /// pin it rather than drifting with the wall clock.
+    fn test_clock() -> crate::clock::FixedClock {
+        crate::clock::FixedClock::at_day(19_875)
+    }
     use super::*;
     use crate::config::{parse_config, resolve_settings};
     use crate::discover::{DetectedManager, Role};
@@ -623,7 +684,14 @@ mod tests {
         assert!(!plan.files.is_empty());
         fs::remove_file(&npmrc).unwrap();
         std::os::unix::fs::symlink(&outside, &npmrc).unwrap();
-        let result = apply_fixes(&project(&root, None), &plan, &CannedRunner::new(), false).await;
+        let result = apply_fixes(
+            &project(&root, None),
+            &plan,
+            &CannedRunner::new(),
+            false,
+            ApplyMode::Write,
+        )
+        .await;
         assert!(result.written.is_empty());
         assert!(result.changes.is_empty());
         assert_eq!(result.skipped, vec![(npmrc, SkipReason::Forbidden)]);
@@ -654,7 +722,14 @@ mod tests {
         fs::remove_file(&npmrc).unwrap();
         fs::remove_dir(&pkg).unwrap();
         std::os::unix::fs::symlink(&outside, &pkg).unwrap();
-        let result = apply_fixes(&project(&root, None), &plan, &CannedRunner::new(), false).await;
+        let result = apply_fixes(
+            &project(&root, None),
+            &plan,
+            &CannedRunner::new(),
+            false,
+            ApplyMode::Write,
+        )
+        .await;
         assert!(result.written.is_empty());
         assert!(result.changes.is_empty());
         assert_eq!(result.skipped, vec![(npmrc, SkipReason::Forbidden)]);
@@ -694,7 +769,7 @@ mod tests {
             // The body goes to a temp sibling and is renamed over the link.
             // Rename replaces the link rather than following it, so the write
             // lands inside the project and `outside` is never created.
-            assert!(write_inside_root(&npmrc, "ignore-scripts=true\n", &root));
+            assert!(write_inside_root(&npmrc, "ignore-scripts=true\n", &root).is_ok());
             assert!(!outside.exists(), "write followed the swapped destination");
             assert!(
                 !fs::symlink_metadata(&npmrc)
@@ -718,7 +793,7 @@ mod tests {
             std::os::unix::fs::symlink(&outside, &pkg).unwrap();
 
             let npmrc = pkg.join(".npmrc");
-            assert!(!write_inside_root(&npmrc, "ignore-scripts=true\n", &root));
+            assert!(write_inside_root(&npmrc, "ignore-scripts=true\n", &root).is_err());
             assert_eq!(
                 fs::read_dir(&outside).unwrap().count(),
                 0,
@@ -735,7 +810,7 @@ mod tests {
             std::os::unix::fs::symlink("real", root.join("pkg")).unwrap();
 
             let npmrc = root.join("pkg/.npmrc");
-            assert!(write_inside_root(&npmrc, "ignore-scripts=true\n", &root));
+            assert!(write_inside_root(&npmrc, "ignore-scripts=true\n", &root).is_ok());
             assert_eq!(
                 fs::read_to_string(real.join(".npmrc")).unwrap(),
                 "ignore-scripts=true\n"
@@ -755,7 +830,7 @@ mod tests {
             std::os::unix::fs::symlink(&real, root.join("pkg")).unwrap();
 
             let npmrc = root.join("pkg/.npmrc");
-            assert!(!write_inside_root(&npmrc, "ignore-scripts=true\n", &root));
+            assert!(write_inside_root(&npmrc, "ignore-scripts=true\n", &root).is_err());
             assert!(!real.join(".npmrc").exists());
             assert!(tmp_residue(&real).is_empty(), "temp file left behind");
         }
@@ -767,7 +842,7 @@ mod tests {
             fs::create_dir(&root).unwrap();
 
             let escaped = root.join("../outside/.npmrc");
-            assert!(!write_inside_root(&escaped, "ignore-scripts=true\n", &root));
+            assert!(write_inside_root(&escaped, "ignore-scripts=true\n", &root).is_err());
             assert!(!tmp.path().join("outside").exists());
         }
 
@@ -777,7 +852,7 @@ mod tests {
             let root = tmp.path().join("proj");
             fs::create_dir(&root).unwrap();
 
-            assert!(!write_inside_root(&root, "ignore-scripts=true\n", &root));
+            assert!(write_inside_root(&root, "ignore-scripts=true\n", &root).is_err());
         }
 
         #[test]
@@ -786,7 +861,7 @@ mod tests {
             let root = tmp.path();
             let npmrc = root.join("nested/deep/.npmrc");
 
-            assert!(write_inside_root(&npmrc, "ignore-scripts=true\n", root));
+            assert!(write_inside_root(&npmrc, "ignore-scripts=true\n", root).is_ok());
             assert_eq!(fs::read_to_string(&npmrc).unwrap(), "ignore-scripts=true\n");
             assert!(tmp_residue(root.join("nested/deep").as_path()).is_empty());
         }
@@ -817,7 +892,14 @@ mod tests {
         )];
         let plan = plan_fixes(&project(root, Some(root)), &findings);
         assert!(!plan.changes.is_empty());
-        let result = apply_fixes(&project(root, Some(root)), &plan, &dirty_runner(), false).await;
+        let result = apply_fixes(
+            &project(root, Some(root)),
+            &plan,
+            &dirty_runner(),
+            false,
+            ApplyMode::Write,
+        )
+        .await;
         assert_eq!(result.blocked, Some(Blocked::DirtyGit(root.to_path_buf())));
         assert!(result.written.is_empty());
         assert_eq!(result.changes, plan.changes);
@@ -837,7 +919,14 @@ mod tests {
             vec![ConfigEdit::set("ignore-scripts", true)],
         )];
         let plan = plan_fixes(&project(root, Some(root)), &findings);
-        let result = apply_fixes(&project(root, Some(root)), &plan, &dirty_runner(), true).await;
+        let result = apply_fixes(
+            &project(root, Some(root)),
+            &plan,
+            &dirty_runner(),
+            true,
+            ApplyMode::Write,
+        )
+        .await;
         assert_eq!(result.blocked, None);
         assert_eq!(result.written, vec![root.join(".npmrc")]);
         assert!(fs::read_to_string(root.join(".npmrc"))
@@ -854,7 +943,14 @@ mod tests {
             vec![ConfigEdit::set("ignore-scripts", true)],
         )];
         let plan = plan_fixes(&project(root, None), &findings);
-        let result = apply_fixes(&project(root, None), &plan, &CannedRunner::new(), false).await;
+        let result = apply_fixes(
+            &project(root, None),
+            &plan,
+            &CannedRunner::new(),
+            false,
+            ApplyMode::Write,
+        )
+        .await;
         assert_eq!(result.blocked, None);
         assert_eq!(result.written, vec![root.join(".npmrc")]);
     }
@@ -876,7 +972,14 @@ mod tests {
         let plan = plan_fixes(&project(root, None), &findings);
         assert!(plan.files.is_empty());
         assert!(plan.changes.is_empty());
-        let result = apply_fixes(&project(root, None), &plan, &CannedRunner::new(), false).await;
+        let result = apply_fixes(
+            &project(root, None),
+            &plan,
+            &CannedRunner::new(),
+            false,
+            ApplyMode::Write,
+        )
+        .await;
         assert_eq!(result.blocked, Some(Blocked::Nothing));
         assert!(result.written.is_empty());
         let after = fs::metadata(&path)
@@ -897,7 +1000,14 @@ mod tests {
         )];
         let plan = plan_fixes(&project(root, None), &findings);
         assert!(!plan.changes.is_empty());
-        let result = apply_fixes(&project(root, None), &plan, &CannedRunner::new(), false).await;
+        let result = apply_fixes(
+            &project(root, None),
+            &plan,
+            &CannedRunner::new(),
+            false,
+            ApplyMode::Write,
+        )
+        .await;
         assert!(result.written.is_empty());
         assert!(
             result.changes.is_empty(),
@@ -926,7 +1036,14 @@ mod tests {
             vec![(root.join("broken.yml"), SkipReason::Unparseable)]
         );
         assert_eq!(plan.files.len(), 1);
-        let result = apply_fixes(&project(root, None), &plan, &CannedRunner::new(), false).await;
+        let result = apply_fixes(
+            &project(root, None),
+            &plan,
+            &CannedRunner::new(),
+            false,
+            ApplyMode::Write,
+        )
+        .await;
         assert_eq!(result.written, vec![root.join(".npmrc")]);
         assert_eq!(
             fs::read_to_string(root.join("broken.yml")).unwrap(),
@@ -947,22 +1064,166 @@ mod tests {
             config_path: None,
         };
         let settings = resolve_settings(&parse_config("preset = \"standard\"").unwrap(), "npm");
-        let findings = audit_manager_settings(root, &manager, &settings);
+        let findings = audit_manager_settings(root, &manager, &settings, &test_clock());
         assert!(findings.iter().any(|f| f.fix.is_some()));
         let proj = project(root, None);
         let plan = plan_fixes(&proj, &findings);
-        let first = apply_fixes(&proj, &plan, &CannedRunner::new(), false).await;
+        let first = apply_fixes(&proj, &plan, &CannedRunner::new(), false, ApplyMode::Write).await;
         assert!(!first.written.is_empty());
 
-        let findings = audit_manager_settings(root, &manager, &settings);
+        let findings = audit_manager_settings(root, &manager, &settings, &test_clock());
         let plan = plan_fixes(&proj, &findings);
         assert!(
             plan.files.is_empty(),
             "second pass still wants to write: {:?}",
             plan.changes
         );
-        let second = apply_fixes(&proj, &plan, &CannedRunner::new(), false).await;
+        let second = apply_fixes(&proj, &plan, &CannedRunner::new(), false, ApplyMode::Write).await;
         assert_eq!(second.blocked, Some(Blocked::Nothing));
         assert!(second.written.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_dry_run_reports_every_planned_change_and_writes_nothing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(root.join(".npmrc"), "ignore-scripts=false\n").unwrap();
+        let findings = [npm_finding(
+            root,
+            vec![ConfigEdit::set("ignore-scripts", true)],
+        )];
+        let plan = plan_fixes(&project(root, None), &findings);
+        let result = apply_fixes(
+            &project(root, None),
+            &plan,
+            &CannedRunner::new(),
+            false,
+            ApplyMode::DryRun,
+        )
+        .await;
+
+        assert!(result.written.is_empty());
+        assert_eq!(result.changes, plan.changes);
+        assert_eq!(result.blocked, None);
+        assert_eq!(
+            fs::read_to_string(root.join(".npmrc")).unwrap(),
+            "ignore-scripts=false\n",
+            "dry run must not touch the file"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_dry_run_never_consults_the_working_tree() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(root.join(".npmrc"), "ignore-scripts=false\n").unwrap();
+        let findings = [npm_finding(
+            root,
+            vec![ConfigEdit::set("ignore-scripts", true)],
+        )];
+        let plan = plan_fixes(&project(root, Some(root)), &findings);
+        // A dirty tree blocks a write, but a dry run writes nothing, so it
+        // still reports what would change.
+        let result = apply_fixes(
+            &project(root, Some(root)),
+            &plan,
+            &dirty_runner(),
+            false,
+            ApplyMode::DryRun,
+        )
+        .await;
+
+        assert_eq!(result.blocked, None);
+        assert!(!result.changes.is_empty());
+        assert!(result.written.is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_empty_plan_reports_nothing_to_do_in_both_modes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(root.join(".npmrc"), "ignore-scripts=true\n").unwrap();
+        // Already correct, so the plan is empty.
+        let findings = [npm_finding(
+            root,
+            vec![ConfigEdit::set("ignore-scripts", true)],
+        )];
+        let plan = plan_fixes(&project(root, None), &findings);
+        assert!(plan.is_empty());
+
+        for mode in [ApplyMode::Write, ApplyMode::DryRun] {
+            let result = apply_fixes(
+                &project(root, None),
+                &plan,
+                &CannedRunner::new(),
+                false,
+                mode,
+            )
+            .await;
+            assert_eq!(result.blocked, Some(Blocked::Nothing), "{mode:?}");
+            assert!(result.changes.is_empty(), "{mode:?}");
+            assert!(result.written.is_empty(), "{mode:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn only_a_write_run_changes_the_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(root.join(".npmrc"), "ignore-scripts=false\n").unwrap();
+        let findings = [npm_finding(
+            root,
+            vec![ConfigEdit::set("ignore-scripts", true)],
+        )];
+        let plan = plan_fixes(&project(root, None), &findings);
+        let result = apply_fixes(
+            &project(root, None),
+            &plan,
+            &CannedRunner::new(),
+            false,
+            ApplyMode::Write,
+        )
+        .await;
+
+        assert_eq!(result.written, vec![root.join(".npmrc")]);
+        assert!(fs::read_to_string(root.join(".npmrc"))
+            .unwrap()
+            .contains("ignore-scripts=true"));
+    }
+
+    #[tokio::test]
+    async fn a_failed_write_is_reported_as_skipped_not_silently_dropped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        // A directory where the file should go makes the write fail.
+        fs::create_dir(root.join(".npmrc")).unwrap();
+        let findings = [npm_finding(
+            root,
+            vec![ConfigEdit::set("ignore-scripts", true)],
+        )];
+        let plan = plan_fixes(&project(root, None), &findings);
+        let result = apply_fixes(
+            &project(root, None),
+            &plan,
+            &CannedRunner::new(),
+            false,
+            ApplyMode::Write,
+        )
+        .await;
+
+        assert!(result.written.is_empty());
+        assert!(result.changes.is_empty(), "a failed write is not a fix");
+        assert_eq!(
+            result.skipped,
+            vec![(root.join(".npmrc"), SkipReason::WriteFailed)],
+            "the user must be told the write failed"
+        );
+    }
+
+    #[test]
+    fn every_skip_reason_has_a_label() {
+        assert_eq!(SkipReason::Forbidden.as_str(), "forbidden");
+        assert_eq!(SkipReason::Unparseable.as_str(), "unparseable");
+        assert_eq!(SkipReason::WriteFailed.as_str(), "write failed");
     }
 }

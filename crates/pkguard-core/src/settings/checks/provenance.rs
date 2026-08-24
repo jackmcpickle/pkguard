@@ -1,4 +1,4 @@
-use super::{fixable_finding, yaml_fix};
+use super::{fix_for, fixable_finding};
 use crate::findings::{Finding, Severity};
 use crate::fix::ConfigEdit;
 use crate::format::yaml::{self, Yaml};
@@ -24,7 +24,7 @@ pub fn pnpm_checks(yaml: &Yaml, yaml_path: &Path, pin: Option<&PackageManagerPin
                 Severity::High,
                 yaml_path,
                 Manager::Pnpm,
-                yaml_fix(
+                fix_for(Manager::Pnpm,
                     yaml_path,
                     vec![ConfigEdit::set(
                         "trustPolicyIgnoreAfter",
@@ -43,7 +43,8 @@ pub fn pnpm_checks(yaml: &Yaml, yaml_path: &Path, pin: Option<&PackageManagerPin
                 Severity::High,
                 yaml_path,
                 Manager::Pnpm,
-                yaml_fix(
+                fix_for(
+                    Manager::Pnpm,
                     yaml_path,
                     vec![ConfigEdit::set("trustPolicy", "no-downgrade")],
                 ),

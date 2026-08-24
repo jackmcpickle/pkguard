@@ -1,6 +1,7 @@
 use crate::advisories::{run_manager_advisories, AdvisoryOptions};
 use crate::apply::ApplyResult;
 use crate::cache::AdvisoryCache;
+use crate::clock::{Clock, SystemClock};
 use crate::config::{layer_configs, parse_config, resolve_settings, ConfigFile};
 use crate::discover::{discover_projects, Project, Role};
 use crate::exec::CommandRunner;
@@ -110,15 +111,30 @@ struct ProjectResult {
     applied: Option<ApplyResult>,
 }
 
+/// Everything a project audit needs that is the same for every project in the
+/// run. Threading these one by one made the call an eight-argument list.
+struct RunContext<'a> {
+    base_config: &'a ConfigFile,
+    base_sources: &'a [PathBuf],
+    runner: &'a dyn CommandRunner,
+    cache: &'a AdvisoryCache,
+    opts: &'a ScanOptions,
+    clock: &'a dyn Clock,
+}
+
 async fn audit_project(
     project: &Project,
-    base_config: &ConfigFile,
-    base_sources: &[PathBuf],
-    runner: &dyn CommandRunner,
-    cache: &AdvisoryCache,
-    opts: &ScanOptions,
+    ctx: &RunContext<'_>,
     events: &mpsc::UnboundedSender<AuditEvent>,
 ) -> ProjectResult {
+    let RunContext {
+        base_config,
+        base_sources,
+        runner,
+        cache,
+        opts,
+        clock,
+    } = *ctx;
     let mut config_sources = base_sources.to_vec();
     let mut layers: Vec<ConfigFile> = vec![base_config.clone()];
     let repo_config_path = project.root.join(".pkguard.toml");
@@ -131,7 +147,7 @@ async fn audit_project(
         config.preset = Some(preset);
     }
 
-    let mut findings = collect_settings_findings(project, &config);
+    let mut findings = collect_settings_findings(project, &config, clock);
     let mut incomplete = false;
     let advisory_opts = AdvisoryOptions {
         refresh: opts.refresh,
@@ -140,18 +156,17 @@ async fn audit_project(
 
     let applied = if opts.fix {
         let plan = crate::apply::plan_fixes(project, &findings);
-        if opts.dry_run {
-            Some(crate::apply::ApplyResult {
-                written: Vec::new(),
-                skipped: plan.skipped.clone(),
-                changes: plan.changes.clone(),
-                blocked: None,
-            })
+        let mode = if opts.dry_run {
+            crate::apply::ApplyMode::DryRun
         } else {
-            let result = crate::apply::apply_fixes(project, &plan, runner, opts.force).await;
-            findings = collect_settings_findings(project, &config);
-            Some(result)
+            crate::apply::ApplyMode::Write
+        };
+        let result = crate::apply::apply_fixes(project, &plan, runner, opts.force, mode).await;
+        if !opts.dry_run {
+            // Fixed settings must stop being reported, so re-read them.
+            findings = collect_settings_findings(project, &config, clock);
         }
+        Some(result)
     } else {
         None
     };
@@ -213,7 +228,11 @@ async fn audit_project(
     }
 }
 
-fn collect_settings_findings(project: &Project, config: &ConfigFile) -> Vec<Finding> {
+fn collect_settings_findings(
+    project: &Project,
+    config: &ConfigFile,
+    clock: &dyn Clock,
+) -> Vec<Finding> {
     let mut findings = crate::settings::checks::multiple_pm_findings(project);
     for manager in &project.managers {
         let settings = resolve_settings(config, manager.manager.name());
@@ -221,6 +240,7 @@ fn collect_settings_findings(project: &Project, config: &ConfigFile) -> Vec<Find
             &project.root,
             manager,
             &settings,
+            clock,
         ));
     }
     findings
@@ -231,6 +251,17 @@ pub fn scan(
     root: PathBuf,
     runner: Arc<dyn CommandRunner>,
     opts: ScanOptions,
+) -> mpsc::UnboundedReceiver<AuditEvent> {
+    scan_with_clock(root, runner, opts, Arc::new(SystemClock))
+}
+
+/// `scan` against a chosen clock. Only uv's `exclude-newer` date check and the
+/// advisory cache TTL consult it.
+pub fn scan_with_clock(
+    root: PathBuf,
+    runner: Arc<dyn CommandRunner>,
+    opts: ScanOptions,
+    clock: Arc<dyn Clock>,
 ) -> mpsc::UnboundedReceiver<AuditEvent> {
     let (tx, rx) = mpsc::unbounded_channel();
     tokio::spawn(async move {
@@ -264,7 +295,8 @@ pub fn scan(
             opts.jobs
         };
         let semaphore = Arc::new(Semaphore::new(jobs));
-        let cache = Arc::new(AdvisoryCache::new(opts.cache_dir.clone()));
+        let cache =
+            Arc::new(AdvisoryCache::new(opts.cache_dir.clone()).with_clock(Arc::clone(&clock)));
         let opts = Arc::new(opts);
         let base_config = Arc::new(base_config);
         let base_sources = Arc::new(base_sources);
@@ -281,18 +313,18 @@ pub fn scan(
             let base_config = Arc::clone(&base_config);
             let base_sources = Arc::clone(&base_sources);
             let semaphore = Arc::clone(&semaphore);
+            let clock = Arc::clone(&clock);
             handles.push(tokio::spawn(async move {
                 let _permit = semaphore.acquire_owned().await.unwrap();
-                let result = audit_project(
-                    &project,
-                    &base_config,
-                    &base_sources,
-                    runner.as_ref(),
-                    &cache,
-                    &opts,
-                    &tx,
-                )
-                .await;
+                let ctx = RunContext {
+                    base_config: &base_config,
+                    base_sources: &base_sources,
+                    runner: runner.as_ref(),
+                    cache: &cache,
+                    opts: &opts,
+                    clock: clock.as_ref(),
+                };
+                let result = audit_project(&project, &ctx, &tx).await;
                 let _ = tx.send(AuditEvent::ProjectFinished {
                     root: project.root.clone(),
                     findings: result.findings.clone(),

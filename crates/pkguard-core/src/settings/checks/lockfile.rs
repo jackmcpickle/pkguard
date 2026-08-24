@@ -1,28 +1,26 @@
-use super::{fixable_finding, setting_finding, yaml_fix};
+use super::{fix_for, fixable_finding, setting_finding};
 use crate::findings::{Finding, FindingKind, Severity};
 use crate::fix::ConfigEdit;
 use crate::format::yaml::{self, Yaml};
 use crate::manager::{Manager, PackageManagerPin};
 use std::path::Path;
 
-pub fn check(
-    required: bool,
-    present: bool,
-    path: &Path,
-    message: &str,
-    manager: Manager,
-) -> Vec<Finding> {
-    if required && !present {
-        vec![setting_finding(
-            "lockfile.missing",
-            message,
-            Severity::High,
-            path,
-            manager,
-        )]
-    } else {
-        Vec::new()
+/// The message names every lockfile the manager accepts, derived from
+/// `Manager::lockfile_required_message` rather than restated per caller.
+pub fn check(required: bool, present: bool, path: &Path, manager: Manager) -> Vec<Finding> {
+    if !required || present {
+        return Vec::new();
     }
+    let Some(message) = manager.lockfile_required_message() else {
+        return Vec::new();
+    };
+    vec![setting_finding(
+        "lockfile.missing",
+        message,
+        Severity::High,
+        path,
+        manager,
+    )]
 }
 
 pub fn leftover(path: &Path, manager: Manager) -> Finding {
@@ -68,7 +66,11 @@ pub fn pnpm_trust_bypass(yaml: &Yaml, yaml_path: &Path) -> Vec<Finding> {
             Severity::High,
             yaml_path,
             Manager::Pnpm,
-            yaml_fix(yaml_path, vec![ConfigEdit::set("trustLockfile", false)]),
+            fix_for(
+                Manager::Pnpm,
+                yaml_path,
+                vec![ConfigEdit::set("trustLockfile", false)],
+            ),
         )]
     } else {
         Vec::new()
@@ -94,7 +96,8 @@ pub fn pnpm_run_verify(
             Severity::High,
             yaml_path,
             Manager::Pnpm,
-            yaml_fix(
+            fix_for(
+                Manager::Pnpm,
                 yaml_path,
                 vec![ConfigEdit::set("verifyDepsBeforeRun", "error")],
             ),

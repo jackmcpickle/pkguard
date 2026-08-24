@@ -1,7 +1,4 @@
-use super::{
-    advice_finding, default_reliance_severity, fixable_finding, json_fix, npmrc_fix, toml_fix,
-    yaml_fix,
-};
+use super::{advice_finding, default_reliance_severity, fix_for, fixable_finding};
 use crate::config::ResolvedSettings;
 use crate::findings::{Finding, Severity};
 use crate::fix::{ConfigEdit, ConfigValue};
@@ -47,7 +44,11 @@ pub fn npm_checks(
             Severity::High,
             npmrc_path,
             Manager::Npm,
-            npmrc_fix(npmrc_path, vec![ConfigEdit::set("ignore-scripts", true)]),
+            fix_for(
+                Manager::Npm,
+                npmrc_path,
+                vec![ConfigEdit::set("ignore-scripts", true)],
+            ),
         ));
     }
 
@@ -72,7 +73,11 @@ pub fn npm_checks(
     }
 
     if settings.ignore_scripts && !is_true(npmrc, "allow-scripts-pin") {
-        let pin_fix = npmrc_fix(npmrc_path, vec![ConfigEdit::set("allow-scripts-pin", true)]);
+        let pin_fix = fix_for(
+            Manager::Npm,
+            npmrc_path,
+            vec![ConfigEdit::set("allow-scripts-pin", true)],
+        );
         if npmrc.get("allow-scripts-pin").map(String::as_str) == Some("false") {
             findings.push(fixable_finding(
                 "scripts.pin-missing",
@@ -101,7 +106,8 @@ pub fn npm_checks(
             Severity::High,
             npmrc_path,
             Manager::Npm,
-            npmrc_fix(
+            fix_for(
+                Manager::Npm,
                 npmrc_path,
                 vec![ConfigEdit::set("dangerously-allow-all-scripts", false)],
             ),
@@ -129,7 +135,11 @@ pub fn pnpm_checks(
             Severity::High,
             yaml_path,
             Manager::Pnpm,
-            yaml_fix(yaml_path, vec![ConfigEdit::set("strictDepBuilds", true)]),
+            fix_for(
+                Manager::Pnpm,
+                yaml_path,
+                vec![ConfigEdit::set("strictDepBuilds", true)],
+            ),
         ));
     }
     findings
@@ -149,7 +159,7 @@ fn pnpm_builds_findings(
         .filter(|key| yaml::get(yaml, key).is_some())
         .collect();
 
-    let build_fix = yaml_fix(yaml_path, pnpm_build_edits(yaml));
+    let build_fix = fix_for(Manager::Pnpm, yaml_path, pnpm_build_edits(yaml));
     if yaml::is_true(yaml::get(yaml, "dangerouslyAllowAllBuilds")) {
         return vec![fixable_finding(
             "scripts.unrestricted",
@@ -195,7 +205,11 @@ pub fn yarn_check(
         return Vec::new();
     }
     let scripts_off_by_default = PackageManagerPin::at_least_or_unknown(pin, 4, 14);
-    let fix = yaml_fix(yarnrc_path, vec![ConfigEdit::set("enableScripts", false)]);
+    let fix = fix_for(
+        Manager::Yarn,
+        yarnrc_path,
+        vec![ConfigEdit::set("enableScripts", false)],
+    );
     if yaml::is_true(yaml::get(yarnrc, "enableScripts")) || !scripts_off_by_default {
         return vec![fixable_finding(
             "scripts.unrestricted",
@@ -263,7 +277,8 @@ pub fn bun_check(
             Severity::High,
             bunfig_path,
             Manager::Bun,
-            toml_fix(
+            fix_for(
+                Manager::Bun,
                 bunfig_path,
                 vec![ConfigEdit::set("install.ignoreScripts", true)],
             ),
@@ -285,7 +300,8 @@ pub fn composer_check(
             Severity::High,
             config_path,
             Manager::Composer,
-            json_fix(
+            fix_for(
+                Manager::Composer,
                 config_path,
                 vec![ConfigEdit::set("config.allow-plugins", false)],
             ),
@@ -351,7 +367,7 @@ fn pnpm_default_builds_finding(
     builds_blocked_by_default: bool,
     preset: Preset,
 ) -> Finding {
-    let fix = yaml_fix(yaml_path, pnpm_build_edits(yaml));
+    let fix = fix_for(Manager::Pnpm, yaml_path, pnpm_build_edits(yaml));
     if builds_blocked_by_default {
         fixable_finding(
             "scripts.unrestricted",

@@ -3,6 +3,7 @@ mod cli;
 mod init;
 mod paths;
 mod render;
+mod report;
 mod scan;
 
 use clap::Parser;

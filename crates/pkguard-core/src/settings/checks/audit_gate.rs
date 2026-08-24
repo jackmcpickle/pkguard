@@ -1,4 +1,4 @@
-use super::{fixable_finding, json_fix, npmrc_fix, toml_fix, yaml_fix};
+use super::{fix_for, fixable_finding, ComposerSecurity};
 use crate::config::ResolvedSettings;
 use crate::findings::{Finding, Severity};
 use crate::fix::ConfigEdit;
@@ -52,7 +52,8 @@ pub fn npm_check(
             Severity::High,
             npmrc_path,
             Manager::Npm,
-            npmrc_fix(
+            fix_for(
+                Manager::Npm,
                 npmrc_path,
                 vec![
                     ConfigEdit::set("audit", true),
@@ -93,7 +94,8 @@ pub fn pnpm_check(
         Severity::High,
         yaml_path,
         Manager::Pnpm,
-        yaml_fix(
+        fix_for(
+            Manager::Pnpm,
             yaml_path,
             vec![ConfigEdit::set(key, settings.audit_level.as_str())],
         ),
@@ -111,7 +113,7 @@ pub fn yarn_check(yarnrc: &Yaml, yarnrc_path: &Path) -> Vec<Finding> {
             Severity::High,
             yarnrc_path,
             Manager::Yarn,
-            yaml_fix(yarnrc_path, yarn_audit_edits(yarnrc)),
+            fix_for(Manager::Yarn, yarnrc_path, yarn_audit_edits(yarnrc)),
         )]
     } else {
         Vec::new()
@@ -154,7 +156,8 @@ pub fn uv_malware(
             Severity::High,
             config_path,
             Manager::Uv,
-            toml_fix(
+            fix_for(
+                Manager::Uv,
                 config_path,
                 vec![ConfigEdit::set(
                     format!("{key_prefix}audit.malware-check"),
@@ -165,22 +168,19 @@ pub fn uv_malware(
     }
 }
 
-pub fn composer_policy(
-    policy_disabled: bool,
-    advisories_audit_ignore: bool,
-    advisories_block: bool,
-    malware_block: bool,
-    config_path: &Path,
-) -> Vec<Finding> {
+/// Composer's audit-gate findings, read straight off the parsed manifest
+/// settings rather than from four positional booleans.
+pub fn composer_policy(security: &ComposerSecurity, config_path: &Path) -> Vec<Finding> {
     let mut findings = Vec::new();
-    if policy_disabled || advisories_audit_ignore {
+    if security.policy_disabled || security.advisories_ignore {
         findings.push(fixable_finding(
             "audit.disabled",
             "composer policy.advisories.audit must not be ignore",
             Severity::High,
             config_path,
             Manager::Composer,
-            json_fix(
+            fix_for(
+                Manager::Composer,
                 config_path,
                 vec![
                     ConfigEdit::set("config.policy.advisories.audit", "fail"),
@@ -190,31 +190,71 @@ pub fn composer_policy(
             ),
         ));
     }
-    if !advisories_block {
+    if !security.advisories_block {
         findings.push(fixable_finding(
             "audit.blocking-disabled",
             "composer policy.advisories.block must be true",
             Severity::High,
             config_path,
             Manager::Composer,
-            json_fix(
+            fix_for(
+                Manager::Composer,
                 config_path,
                 vec![ConfigEdit::set("config.policy.advisories.block", true)],
             ),
         ));
     }
-    if !malware_block {
+    if !security.malware_block {
         findings.push(fixable_finding(
             "audit.malware-disabled",
             "composer policy.malware.block must be true",
             Severity::High,
             config_path,
             Manager::Composer,
-            json_fix(
+            fix_for(
+                Manager::Composer,
                 config_path,
                 vec![ConfigEdit::set("config.policy.malware.block", true)],
             ),
         ));
     }
     findings
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_enabled_audit_always_meets_the_gate() {
+        assert!(audit_meets_gate(true, None, Severity::Critical));
+        assert!(audit_meets_gate(true, Some("low"), Severity::Info));
+    }
+
+    #[test]
+    fn a_disabled_audit_without_a_level_never_meets_the_gate() {
+        assert!(!audit_meets_gate(false, None, Severity::Info));
+        assert!(!audit_meets_gate(false, Some("nonsense"), Severity::Info));
+    }
+
+    #[test]
+    fn a_level_at_or_below_the_gate_passes() {
+        // A level stricter than the gate would miss findings the gate requires.
+        assert!(audit_meets_gate(false, Some("low"), Severity::High));
+        assert!(audit_meets_gate(false, Some("high"), Severity::High));
+        assert!(!audit_meets_gate(false, Some("critical"), Severity::High));
+    }
+
+    #[test]
+    fn levels_are_matched_case_insensitively() {
+        assert!(audit_meets_gate(false, Some("HIGH"), Severity::High));
+        assert!(audit_meets_gate(false, Some("Moderate"), Severity::High));
+    }
+
+    #[test]
+    fn severity_names_map_to_every_severity() {
+        assert_eq!(severity_of("critical"), Some(Severity::Critical));
+        assert_eq!(severity_of("info"), Some(Severity::Info));
+        assert_eq!(severity_of("bogus"), None);
+    }
 }

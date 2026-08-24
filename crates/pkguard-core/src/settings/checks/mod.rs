@@ -11,10 +11,11 @@ pub mod registry;
 pub mod scripts;
 pub mod source;
 
+use crate::clock::Clock;
 use crate::config::ResolvedSettings;
 use crate::discover::{DetectedManager, Project};
 use crate::findings::{Finding, FindingKind, Severity};
-use crate::fix::{ConfigEdit, ConfigFormat, SettingsFix};
+use crate::fix::{ConfigEdit, SettingsFix};
 use crate::format::{bundle_config, npmrc, yaml};
 use crate::manager::{Manager, PackageManagerPin};
 use crate::policy::Preset;
@@ -80,36 +81,51 @@ pub fn fixable_finding(
     }
 }
 
-pub fn npmrc_fix(file: &Path, edits: Vec<ConfigEdit>) -> SettingsFix {
-    SettingsFix::new(file, ConfigFormat::Npmrc, edits)
-}
-
-pub fn yaml_fix(file: &Path, edits: Vec<ConfigEdit>) -> SettingsFix {
-    SettingsFix::new(file, ConfigFormat::Yaml, edits)
-}
-
-pub fn toml_fix(file: &Path, edits: Vec<ConfigEdit>) -> SettingsFix {
-    SettingsFix::new(file, ConfigFormat::Toml, edits)
-}
-
-pub fn json_fix(file: &Path, edits: Vec<ConfigEdit>) -> SettingsFix {
-    SettingsFix::new(file, ConfigFormat::Json, edits)
-}
-
-pub fn bundle_fix(file: &Path, edits: Vec<ConfigEdit>) -> SettingsFix {
-    SettingsFix::new(file, ConfigFormat::BundleConfig, edits)
+/// Build a fix for `manager`'s config file. The format comes from
+/// `Manager::config_format`, so a check module states *which manager* it is
+/// checking — never which format that manager happens to use.
+///
+/// Panics only for managers that cannot be written (`is_legacy_python`), which
+/// never reach a check module.
+pub fn fix_for(manager: Manager, file: &Path, edits: Vec<ConfigEdit>) -> SettingsFix {
+    let format = manager
+        .config_format()
+        .unwrap_or_else(|| panic!("{} has no writable config format", manager.name()));
+    SettingsFix::new(file, format, edits)
 }
 
 fn registry_url_fix(
+    manager: Manager,
     file: &Path,
-    format: ConfigFormat,
     key: &str,
     settings: &ResolvedSettings,
 ) -> Option<SettingsFix> {
     settings
         .registry
         .as_ref()
-        .map(|url| SettingsFix::new(file, format, vec![ConfigEdit::set(key, url.as_str())]))
+        .map(|url| fix_for(manager, file, vec![ConfigEdit::set(key, url.as_str())]))
+}
+
+/// The config file to read and fix: whatever discovery found, else the
+/// manager's default location.
+fn config_path_for(project_root: &Path, manager: &DetectedManager) -> std::path::PathBuf {
+    manager.config_path.clone().unwrap_or_else(|| {
+        manager
+            .manager
+            .default_config_path(project_root)
+            .unwrap_or_else(|| project_root.to_path_buf())
+    })
+}
+
+/// The lockfile to report on: whatever discovery found, else the manager's
+/// first accepted name.
+fn lockfile_path_for(project_root: &Path, manager: &DetectedManager) -> std::path::PathBuf {
+    manager.lockfile_path.clone().unwrap_or_else(|| {
+        manager
+            .manager
+            .default_lockfile_path(project_root)
+            .unwrap_or_else(|| project_root.to_path_buf())
+    })
 }
 
 pub fn advice_finding(
@@ -136,10 +152,7 @@ pub fn npm_settings(
     manager: &DetectedManager,
     settings: &ResolvedSettings,
 ) -> Vec<Finding> {
-    let npmrc_path = manager
-        .config_path
-        .clone()
-        .unwrap_or_else(|| project_root.join(".npmrc"));
+    let npmrc_path = config_path_for(project_root, manager);
     let npmrc: BTreeMap<String, String> = std::fs::read_to_string(&npmrc_path)
         .map(|raw| npmrc::parse(&raw))
         .unwrap_or_default();
@@ -158,11 +171,7 @@ pub fn npm_settings(
     findings.extend(lockfile::check(
         settings.require_lockfile,
         manager.lockfile_path.as_deref().is_some_and(Path::is_file),
-        &manager
-            .lockfile_path
-            .clone()
-            .unwrap_or_else(|| project_root.join("package-lock.json")),
-        "package-lock.json is required",
+        &lockfile_path_for(project_root, manager),
         Manager::Npm,
     ));
     findings.extend(audit_gate::npm_check(settings, &npmrc, &npmrc_path));
@@ -171,22 +180,16 @@ pub fn npm_settings(
         npmrc.get("registry").map(String::as_str),
         settings,
         "registry must be set in .npmrc",
-        preset,
         &npmrc_path,
         Manager::Npm,
-        registry_url_fix(&npmrc_path, ConfigFormat::Npmrc, "registry", settings),
+        registry_url_fix(Manager::Npm, &npmrc_path, "registry", settings),
     ));
     findings.extend(pm_pin::check(
         settings.require_pm_pin,
-        manifest
-            .as_ref()
-            .and_then(|m| m.get("packageManager"))
-            .and_then(|v| v.as_str())
-            .is_some_and(|v| v.starts_with("npm@")),
-        "package.json packageManager must start with npm@",
-        preset,
-        &project_root.join("package.json"),
+        PackageManagerPin::from_manifest(project_root).as_ref(),
         Manager::Npm,
+        preset,
+        project_root,
     ));
     findings
 }
@@ -282,10 +285,7 @@ pub fn pnpm_settings(
     manager: &DetectedManager,
     settings: &ResolvedSettings,
 ) -> Vec<Finding> {
-    let yaml_path = manager
-        .config_path
-        .clone()
-        .unwrap_or_else(|| project_root.join("pnpm-workspace.yaml"));
+    let yaml_path = config_path_for(project_root, manager);
     let yaml_value = std::fs::read_to_string(&yaml_path)
         .map(|raw| yaml::parse(&raw))
         .unwrap_or_else(|_| yaml::parse(""));
@@ -307,11 +307,7 @@ pub fn pnpm_settings(
     findings.extend(lockfile::check(
         settings.require_lockfile,
         !lockfile_off && manager.lockfile_path.as_deref().is_some_and(Path::is_file),
-        &manager
-            .lockfile_path
-            .clone()
-            .unwrap_or_else(|| project_root.join("pnpm-lock.yaml")),
-        "pnpm-lock.yaml is required",
+        &lockfile_path_for(project_root, manager),
         Manager::Pnpm,
     ));
     findings.extend(audit_gate::pnpm_check(
@@ -341,22 +337,16 @@ pub fn pnpm_settings(
         registry.as_deref(),
         settings,
         "registry or registries.default must be set",
-        preset,
         &yaml_path,
         Manager::Pnpm,
-        registry_url_fix(&yaml_path, ConfigFormat::Yaml, "registry", settings),
+        registry_url_fix(Manager::Pnpm, &yaml_path, "registry", settings),
     ));
     findings.extend(pm_pin::check(
         settings.require_pm_pin,
-        manifest_json(project_root)
-            .as_ref()
-            .and_then(|m| m.get("packageManager"))
-            .and_then(|v| v.as_str())
-            .is_some_and(|v| v.starts_with("pnpm@")),
-        "package.json packageManager must start with pnpm@",
-        preset,
-        &project_root.join("package.json"),
+        PackageManagerPin::from_manifest(project_root).as_ref(),
         Manager::Pnpm,
+        preset,
+        project_root,
     ));
     findings
 }
@@ -425,9 +415,24 @@ fn json_bool(value: Option<&serde_json::Value>, fallback: bool) -> bool {
         .unwrap_or(fallback)
 }
 
-fn composer_security(
-    manifest: &serde_json::Value,
-) -> (bool, bool, bool, bool, bool, bool, bool, bool, Vec<String>) {
+/// Composer's security-relevant manifest settings, read once.
+///
+/// Named fields rather than a tuple: these are eight adjacent booleans, and
+/// positional destructuring let any two of them be swapped silently.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ComposerSecurity {
+    pub allow_plugins_all: bool,
+    pub disable_tls: bool,
+    pub secure_http: bool,
+    pub source_fallback: bool,
+    pub policy_disabled: bool,
+    pub advisories_block: bool,
+    pub advisories_ignore: bool,
+    pub malware_block: bool,
+    pub http_repos: Vec<String>,
+}
+
+fn composer_security(manifest: &serde_json::Value) -> ComposerSecurity {
     let config = manifest.get("config").unwrap_or(&serde_json::Value::Null);
     let allow_plugins_all = config.get("allow-plugins") == Some(&serde_json::Value::Bool(true));
     let disable_tls = json_bool(config.get("disable-tls"), false);
@@ -469,7 +474,7 @@ fn composer_security(
             }
         }
     }
-    (
+    ComposerSecurity {
         allow_plugins_all,
         disable_tls,
         secure_http,
@@ -479,7 +484,7 @@ fn composer_security(
         advisories_ignore,
         malware_block,
         http_repos,
-    )
+    }
 }
 
 pub fn python_not_uv(project_root: &Path, manager: Manager) -> Finding {
@@ -503,10 +508,7 @@ pub fn yarn_settings(
     manager: &DetectedManager,
     settings: &ResolvedSettings,
 ) -> Vec<Finding> {
-    let yarnrc_path = manager
-        .config_path
-        .clone()
-        .unwrap_or_else(|| project_root.join(".yarnrc.yml"));
+    let yarnrc_path = config_path_for(project_root, manager);
     let yarnrc = std::fs::read_to_string(&yarnrc_path)
         .map(|raw| yaml::parse(&raw))
         .unwrap_or_else(|_| yaml::parse(""));
@@ -542,11 +544,7 @@ pub fn yarn_settings(
     findings.extend(lockfile::check(
         settings.require_lockfile,
         manager.lockfile_path.as_deref().is_some_and(Path::is_file),
-        &manager
-            .lockfile_path
-            .clone()
-            .unwrap_or_else(|| project_root.join("yarn.lock")),
-        "yarn.lock is required",
+        &lockfile_path_for(project_root, manager),
         Manager::Yarn,
     ));
     findings.extend(audit_gate::yarn_check(&yarnrc, &yarnrc_path));
@@ -554,23 +552,16 @@ pub fn yarn_settings(
         registry.as_deref(),
         settings,
         "npmRegistryServer must be set",
-        preset,
         &yarnrc_path,
         Manager::Yarn,
-        registry_url_fix(
-            &yarnrc_path,
-            ConfigFormat::Yaml,
-            "npmRegistryServer",
-            settings,
-        ),
+        registry_url_fix(Manager::Yarn, &yarnrc_path, "npmRegistryServer", settings),
     ));
     findings.extend(pm_pin::check(
         settings.require_pm_pin,
-        pin.as_ref().is_some_and(|p| p.major >= 2),
-        "package.json packageManager must be yarn@ major >= 2",
-        preset,
-        &project_root.join("package.json"),
+        pin.as_ref(),
         Manager::Yarn,
+        preset,
+        project_root,
     ));
     findings
 }
@@ -580,10 +571,7 @@ pub fn bun_settings(
     manager: &DetectedManager,
     settings: &ResolvedSettings,
 ) -> Vec<Finding> {
-    let bunfig_path = manager
-        .config_path
-        .clone()
-        .unwrap_or_else(|| project_root.join("bunfig.toml"));
+    let bunfig_path = config_path_for(project_root, manager);
     let bunfig = read_toml(&bunfig_path);
     let install = bunfig.get("install").and_then(toml::Value::as_table);
     let registry = bun_registry_url(install);
@@ -596,11 +584,7 @@ pub fn bun_settings(
     findings.extend(lockfile::check(
         settings.require_lockfile,
         lockfile_present,
-        &manager
-            .lockfile_path
-            .clone()
-            .unwrap_or_else(|| project_root.join("bun.lock")),
-        "bun.lock or bun.lockb is required",
+        &lockfile_path_for(project_root, manager),
         Manager::Bun,
     ));
     findings.extend(min_age::bun_checks(settings, install, &bunfig_path));
@@ -608,15 +592,9 @@ pub fn bun_settings(
         registry.as_deref(),
         settings,
         "install.registry must be set",
-        settings.preset,
         &bunfig_path,
         Manager::Bun,
-        registry_url_fix(
-            &bunfig_path,
-            ConfigFormat::Toml,
-            "install.registry",
-            settings,
-        ),
+        registry_url_fix(Manager::Bun, &bunfig_path, "install.registry", settings),
     ));
     findings
 }
@@ -625,6 +603,7 @@ pub fn uv_settings(
     project_root: &Path,
     manager: &DetectedManager,
     settings: &ResolvedSettings,
+    clock: &dyn Clock,
 ) -> Vec<Finding> {
     let config_path = Manager::Uv
         .write_target(project_root)
@@ -637,14 +616,16 @@ pub fn uv_settings(
     findings.extend(lockfile::check(
         settings.require_lockfile,
         manager.lockfile_path.as_deref().is_some_and(Path::is_file),
-        &manager
-            .lockfile_path
-            .clone()
-            .unwrap_or_else(|| project_root.join("uv.lock")),
-        "uv.lock is required",
+        &lockfile_path_for(project_root, manager),
         Manager::Uv,
     ));
-    findings.extend(min_age::uv_checks(settings, &cfg, &config_path, key_prefix));
+    findings.extend(min_age::uv_checks(
+        settings,
+        &cfg,
+        &config_path,
+        key_prefix,
+        clock,
+    ));
     if settings.preset == crate::policy::Preset::Strict
         && uv_has_extra_indexes(&cfg)
         && cfg.get("index-strategy").and_then(toml::Value::as_str) != Some("first-index")
@@ -653,10 +634,10 @@ pub fn uv_settings(
             None,
             settings,
             "extra indexes require index-strategy = \"first-index\"",
-            settings.preset,
             &config_path,
             Manager::Uv,
-            Some(toml_fix(
+            Some(fix_for(
+                Manager::Uv,
                 &config_path,
                 vec![ConfigEdit::set(
                     format!("{key_prefix}index-strategy"),
@@ -702,11 +683,7 @@ pub fn cargo_settings(
     findings.extend(lockfile::check(
         settings.require_lockfile,
         manager.lockfile_path.as_deref().is_some_and(Path::is_file),
-        &manager
-            .lockfile_path
-            .clone()
-            .unwrap_or_else(|| project_root.join("Cargo.lock")),
-        "Cargo.lock is required",
+        &lockfile_path_for(project_root, manager),
         Manager::Cargo,
     ));
     let write_path = Manager::Cargo
@@ -722,45 +699,30 @@ pub fn composer_settings(
     manager: &DetectedManager,
     settings: &ResolvedSettings,
 ) -> Vec<Finding> {
-    let config_path = manager
-        .config_path
-        .clone()
-        .unwrap_or_else(|| project_root.join("composer.json"));
+    let config_path = config_path_for(project_root, manager);
     let manifest = std::fs::read_to_string(&config_path)
         .ok()
         .and_then(|raw| serde_json::from_str(&raw).ok())
         .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
-    let (
-        allow_plugins_all,
-        disable_tls,
-        secure_http,
-        source_fallback,
-        policy_disabled,
-        advisories_block,
-        advisories_ignore,
-        malware_block,
-        http_repos,
-    ) = composer_security(&manifest);
+    let security = composer_security(&manifest);
 
     let mut findings = Vec::new();
     findings.extend(lockfile::check(
         settings.require_lockfile,
         manager.lockfile_path.as_deref().is_some_and(Path::is_file),
-        &manager
-            .lockfile_path
-            .clone()
-            .unwrap_or_else(|| project_root.join("composer.lock")),
-        "composer.lock is required",
+        &lockfile_path_for(project_root, manager),
         Manager::Composer,
     ));
     findings.extend(scripts::composer_check(
         settings,
-        allow_plugins_all.then_some(&serde_json::Value::Bool(true)),
+        security
+            .allow_plugins_all
+            .then_some(&serde_json::Value::Bool(true)),
         &config_path,
     ));
-    if disable_tls || !secure_http {
+    if security.disable_tls || !security.secure_http {
         let mut edits = Vec::new();
-        if disable_tls {
+        if security.disable_tls {
             edits.push(ConfigEdit::unset("config.disable-tls"));
         }
         edits.push(ConfigEdit::set("config.secure-http", true));
@@ -770,10 +732,10 @@ pub fn composer_settings(
             Severity::High,
             &config_path,
             Manager::Composer,
-            json_fix(&config_path, edits),
+            fix_for(Manager::Composer, &config_path, edits),
         ));
     }
-    if let Some(url) = http_repos.first() {
+    if let Some(url) = security.http_repos.first() {
         findings.push(advice_finding(
             "registry.unpinned",
             format!("composer repositories must use https ({url})"),
@@ -782,15 +744,9 @@ pub fn composer_settings(
             Manager::Composer,
         ));
     }
-    findings.extend(audit_gate::composer_policy(
-        policy_disabled,
-        advisories_ignore,
-        advisories_block,
-        malware_block,
-        &config_path,
-    ));
+    findings.extend(audit_gate::composer_policy(&security, &config_path));
     findings.extend(source::composer_source_fallback(
-        source_fallback,
+        security.source_fallback,
         settings.preset,
         &config_path,
     ));
@@ -813,13 +769,84 @@ pub fn bundler_settings(
     findings.extend(lockfile::check(
         settings.require_lockfile,
         manager.lockfile_path.as_deref().is_some_and(Path::is_file),
-        &manager
-            .lockfile_path
-            .clone()
-            .unwrap_or_else(|| project_root.join("Gemfile.lock")),
-        "Gemfile.lock is required",
+        &lockfile_path_for(project_root, manager),
         Manager::Bundler,
     ));
     findings.extend(min_age::bundler_check(settings, cooldown, &config_path));
     findings
+}
+
+#[cfg(test)]
+mod composer_security_tests {
+    use super::*;
+
+    fn read(json: &str) -> ComposerSecurity {
+        composer_security(&serde_json::from_str(json).unwrap())
+    }
+
+    #[test]
+    fn an_empty_manifest_uses_composers_safe_defaults() {
+        let s = read("{}");
+        assert!(!s.allow_plugins_all);
+        assert!(!s.disable_tls);
+        assert!(s.secure_http);
+        assert!(!s.source_fallback);
+        assert!(!s.policy_disabled);
+        assert!(s.advisories_block);
+        assert!(!s.advisories_ignore);
+        assert!(s.malware_block);
+        assert!(s.http_repos.is_empty());
+    }
+
+    #[test]
+    fn each_flag_is_read_from_its_own_key() {
+        let s = read(
+            r#"{"config":{"allow-plugins":true,"disable-tls":true,
+                 "secure-http":false,"source-fallback":true}}"#,
+        );
+        assert!(s.allow_plugins_all);
+        assert!(s.disable_tls);
+        assert!(!s.secure_http);
+        assert!(s.source_fallback);
+    }
+
+    #[test]
+    fn policy_false_disables_the_whole_policy() {
+        assert!(read(r#"{"config":{"policy":false}}"#).policy_disabled);
+        assert!(!read(r#"{"config":{"policy":{}}}"#).policy_disabled);
+    }
+
+    #[test]
+    fn advisories_audit_ignore_is_detected() {
+        let s = read(r#"{"config":{"policy":{"advisories":{"audit":"ignore"}}}}"#);
+        assert!(s.advisories_ignore);
+        assert!(
+            !read(r#"{"config":{"policy":{"advisories":{"audit":"fail"}}}}"#).advisories_ignore
+        );
+    }
+
+    #[test]
+    fn advisories_block_falls_back_to_legacy_audit_block_insecure() {
+        assert!(!read(r#"{"config":{"audit":{"block-insecure":false}}}"#).advisories_block);
+        // The modern key wins over the legacy fallback.
+        let s = read(
+            r#"{"config":{"audit":{"block-insecure":false},
+                 "policy":{"advisories":{"block":true}}}}"#,
+        );
+        assert!(s.advisories_block);
+    }
+
+    #[test]
+    fn malware_block_defaults_true_but_can_be_turned_off() {
+        assert!(read(r#"{"config":{"policy":{}}}"#).malware_block);
+        assert!(!read(r#"{"config":{"policy":{"malware":{"block":false}}}}"#).malware_block);
+    }
+
+    #[test]
+    fn plaintext_repositories_are_collected_from_arrays_and_objects() {
+        let from_array = read(r#"{"repositories":[{"url":"http://a"},{"url":"https://b"}]}"#);
+        assert_eq!(from_array.http_repos, vec!["http://a".to_string()]);
+        let from_object = read(r#"{"repositories":{"one":{"url":"http://c"}}}"#);
+        assert_eq!(from_object.http_repos, vec!["http://c".to_string()]);
+    }
 }

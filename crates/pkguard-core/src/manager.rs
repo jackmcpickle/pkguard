@@ -216,6 +216,43 @@ impl Manager {
         )
     }
 
+    /// The config format `--fix` writes for this manager. Exactly one format
+    /// per manager, stated here and nowhere else, so no check module has to
+    /// decide (or re-decide) that e.g. yarn is YAML.
+    pub fn config_format(self) -> Option<ConfigFormat> {
+        match self {
+            Manager::Npm => Some(ConfigFormat::Npmrc),
+            Manager::Pnpm | Manager::Yarn => Some(ConfigFormat::Yaml),
+            Manager::Bun | Manager::Uv | Manager::Cargo => Some(ConfigFormat::Toml),
+            Manager::Composer => Some(ConfigFormat::Json),
+            Manager::Bundler => Some(ConfigFormat::BundleConfig),
+            Manager::Poetry | Manager::Pip | Manager::Pipenv => None,
+        }
+    }
+
+    /// Where this manager's config sits when discovery found none.
+    pub fn default_config_path(self, project_root: &Path) -> Option<PathBuf> {
+        self.write_config_name().map(|name| project_root.join(name))
+    }
+
+    /// Where this manager's lockfile sits when discovery found none: the first
+    /// accepted name.
+    pub fn default_lockfile_path(self, project_root: &Path) -> Option<PathBuf> {
+        self.lockfile_names()
+            .first()
+            .map(|name| project_root.join(name))
+    }
+
+    /// Names every lockfile this manager accepts, so the message cannot drift
+    /// from `lockfile_names`.
+    pub fn lockfile_required_message(self) -> Option<String> {
+        let names = self.lockfile_names();
+        if names.is_empty() {
+            return None;
+        }
+        Some(format!("{} is required", names.join(" or ")))
+    }
+
     pub fn write_config_name(self) -> Option<&'static str> {
         match self {
             Manager::Npm => Some(".npmrc"),
@@ -233,29 +270,24 @@ impl Manager {
 
     /// File `--fix` writes for this manager. uv prefers `uv.toml` when that
     /// file is already present; otherwise it writes `[tool.uv]` in
-    /// `pyproject.toml`.
+    /// `pyproject.toml`. Every other manager writes its `write_config_name`.
+    ///
+    /// The format half always comes from `config_format`, so the path and the
+    /// format cannot disagree.
     pub fn write_target(self, project_root: &Path) -> Option<(PathBuf, ConfigFormat)> {
-        match self {
-            Manager::Npm => Some((project_root.join(".npmrc"), ConfigFormat::Npmrc)),
-            Manager::Pnpm => Some((project_root.join("pnpm-workspace.yaml"), ConfigFormat::Yaml)),
-            Manager::Yarn => Some((project_root.join(".yarnrc.yml"), ConfigFormat::Yaml)),
-            Manager::Bun => Some((project_root.join("bunfig.toml"), ConfigFormat::Toml)),
+        let format = self.config_format()?;
+        let path = match self {
             Manager::Uv => {
                 let uv_toml = project_root.join("uv.toml");
                 if uv_toml.is_file() {
-                    Some((uv_toml, ConfigFormat::Toml))
+                    uv_toml
                 } else {
-                    Some((project_root.join("pyproject.toml"), ConfigFormat::Toml))
+                    project_root.join("pyproject.toml")
                 }
             }
-            Manager::Cargo => Some((project_root.join(".cargo/config.toml"), ConfigFormat::Toml)),
-            Manager::Composer => Some((project_root.join("composer.json"), ConfigFormat::Json)),
-            Manager::Bundler => Some((
-                project_root.join(".bundle/config"),
-                ConfigFormat::BundleConfig,
-            )),
-            Manager::Poetry | Manager::Pip | Manager::Pipenv => None,
-        }
+            other => other.default_config_path(project_root)?,
+        };
+        Some((path, format))
     }
 
     /// Dotted-key prefix for uv settings. `pyproject.toml` stores them under
@@ -313,6 +345,67 @@ mod tests {
             .unwrap();
         assert_eq!(file, std::path::PathBuf::from("/p/.npmrc"));
         assert_eq!(format, crate::fix::ConfigFormat::Npmrc);
+    }
+
+    #[test]
+    fn write_target_format_always_matches_config_format() {
+        for m in Manager::ALL {
+            match (
+                m.write_target(std::path::Path::new("/p")),
+                m.config_format(),
+            ) {
+                (Some((_, target_format)), Some(format)) => assert_eq!(
+                    target_format,
+                    format,
+                    "{} write_target disagrees with config_format",
+                    m.name()
+                ),
+                (None, None) => {}
+                (target, format) => panic!(
+                    "{} has write_target {target:?} but config_format {format:?}",
+                    m.name()
+                ),
+            }
+        }
+    }
+
+    #[test]
+    fn every_writable_manager_has_a_default_config_and_lockfile() {
+        for m in Manager::ALL
+            .into_iter()
+            .filter(|m| m.config_format().is_some())
+        {
+            assert!(
+                m.default_lockfile_path(std::path::Path::new("/p"))
+                    .is_some(),
+                "{} has no default lockfile path",
+                m.name()
+            );
+            assert!(
+                m.lockfile_required_message().is_some(),
+                "{} has no lockfile message",
+                m.name()
+            );
+        }
+        // uv is the one manager whose write target depends on what exists on
+        // disk, so it deliberately has no static `write_config_name`.
+        assert_eq!(
+            Manager::Uv.default_config_path(std::path::Path::new("/p")),
+            None
+        );
+    }
+
+    #[test]
+    fn lockfile_messages_name_every_accepted_lockfile() {
+        assert_eq!(
+            Manager::Npm.lockfile_required_message().unwrap(),
+            "package-lock.json is required"
+        );
+        assert_eq!(
+            Manager::Bun.lockfile_required_message().unwrap(),
+            "bun.lock or bun.lockb is required"
+        );
+        assert_eq!(Manager::Pip.lockfile_required_message(), None);
     }
 
     #[test]
