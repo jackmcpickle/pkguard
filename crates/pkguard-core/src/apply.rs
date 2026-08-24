@@ -35,9 +35,18 @@ pub enum Blocked {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FixPlan {
-    pub files: Vec<(PathBuf, String)>,
+    /// Rendered file bodies. Private: what a file will look like after the
+    /// edit is `apply_fixes`'s business, not a caller's.
+    files: Vec<(PathBuf, String)>,
     pub changes: Vec<PlannedChange>,
     pub skipped: Vec<(PathBuf, SkipReason)>,
+}
+
+impl FixPlan {
+    /// True when the plan would neither write nor report anything.
+    pub fn is_empty(&self) -> bool {
+        self.files.is_empty() && self.changes.is_empty()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -93,18 +102,40 @@ pub fn plan_fixes(project: &Project, findings: &[Finding]) -> FixPlan {
     }
 }
 
+/// Whether to carry the plan out or only report it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApplyMode {
+    /// Write the planned files.
+    Write,
+    /// Report what would change, touching nothing on disk.
+    DryRun,
+}
+
+/// Turn a plan into a result. Every `ApplyResult` in the system comes from
+/// here, in both modes, so the two cannot describe the same plan differently.
 pub async fn apply_fixes(
     project: &Project,
     plan: &FixPlan,
     runner: &dyn CommandRunner,
     force: bool,
+    mode: ApplyMode,
 ) -> ApplyResult {
-    if plan.files.is_empty() && plan.changes.is_empty() {
+    if plan.is_empty() {
         return ApplyResult {
             written: Vec::new(),
             skipped: plan.skipped.clone(),
             changes: Vec::new(),
             blocked: Some(Blocked::Nothing),
+        };
+    }
+    if mode == ApplyMode::DryRun {
+        // Nothing is written, so every planned change is reported and the
+        // working tree is never consulted.
+        return ApplyResult {
+            written: Vec::new(),
+            skipped: plan.skipped.clone(),
+            changes: plan.changes.clone(),
+            blocked: None,
         };
     }
     if let Some(dirty) = dirty_git_root(project, runner).await {
@@ -623,7 +654,14 @@ mod tests {
         assert!(!plan.files.is_empty());
         fs::remove_file(&npmrc).unwrap();
         std::os::unix::fs::symlink(&outside, &npmrc).unwrap();
-        let result = apply_fixes(&project(&root, None), &plan, &CannedRunner::new(), false).await;
+        let result = apply_fixes(
+            &project(&root, None),
+            &plan,
+            &CannedRunner::new(),
+            false,
+            ApplyMode::Write,
+        )
+        .await;
         assert!(result.written.is_empty());
         assert!(result.changes.is_empty());
         assert_eq!(result.skipped, vec![(npmrc, SkipReason::Forbidden)]);
@@ -654,7 +692,14 @@ mod tests {
         fs::remove_file(&npmrc).unwrap();
         fs::remove_dir(&pkg).unwrap();
         std::os::unix::fs::symlink(&outside, &pkg).unwrap();
-        let result = apply_fixes(&project(&root, None), &plan, &CannedRunner::new(), false).await;
+        let result = apply_fixes(
+            &project(&root, None),
+            &plan,
+            &CannedRunner::new(),
+            false,
+            ApplyMode::Write,
+        )
+        .await;
         assert!(result.written.is_empty());
         assert!(result.changes.is_empty());
         assert_eq!(result.skipped, vec![(npmrc, SkipReason::Forbidden)]);
@@ -817,7 +862,14 @@ mod tests {
         )];
         let plan = plan_fixes(&project(root, Some(root)), &findings);
         assert!(!plan.changes.is_empty());
-        let result = apply_fixes(&project(root, Some(root)), &plan, &dirty_runner(), false).await;
+        let result = apply_fixes(
+            &project(root, Some(root)),
+            &plan,
+            &dirty_runner(),
+            false,
+            ApplyMode::Write,
+        )
+        .await;
         assert_eq!(result.blocked, Some(Blocked::DirtyGit(root.to_path_buf())));
         assert!(result.written.is_empty());
         assert_eq!(result.changes, plan.changes);
@@ -837,7 +889,14 @@ mod tests {
             vec![ConfigEdit::set("ignore-scripts", true)],
         )];
         let plan = plan_fixes(&project(root, Some(root)), &findings);
-        let result = apply_fixes(&project(root, Some(root)), &plan, &dirty_runner(), true).await;
+        let result = apply_fixes(
+            &project(root, Some(root)),
+            &plan,
+            &dirty_runner(),
+            true,
+            ApplyMode::Write,
+        )
+        .await;
         assert_eq!(result.blocked, None);
         assert_eq!(result.written, vec![root.join(".npmrc")]);
         assert!(fs::read_to_string(root.join(".npmrc"))
@@ -854,7 +913,14 @@ mod tests {
             vec![ConfigEdit::set("ignore-scripts", true)],
         )];
         let plan = plan_fixes(&project(root, None), &findings);
-        let result = apply_fixes(&project(root, None), &plan, &CannedRunner::new(), false).await;
+        let result = apply_fixes(
+            &project(root, None),
+            &plan,
+            &CannedRunner::new(),
+            false,
+            ApplyMode::Write,
+        )
+        .await;
         assert_eq!(result.blocked, None);
         assert_eq!(result.written, vec![root.join(".npmrc")]);
     }
@@ -876,7 +942,14 @@ mod tests {
         let plan = plan_fixes(&project(root, None), &findings);
         assert!(plan.files.is_empty());
         assert!(plan.changes.is_empty());
-        let result = apply_fixes(&project(root, None), &plan, &CannedRunner::new(), false).await;
+        let result = apply_fixes(
+            &project(root, None),
+            &plan,
+            &CannedRunner::new(),
+            false,
+            ApplyMode::Write,
+        )
+        .await;
         assert_eq!(result.blocked, Some(Blocked::Nothing));
         assert!(result.written.is_empty());
         let after = fs::metadata(&path)
@@ -897,7 +970,14 @@ mod tests {
         )];
         let plan = plan_fixes(&project(root, None), &findings);
         assert!(!plan.changes.is_empty());
-        let result = apply_fixes(&project(root, None), &plan, &CannedRunner::new(), false).await;
+        let result = apply_fixes(
+            &project(root, None),
+            &plan,
+            &CannedRunner::new(),
+            false,
+            ApplyMode::Write,
+        )
+        .await;
         assert!(result.written.is_empty());
         assert!(
             result.changes.is_empty(),
@@ -926,7 +1006,14 @@ mod tests {
             vec![(root.join("broken.yml"), SkipReason::Unparseable)]
         );
         assert_eq!(plan.files.len(), 1);
-        let result = apply_fixes(&project(root, None), &plan, &CannedRunner::new(), false).await;
+        let result = apply_fixes(
+            &project(root, None),
+            &plan,
+            &CannedRunner::new(),
+            false,
+            ApplyMode::Write,
+        )
+        .await;
         assert_eq!(result.written, vec![root.join(".npmrc")]);
         assert_eq!(
             fs::read_to_string(root.join("broken.yml")).unwrap(),
@@ -951,7 +1038,7 @@ mod tests {
         assert!(findings.iter().any(|f| f.fix.is_some()));
         let proj = project(root, None);
         let plan = plan_fixes(&proj, &findings);
-        let first = apply_fixes(&proj, &plan, &CannedRunner::new(), false).await;
+        let first = apply_fixes(&proj, &plan, &CannedRunner::new(), false, ApplyMode::Write).await;
         assert!(!first.written.is_empty());
 
         let findings = audit_manager_settings(root, &manager, &settings);
@@ -961,8 +1048,116 @@ mod tests {
             "second pass still wants to write: {:?}",
             plan.changes
         );
-        let second = apply_fixes(&proj, &plan, &CannedRunner::new(), false).await;
+        let second = apply_fixes(&proj, &plan, &CannedRunner::new(), false, ApplyMode::Write).await;
         assert_eq!(second.blocked, Some(Blocked::Nothing));
         assert!(second.written.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_dry_run_reports_every_planned_change_and_writes_nothing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(root.join(".npmrc"), "ignore-scripts=false\n").unwrap();
+        let findings = [npm_finding(
+            root,
+            vec![ConfigEdit::set("ignore-scripts", true)],
+        )];
+        let plan = plan_fixes(&project(root, None), &findings);
+        let result = apply_fixes(
+            &project(root, None),
+            &plan,
+            &CannedRunner::new(),
+            false,
+            ApplyMode::DryRun,
+        )
+        .await;
+
+        assert!(result.written.is_empty());
+        assert_eq!(result.changes, plan.changes);
+        assert_eq!(result.blocked, None);
+        assert_eq!(
+            fs::read_to_string(root.join(".npmrc")).unwrap(),
+            "ignore-scripts=false\n",
+            "dry run must not touch the file"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_dry_run_never_consults_the_working_tree() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(root.join(".npmrc"), "ignore-scripts=false\n").unwrap();
+        let findings = [npm_finding(
+            root,
+            vec![ConfigEdit::set("ignore-scripts", true)],
+        )];
+        let plan = plan_fixes(&project(root, Some(root)), &findings);
+        // A dirty tree blocks a write, but a dry run writes nothing, so it
+        // still reports what would change.
+        let result = apply_fixes(
+            &project(root, Some(root)),
+            &plan,
+            &dirty_runner(),
+            false,
+            ApplyMode::DryRun,
+        )
+        .await;
+
+        assert_eq!(result.blocked, None);
+        assert!(!result.changes.is_empty());
+        assert!(result.written.is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_empty_plan_reports_nothing_to_do_in_both_modes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(root.join(".npmrc"), "ignore-scripts=true\n").unwrap();
+        // Already correct, so the plan is empty.
+        let findings = [npm_finding(
+            root,
+            vec![ConfigEdit::set("ignore-scripts", true)],
+        )];
+        let plan = plan_fixes(&project(root, None), &findings);
+        assert!(plan.is_empty());
+
+        for mode in [ApplyMode::Write, ApplyMode::DryRun] {
+            let result = apply_fixes(
+                &project(root, None),
+                &plan,
+                &CannedRunner::new(),
+                false,
+                mode,
+            )
+            .await;
+            assert_eq!(result.blocked, Some(Blocked::Nothing), "{mode:?}");
+            assert!(result.changes.is_empty(), "{mode:?}");
+            assert!(result.written.is_empty(), "{mode:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn only_a_write_run_changes_the_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(root.join(".npmrc"), "ignore-scripts=false\n").unwrap();
+        let findings = [npm_finding(
+            root,
+            vec![ConfigEdit::set("ignore-scripts", true)],
+        )];
+        let plan = plan_fixes(&project(root, None), &findings);
+        let result = apply_fixes(
+            &project(root, None),
+            &plan,
+            &CannedRunner::new(),
+            false,
+            ApplyMode::Write,
+        )
+        .await;
+
+        assert_eq!(result.written, vec![root.join(".npmrc")]);
+        assert!(fs::read_to_string(root.join(".npmrc"))
+            .unwrap()
+            .contains("ignore-scripts=true"));
     }
 }

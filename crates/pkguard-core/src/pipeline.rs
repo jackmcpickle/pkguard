@@ -140,18 +140,17 @@ async fn audit_project(
 
     let applied = if opts.fix {
         let plan = crate::apply::plan_fixes(project, &findings);
-        if opts.dry_run {
-            Some(crate::apply::ApplyResult {
-                written: Vec::new(),
-                skipped: plan.skipped.clone(),
-                changes: plan.changes.clone(),
-                blocked: None,
-            })
+        let mode = if opts.dry_run {
+            crate::apply::ApplyMode::DryRun
         } else {
-            let result = crate::apply::apply_fixes(project, &plan, runner, opts.force).await;
+            crate::apply::ApplyMode::Write
+        };
+        let result = crate::apply::apply_fixes(project, &plan, runner, opts.force, mode).await;
+        if !opts.dry_run {
+            // Fixed settings must stop being reported, so re-read them.
             findings = collect_settings_findings(project, &config);
-            Some(result)
         }
+        Some(result)
     } else {
         None
     };
