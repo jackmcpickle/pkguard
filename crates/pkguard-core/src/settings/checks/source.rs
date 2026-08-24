@@ -1,4 +1,4 @@
-use super::{fixable_finding, npmrc_fix, setting_finding, yaml_fix};
+use super::{fix_for, fixable_finding, setting_finding};
 use crate::config::ResolvedSettings;
 use crate::findings::{Finding, Severity};
 use crate::fix::{ConfigEdit, ConfigValue};
@@ -24,7 +24,8 @@ pub fn npm_check(
             Severity::High,
             npmrc_path,
             Manager::Npm,
-            npmrc_fix(
+            fix_for(
+                Manager::Npm,
                 npmrc_path,
                 vec![
                     ConfigEdit::set("allow-directory", "none"),
@@ -47,7 +48,11 @@ pub fn pnpm_check(yaml: &Yaml, yaml_path: &Path) -> Vec<Finding> {
             Severity::High,
             yaml_path,
             Manager::Pnpm,
-            yaml_fix(yaml_path, vec![ConfigEdit::set("blockExoticSubdeps", true)]),
+            fix_for(
+                Manager::Pnpm,
+                yaml_path,
+                vec![ConfigEdit::set("blockExoticSubdeps", true)],
+            ),
         )]
     } else {
         Vec::new()
@@ -88,7 +93,8 @@ pub fn yarn_git_check(
         Severity::High,
         yarnrc_path,
         Manager::Yarn,
-        yaml_fix(
+        fix_for(
+            Manager::Yarn,
             yarnrc_path,
             vec![ConfigEdit::set(
                 "approvedGitRepositories",

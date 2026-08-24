@@ -14,7 +14,7 @@ pub mod source;
 use crate::config::ResolvedSettings;
 use crate::discover::{DetectedManager, Project};
 use crate::findings::{Finding, FindingKind, Severity};
-use crate::fix::{ConfigEdit, ConfigFormat, SettingsFix};
+use crate::fix::{ConfigEdit, SettingsFix};
 use crate::format::{bundle_config, npmrc, yaml};
 use crate::manager::{Manager, PackageManagerPin};
 use crate::policy::Preset;
@@ -80,36 +80,51 @@ pub fn fixable_finding(
     }
 }
 
-pub fn npmrc_fix(file: &Path, edits: Vec<ConfigEdit>) -> SettingsFix {
-    SettingsFix::new(file, ConfigFormat::Npmrc, edits)
-}
-
-pub fn yaml_fix(file: &Path, edits: Vec<ConfigEdit>) -> SettingsFix {
-    SettingsFix::new(file, ConfigFormat::Yaml, edits)
-}
-
-pub fn toml_fix(file: &Path, edits: Vec<ConfigEdit>) -> SettingsFix {
-    SettingsFix::new(file, ConfigFormat::Toml, edits)
-}
-
-pub fn json_fix(file: &Path, edits: Vec<ConfigEdit>) -> SettingsFix {
-    SettingsFix::new(file, ConfigFormat::Json, edits)
-}
-
-pub fn bundle_fix(file: &Path, edits: Vec<ConfigEdit>) -> SettingsFix {
-    SettingsFix::new(file, ConfigFormat::BundleConfig, edits)
+/// Build a fix for `manager`'s config file. The format comes from
+/// `Manager::config_format`, so a check module states *which manager* it is
+/// checking — never which format that manager happens to use.
+///
+/// Panics only for managers that cannot be written (`is_legacy_python`), which
+/// never reach a check module.
+pub fn fix_for(manager: Manager, file: &Path, edits: Vec<ConfigEdit>) -> SettingsFix {
+    let format = manager
+        .config_format()
+        .unwrap_or_else(|| panic!("{} has no writable config format", manager.name()));
+    SettingsFix::new(file, format, edits)
 }
 
 fn registry_url_fix(
+    manager: Manager,
     file: &Path,
-    format: ConfigFormat,
     key: &str,
     settings: &ResolvedSettings,
 ) -> Option<SettingsFix> {
     settings
         .registry
         .as_ref()
-        .map(|url| SettingsFix::new(file, format, vec![ConfigEdit::set(key, url.as_str())]))
+        .map(|url| fix_for(manager, file, vec![ConfigEdit::set(key, url.as_str())]))
+}
+
+/// The config file to read and fix: whatever discovery found, else the
+/// manager's default location.
+fn config_path_for(project_root: &Path, manager: &DetectedManager) -> std::path::PathBuf {
+    manager.config_path.clone().unwrap_or_else(|| {
+        manager
+            .manager
+            .default_config_path(project_root)
+            .unwrap_or_else(|| project_root.to_path_buf())
+    })
+}
+
+/// The lockfile to report on: whatever discovery found, else the manager's
+/// first accepted name.
+fn lockfile_path_for(project_root: &Path, manager: &DetectedManager) -> std::path::PathBuf {
+    manager.lockfile_path.clone().unwrap_or_else(|| {
+        manager
+            .manager
+            .default_lockfile_path(project_root)
+            .unwrap_or_else(|| project_root.to_path_buf())
+    })
 }
 
 pub fn advice_finding(
@@ -136,10 +151,7 @@ pub fn npm_settings(
     manager: &DetectedManager,
     settings: &ResolvedSettings,
 ) -> Vec<Finding> {
-    let npmrc_path = manager
-        .config_path
-        .clone()
-        .unwrap_or_else(|| project_root.join(".npmrc"));
+    let npmrc_path = config_path_for(project_root, manager);
     let npmrc: BTreeMap<String, String> = std::fs::read_to_string(&npmrc_path)
         .map(|raw| npmrc::parse(&raw))
         .unwrap_or_default();
@@ -158,11 +170,7 @@ pub fn npm_settings(
     findings.extend(lockfile::check(
         settings.require_lockfile,
         manager.lockfile_path.as_deref().is_some_and(Path::is_file),
-        &manager
-            .lockfile_path
-            .clone()
-            .unwrap_or_else(|| project_root.join("package-lock.json")),
-        "package-lock.json is required",
+        &lockfile_path_for(project_root, manager),
         Manager::Npm,
     ));
     findings.extend(audit_gate::npm_check(settings, &npmrc, &npmrc_path));
@@ -174,7 +182,7 @@ pub fn npm_settings(
         preset,
         &npmrc_path,
         Manager::Npm,
-        registry_url_fix(&npmrc_path, ConfigFormat::Npmrc, "registry", settings),
+        registry_url_fix(Manager::Npm, &npmrc_path, "registry", settings),
     ));
     findings.extend(pm_pin::check(
         settings.require_pm_pin,
@@ -282,10 +290,7 @@ pub fn pnpm_settings(
     manager: &DetectedManager,
     settings: &ResolvedSettings,
 ) -> Vec<Finding> {
-    let yaml_path = manager
-        .config_path
-        .clone()
-        .unwrap_or_else(|| project_root.join("pnpm-workspace.yaml"));
+    let yaml_path = config_path_for(project_root, manager);
     let yaml_value = std::fs::read_to_string(&yaml_path)
         .map(|raw| yaml::parse(&raw))
         .unwrap_or_else(|_| yaml::parse(""));
@@ -307,11 +312,7 @@ pub fn pnpm_settings(
     findings.extend(lockfile::check(
         settings.require_lockfile,
         !lockfile_off && manager.lockfile_path.as_deref().is_some_and(Path::is_file),
-        &manager
-            .lockfile_path
-            .clone()
-            .unwrap_or_else(|| project_root.join("pnpm-lock.yaml")),
-        "pnpm-lock.yaml is required",
+        &lockfile_path_for(project_root, manager),
         Manager::Pnpm,
     ));
     findings.extend(audit_gate::pnpm_check(
@@ -344,7 +345,7 @@ pub fn pnpm_settings(
         preset,
         &yaml_path,
         Manager::Pnpm,
-        registry_url_fix(&yaml_path, ConfigFormat::Yaml, "registry", settings),
+        registry_url_fix(Manager::Pnpm, &yaml_path, "registry", settings),
     ));
     findings.extend(pm_pin::check(
         settings.require_pm_pin,
@@ -503,10 +504,7 @@ pub fn yarn_settings(
     manager: &DetectedManager,
     settings: &ResolvedSettings,
 ) -> Vec<Finding> {
-    let yarnrc_path = manager
-        .config_path
-        .clone()
-        .unwrap_or_else(|| project_root.join(".yarnrc.yml"));
+    let yarnrc_path = config_path_for(project_root, manager);
     let yarnrc = std::fs::read_to_string(&yarnrc_path)
         .map(|raw| yaml::parse(&raw))
         .unwrap_or_else(|_| yaml::parse(""));
@@ -542,11 +540,7 @@ pub fn yarn_settings(
     findings.extend(lockfile::check(
         settings.require_lockfile,
         manager.lockfile_path.as_deref().is_some_and(Path::is_file),
-        &manager
-            .lockfile_path
-            .clone()
-            .unwrap_or_else(|| project_root.join("yarn.lock")),
-        "yarn.lock is required",
+        &lockfile_path_for(project_root, manager),
         Manager::Yarn,
     ));
     findings.extend(audit_gate::yarn_check(&yarnrc, &yarnrc_path));
@@ -557,12 +551,7 @@ pub fn yarn_settings(
         preset,
         &yarnrc_path,
         Manager::Yarn,
-        registry_url_fix(
-            &yarnrc_path,
-            ConfigFormat::Yaml,
-            "npmRegistryServer",
-            settings,
-        ),
+        registry_url_fix(Manager::Yarn, &yarnrc_path, "npmRegistryServer", settings),
     ));
     findings.extend(pm_pin::check(
         settings.require_pm_pin,
@@ -580,10 +569,7 @@ pub fn bun_settings(
     manager: &DetectedManager,
     settings: &ResolvedSettings,
 ) -> Vec<Finding> {
-    let bunfig_path = manager
-        .config_path
-        .clone()
-        .unwrap_or_else(|| project_root.join("bunfig.toml"));
+    let bunfig_path = config_path_for(project_root, manager);
     let bunfig = read_toml(&bunfig_path);
     let install = bunfig.get("install").and_then(toml::Value::as_table);
     let registry = bun_registry_url(install);
@@ -596,11 +582,7 @@ pub fn bun_settings(
     findings.extend(lockfile::check(
         settings.require_lockfile,
         lockfile_present,
-        &manager
-            .lockfile_path
-            .clone()
-            .unwrap_or_else(|| project_root.join("bun.lock")),
-        "bun.lock or bun.lockb is required",
+        &lockfile_path_for(project_root, manager),
         Manager::Bun,
     ));
     findings.extend(min_age::bun_checks(settings, install, &bunfig_path));
@@ -611,12 +593,7 @@ pub fn bun_settings(
         settings.preset,
         &bunfig_path,
         Manager::Bun,
-        registry_url_fix(
-            &bunfig_path,
-            ConfigFormat::Toml,
-            "install.registry",
-            settings,
-        ),
+        registry_url_fix(Manager::Bun, &bunfig_path, "install.registry", settings),
     ));
     findings
 }
@@ -637,11 +614,7 @@ pub fn uv_settings(
     findings.extend(lockfile::check(
         settings.require_lockfile,
         manager.lockfile_path.as_deref().is_some_and(Path::is_file),
-        &manager
-            .lockfile_path
-            .clone()
-            .unwrap_or_else(|| project_root.join("uv.lock")),
-        "uv.lock is required",
+        &lockfile_path_for(project_root, manager),
         Manager::Uv,
     ));
     findings.extend(min_age::uv_checks(settings, &cfg, &config_path, key_prefix));
@@ -656,7 +629,8 @@ pub fn uv_settings(
             settings.preset,
             &config_path,
             Manager::Uv,
-            Some(toml_fix(
+            Some(fix_for(
+                Manager::Uv,
                 &config_path,
                 vec![ConfigEdit::set(
                     format!("{key_prefix}index-strategy"),
@@ -702,11 +676,7 @@ pub fn cargo_settings(
     findings.extend(lockfile::check(
         settings.require_lockfile,
         manager.lockfile_path.as_deref().is_some_and(Path::is_file),
-        &manager
-            .lockfile_path
-            .clone()
-            .unwrap_or_else(|| project_root.join("Cargo.lock")),
-        "Cargo.lock is required",
+        &lockfile_path_for(project_root, manager),
         Manager::Cargo,
     ));
     let write_path = Manager::Cargo
@@ -722,10 +692,7 @@ pub fn composer_settings(
     manager: &DetectedManager,
     settings: &ResolvedSettings,
 ) -> Vec<Finding> {
-    let config_path = manager
-        .config_path
-        .clone()
-        .unwrap_or_else(|| project_root.join("composer.json"));
+    let config_path = config_path_for(project_root, manager);
     let manifest = std::fs::read_to_string(&config_path)
         .ok()
         .and_then(|raw| serde_json::from_str(&raw).ok())
@@ -746,11 +713,7 @@ pub fn composer_settings(
     findings.extend(lockfile::check(
         settings.require_lockfile,
         manager.lockfile_path.as_deref().is_some_and(Path::is_file),
-        &manager
-            .lockfile_path
-            .clone()
-            .unwrap_or_else(|| project_root.join("composer.lock")),
-        "composer.lock is required",
+        &lockfile_path_for(project_root, manager),
         Manager::Composer,
     ));
     findings.extend(scripts::composer_check(
@@ -770,7 +733,7 @@ pub fn composer_settings(
             Severity::High,
             &config_path,
             Manager::Composer,
-            json_fix(&config_path, edits),
+            fix_for(Manager::Composer, &config_path, edits),
         ));
     }
     if let Some(url) = http_repos.first() {
@@ -813,11 +776,7 @@ pub fn bundler_settings(
     findings.extend(lockfile::check(
         settings.require_lockfile,
         manager.lockfile_path.as_deref().is_some_and(Path::is_file),
-        &manager
-            .lockfile_path
-            .clone()
-            .unwrap_or_else(|| project_root.join("Gemfile.lock")),
-        "Gemfile.lock is required",
+        &lockfile_path_for(project_root, manager),
         Manager::Bundler,
     ));
     findings.extend(min_age::bundler_check(settings, cooldown, &config_path));

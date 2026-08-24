@@ -1,4 +1,4 @@
-use super::{fixable_finding, json_fix, npmrc_fix, toml_fix, yaml_fix};
+use super::{fix_for, fixable_finding};
 use crate::config::ResolvedSettings;
 use crate::findings::{Finding, Severity};
 use crate::fix::ConfigEdit;
@@ -52,7 +52,8 @@ pub fn npm_check(
             Severity::High,
             npmrc_path,
             Manager::Npm,
-            npmrc_fix(
+            fix_for(
+                Manager::Npm,
                 npmrc_path,
                 vec![
                     ConfigEdit::set("audit", true),
@@ -93,7 +94,8 @@ pub fn pnpm_check(
         Severity::High,
         yaml_path,
         Manager::Pnpm,
-        yaml_fix(
+        fix_for(
+            Manager::Pnpm,
             yaml_path,
             vec![ConfigEdit::set(key, settings.audit_level.as_str())],
         ),
@@ -111,7 +113,7 @@ pub fn yarn_check(yarnrc: &Yaml, yarnrc_path: &Path) -> Vec<Finding> {
             Severity::High,
             yarnrc_path,
             Manager::Yarn,
-            yaml_fix(yarnrc_path, yarn_audit_edits(yarnrc)),
+            fix_for(Manager::Yarn, yarnrc_path, yarn_audit_edits(yarnrc)),
         )]
     } else {
         Vec::new()
@@ -154,7 +156,8 @@ pub fn uv_malware(
             Severity::High,
             config_path,
             Manager::Uv,
-            toml_fix(
+            fix_for(
+                Manager::Uv,
                 config_path,
                 vec![ConfigEdit::set(
                     format!("{key_prefix}audit.malware-check"),
@@ -180,7 +183,8 @@ pub fn composer_policy(
             Severity::High,
             config_path,
             Manager::Composer,
-            json_fix(
+            fix_for(
+                Manager::Composer,
                 config_path,
                 vec![
                     ConfigEdit::set("config.policy.advisories.audit", "fail"),
@@ -197,7 +201,8 @@ pub fn composer_policy(
             Severity::High,
             config_path,
             Manager::Composer,
-            json_fix(
+            fix_for(
+                Manager::Composer,
                 config_path,
                 vec![ConfigEdit::set("config.policy.advisories.block", true)],
             ),
@@ -210,7 +215,8 @@ pub fn composer_policy(
             Severity::High,
             config_path,
             Manager::Composer,
-            json_fix(
+            fix_for(
+                Manager::Composer,
                 config_path,
                 vec![ConfigEdit::set("config.policy.malware.block", true)],
             ),

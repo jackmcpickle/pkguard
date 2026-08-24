@@ -1,4 +1,4 @@
-use super::{fixable_finding, yaml_fix};
+use super::{fix_for, fixable_finding};
 use crate::findings::{Finding, Severity};
 use crate::fix::ConfigEdit;
 use crate::format::yaml::{self, Yaml};
@@ -15,7 +15,8 @@ pub fn yarn_checks(yarnrc: &Yaml, yarnrc_path: &Path) -> Vec<Finding> {
                 Severity::High,
                 yarnrc_path,
                 Manager::Yarn,
-                yaml_fix(
+                fix_for(
+                    Manager::Yarn,
                     yarnrc_path,
                     vec![ConfigEdit::set("checksumBehavior", "throw")],
                 ),
@@ -29,7 +30,11 @@ pub fn yarn_checks(yarnrc: &Yaml, yarnrc_path: &Path) -> Vec<Finding> {
             Severity::High,
             yarnrc_path,
             Manager::Yarn,
-            yaml_fix(yarnrc_path, vec![ConfigEdit::set("enableStrictSsl", true)]),
+            fix_for(
+                Manager::Yarn,
+                yarnrc_path,
+                vec![ConfigEdit::set("enableStrictSsl", true)],
+            ),
         ));
     }
     if yaml::is_false(yaml::get(yarnrc, "enableHardenedMode")) {
@@ -39,7 +44,8 @@ pub fn yarn_checks(yarnrc: &Yaml, yarnrc_path: &Path) -> Vec<Finding> {
             Severity::Moderate,
             yarnrc_path,
             Manager::Yarn,
-            yaml_fix(
+            fix_for(
+                Manager::Yarn,
                 yarnrc_path,
                 vec![ConfigEdit::set("enableHardenedMode", true)],
             ),

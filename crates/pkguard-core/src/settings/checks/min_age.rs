@@ -1,4 +1,4 @@
-use super::{bundle_fix, fixable_finding, npmrc_fix, setting_finding, toml_fix, yaml_fix};
+use super::{fix_for, fixable_finding, setting_finding};
 use crate::config::ResolvedSettings;
 use crate::findings::{Finding, Severity};
 use crate::fix::ConfigEdit;
@@ -31,7 +31,8 @@ pub fn npm_check(
         Severity::High,
         npmrc_path,
         Manager::Npm,
-        npmrc_fix(
+        fix_for(
+            Manager::Npm,
             npmrc_path,
             vec![ConfigEdit::set(
                 "min-release-age",
@@ -97,7 +98,8 @@ pub fn pnpm_checks(
             Severity::High,
             yaml_path,
             Manager::Pnpm,
-            yaml_fix(
+            fix_for(
+                Manager::Pnpm,
                 yaml_path,
                 vec![ConfigEdit::set(
                     "minimumReleaseAge",
@@ -113,7 +115,8 @@ pub fn pnpm_checks(
             Severity::High,
             yaml_path,
             Manager::Pnpm,
-            yaml_fix(
+            fix_for(
+                Manager::Pnpm,
                 yaml_path,
                 vec![ConfigEdit::set("minimumReleaseAgeStrict", true)],
             ),
@@ -137,7 +140,8 @@ pub fn pnpm_checks(
             Severity::Moderate,
             yaml_path,
             Manager::Pnpm,
-            yaml_fix(
+            fix_for(
+                Manager::Pnpm,
                 yaml_path,
                 vec![ConfigEdit::set("minimumReleaseAgeIgnoreMissingTime", false)],
             ),
@@ -176,7 +180,8 @@ pub fn yarn_checks(
             Severity::High,
             yarnrc_path,
             Manager::Yarn,
-            yaml_fix(
+            fix_for(
+                Manager::Yarn,
                 yarnrc_path,
                 vec![ConfigEdit::set(
                     "npmMinimalAgeGate",
@@ -217,7 +222,8 @@ pub fn bun_checks(
             Severity::High,
             bunfig_path,
             Manager::Bun,
-            toml_fix(
+            fix_for(
+                Manager::Bun,
                 bunfig_path,
                 vec![ConfigEdit::set(
                     "install.minimumReleaseAge",
@@ -326,7 +332,8 @@ pub fn uv_checks(
             Severity::High,
             config_path,
             Manager::Uv,
-            toml_fix(
+            fix_for(
+                Manager::Uv,
                 config_path,
                 vec![ConfigEdit::set(
                     format!("{key_prefix}exclude-newer"),
@@ -383,7 +390,8 @@ pub fn cargo_check(
             Severity::High,
             config_path,
             Manager::Cargo,
-            toml_fix(
+            fix_for(
+                Manager::Cargo,
                 config_path,
                 vec![ConfigEdit::set(
                     "install.minimum-release-age",
@@ -414,7 +422,8 @@ pub fn bundler_check(
             Severity::High,
             config_path,
             Manager::Bundler,
-            bundle_fix(
+            fix_for(
+                Manager::Bundler,
                 config_path,
                 vec![ConfigEdit::set(
                     "BUNDLE_COOLDOWN",

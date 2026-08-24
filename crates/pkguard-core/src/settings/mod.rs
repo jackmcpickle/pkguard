@@ -1161,23 +1161,12 @@ registry: https://registry.npmjs.org/
         assert_fix_consistency(&findings);
     }
 
-    fn expected_write(manager: Manager) -> (&'static str, ConfigFormat) {
-        match manager {
-            Manager::Npm => (".npmrc", ConfigFormat::Npmrc),
-            Manager::Pnpm => ("pnpm-workspace.yaml", ConfigFormat::Yaml),
-            Manager::Yarn => (".yarnrc.yml", ConfigFormat::Yaml),
-            Manager::Bun => ("bunfig.toml", ConfigFormat::Toml),
-            Manager::Uv => ("pyproject.toml", ConfigFormat::Toml),
-            Manager::Cargo => (".cargo/config.toml", ConfigFormat::Toml),
-            Manager::Composer => ("composer.json", ConfigFormat::Json),
-            Manager::Bundler => (".bundle/config", ConfigFormat::BundleConfig),
-            other => panic!("{other:?} has no write target in this test"),
-        }
-    }
-
     fn assert_fixes_target(findings: &[Finding], root: &std::path::Path, manager: Manager) {
-        let (rel, format) = expected_write(manager);
-        let expected = root.join(rel);
+        // Ask the production mapping rather than restating it: a test that
+        // keeps its own copy can only catch the checks drifting from the copy.
+        let (expected, format) = manager
+            .write_target(root)
+            .unwrap_or_else(|| panic!("{manager:?} has no write target"));
         for finding in findings.iter().filter(|f| f.fix.is_some()) {
             let fix = finding.fix.as_ref().unwrap();
             assert_eq!(
