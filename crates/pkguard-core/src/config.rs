@@ -64,6 +64,7 @@ pub struct ConfigFile {
     pub preset: Option<Preset>,
     pub managers: Option<Vec<String>>,
     pub jobs: Option<usize>,
+    pub audit: Option<bool>,
     pub policy: Option<PolicyOverrides>,
     pub agentic: Option<AgenticConfig>,
     #[serde(default)]
@@ -100,6 +101,7 @@ pub fn layer_configs<'a>(layers: impl IntoIterator<Item = &'a ConfigFile>) -> Co
         out.preset = layer.preset.or(out.preset);
         out.managers = layer.managers.clone().or(out.managers);
         out.jobs = layer.jobs.or(out.jobs);
+        out.audit = layer.audit.or(out.audit);
         out.policy = merge_policy(out.policy.as_ref(), layer.policy.as_ref());
         out.agentic = match (out.agentic.take(), layer.agentic.as_ref()) {
             (base, None) => base,
@@ -126,6 +128,7 @@ pub struct ResolvedSettings {
     pub require_lockfile: bool,
     pub require_pm_pin: bool,
     pub registry: Option<String>,
+    pub audit: bool,
     pub agentic: bool,
     pub apply_agentic: bool,
 }
@@ -147,6 +150,7 @@ pub fn resolve_settings(cfg: &ConfigFile, manager: &str) -> ResolvedSettings {
         require_lockfile: policy.require_lockfile.unwrap_or(defaults.require_lockfile),
         require_pm_pin: policy.require_pm_pin.unwrap_or(defaults.require_pm_pin),
         registry: policy.registry,
+        audit: cfg.audit.unwrap_or(true),
         agentic: agentic.enabled.unwrap_or(true),
         apply_agentic: agentic.apply.unwrap_or(false),
     }
@@ -277,5 +281,15 @@ audit_level = "critical"
         // no manager table for cargo: policy + preset defaults only
         assert_eq!(cargo.audit_level, Severity::High);
         assert_eq!(cargo.min_release_age_days, 7);
+        assert!(cargo.audit);
+    }
+
+    #[test]
+    fn audit_false_layers_and_resolves() {
+        let user: ConfigFile = parse_config("audit = true").unwrap();
+        let repo: ConfigFile = parse_config("audit = false").unwrap();
+        let layered = layer_configs([&user, &repo]);
+        assert_eq!(layered.audit, Some(false));
+        assert!(!resolve_settings(&layered, "npm").audit);
     }
 }

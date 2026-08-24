@@ -1,6 +1,6 @@
 # pkguard
 
-pkguard walks a folder of repos, finds each package-manager root, and audits it. `scan` is read-only and never writes files.
+pkguard walks a folder of repos, finds each package-manager root, and audits it. `scan` is read-only unless you pass `--fix`.
 
 Docs and the product page live at [pkguard.dev](https://pkguard.dev).
 
@@ -8,17 +8,25 @@ As of 1.0.0 pkguard is a Rust binary (workspace in `crates/`).
 
 ## How a scan runs
 
-Each project gets a binary check, a settings read, then a vulnerability scan if the binary is there. Settings never call the package manager. The scan does.
+Each project reads settings first. `--fix` writes the safe ones and re-reads. Live audits run after that, unless `--no-audit` or `audit = false` skips them. Settings never call the package manager. The live audit does.
 
 ```mermaid
 flowchart TD
   discover[Discover PM roots]
-  preflight[Check binary on PATH]
   settings[Read settings files]
+  fix{"--fix?"}
+  apply[Write settings and re-read]
+  audits{Audits on?}
   skip[Skip live audit]
+  preflight[Check binary on PATH]
   live[Run native audit]
-  discover --> preflight
   discover --> settings
+  settings --> fix
+  fix -->|yes| apply
+  apply --> audits
+  fix -->|no| audits
+  audits -->|no| skip
+  audits -->|yes| preflight
   preflight -->|missing| skip
   preflight -->|found| live
 ```
@@ -48,17 +56,41 @@ pkguard init                       # write the user config (refuses to overwrite
 pkguard init --local               # write .pkguard.toml in the current directory
 pkguard init --force               # overwrite an existing file
 pkguard scan [path]                # read-only audit, defaults to the current directory
+pkguard audit [path]               # alias for scan
 pkguard scan . --preset strict     # relaxed | standard | strict
 pkguard scan . --format json       # machine-readable output (schemaVersion 2)
 pkguard scan . --jobs 4            # max concurrent audits (default: min(cpus*2, 16))
 pkguard scan . --refresh           # ignore cached advisory results, re-fetch
 pkguard scan . --no-cache          # disable the advisory cache entirely
 pkguard scan . -q                  # suppress progress output
+pkguard scan . --no-audit          # skip live package-manager audits
+pkguard scan . --fix               # write the safe settings
+pkguard scan . --fix --dry-run     # show the writes, change nothing
+pkguard scan . --fix --force       # write even if git is dirty
 ```
+
+`--force` and `--dry-run` require `--fix`. `--fix` does not change exit-code rules: leftover findings still exit `1`.
 
 Exit code `0` means every project passed. `1` means a policy failure, either settings drift or an advisory at or above the preset's gate. `2` means the run was incomplete: a missing binary, an audit subprocess died, or no projects were found.
 
 Advisory results are cached by lockfile digest in the platform cache dir (override with `PKGUARD_CACHE_DIR`).
+
+## What `--fix` writes
+
+`--fix` edits settings files only. One write per manager:
+
+| Manager | File |
+|---|---|
+| npm | `.npmrc` |
+| pnpm | `pnpm-workspace.yaml` |
+| yarn | `.yarnrc.yml` |
+| bun | `bunfig.toml` |
+| uv | `uv.toml` if that file exists, otherwise `[tool.uv]` in `pyproject.toml` |
+| cargo | `.cargo/config.toml` |
+| composer | `composer.json` |
+| bundler | `.bundle/config` |
+
+It will not generate a lockfile, bump package versions, run a package manager, write outside the project root, or write to a dirty git tree without `--force`.
 
 ## Configuration
 
@@ -72,6 +104,7 @@ Config is TOML, layered field by field. Later layers win, and flags win over fil
 preset = "standard"          # relaxed | standard | strict
 managers = ["npm", "cargo"]  # limit which managers are audited
 jobs = 8
+audit = true                 # set false to skip live package-manager audits
 
 [policy]                     # overrides the preset's defaults
 ignore_scripts = true

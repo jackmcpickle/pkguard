@@ -73,6 +73,7 @@ mod tests {
             package: Some("left-pad".into()),
             current_version: None,
             fix_version: None,
+            fix: None,
         }
     }
 

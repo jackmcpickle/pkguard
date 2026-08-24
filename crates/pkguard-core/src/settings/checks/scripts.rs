@@ -1,6 +1,10 @@
-use super::{advice_finding, default_reliance_severity, setting_finding};
+use super::{
+    advice_finding, default_reliance_severity, fixable_finding, json_fix, npmrc_fix, toml_fix,
+    yaml_fix,
+};
 use crate::config::ResolvedSettings;
 use crate::findings::{Finding, Severity};
+use crate::fix::{ConfigEdit, ConfigValue};
 use crate::format::yaml::{self, Yaml};
 use crate::manager::{Manager, PackageManagerPin};
 use crate::policy::Preset;
@@ -37,12 +41,13 @@ pub fn npm_checks(
     let mut findings = Vec::new();
 
     if settings.ignore_scripts && !scripts_ignored && !(allow_scripts && strict_allow_scripts) {
-        findings.push(setting_finding(
+        findings.push(fixable_finding(
             "scripts.unrestricted",
             "npm ignore-scripts must be true, or allowScripts with strict-allow-scripts",
             Severity::High,
             npmrc_path,
             Manager::Npm,
+            npmrc_fix(npmrc_path, vec![ConfigEdit::set("ignore-scripts", true)]),
         ));
     }
 
@@ -67,34 +72,39 @@ pub fn npm_checks(
     }
 
     if settings.ignore_scripts && !is_true(npmrc, "allow-scripts-pin") {
+        let pin_fix = npmrc_fix(npmrc_path, vec![ConfigEdit::set("allow-scripts-pin", true)]);
         if npmrc.get("allow-scripts-pin").map(String::as_str) == Some("false") {
-            findings.push(setting_finding(
+            findings.push(fixable_finding(
                 "scripts.pin-missing",
                 "allow-scripts-pin must be true",
                 Severity::High,
                 npmrc_path,
                 Manager::Npm,
+                pin_fix,
             ));
         } else {
-            let mut advice = advice_finding(
+            findings.push(fixable_finding(
                 "scripts.pin-missing",
                 "npm defaults allow-scripts-pin to true; set it explicitly",
                 default_reliance_severity(preset),
                 npmrc_path,
                 Manager::Npm,
-            );
-            advice.fixable = true;
-            findings.push(advice);
+                pin_fix,
+            ));
         }
     }
 
     if settings.ignore_scripts && is_true(npmrc, "dangerously-allow-all-scripts") {
-        findings.push(setting_finding(
+        findings.push(fixable_finding(
             "scripts.bypass-enabled",
             "dangerously-allow-all-scripts must not be true",
             Severity::High,
             npmrc_path,
             Manager::Npm,
+            npmrc_fix(
+                npmrc_path,
+                vec![ConfigEdit::set("dangerously-allow-all-scripts", false)],
+            ),
         ));
     }
 
@@ -113,12 +123,13 @@ pub fn pnpm_checks(
     }
     let mut findings = pnpm_builds_findings(yaml, yaml_path, pin, preset);
     if yaml::is_false(yaml::get(yaml, "strictDepBuilds")) {
-        findings.push(setting_finding(
+        findings.push(fixable_finding(
             "scripts.non-strict",
             "pnpm strictDepBuilds must not be false",
             Severity::High,
             yaml_path,
             Manager::Pnpm,
+            yaml_fix(yaml_path, vec![ConfigEdit::set("strictDepBuilds", true)]),
         ));
     }
     findings
@@ -138,17 +149,19 @@ fn pnpm_builds_findings(
         .filter(|key| yaml::get(yaml, key).is_some())
         .collect();
 
+    let build_fix = yaml_fix(yaml_path, pnpm_build_edits(yaml));
     if yaml::is_true(yaml::get(yaml, "dangerouslyAllowAllBuilds")) {
-        return vec![setting_finding(
+        return vec![fixable_finding(
             "scripts.unrestricted",
             "pnpm dangerouslyAllowAllBuilds must not be true",
             Severity::High,
             yaml_path,
             Manager::Pnpm,
+            build_fix,
         )];
     }
     if uses_allow_builds && !legacy.is_empty() && !has_allow_builds {
-        return vec![setting_finding(
+        return vec![fixable_finding(
             "scripts.legacy-config",
             format!(
                 "pnpm 11 removed {}; use allowBuilds instead",
@@ -157,10 +170,12 @@ fn pnpm_builds_findings(
             Severity::High,
             yaml_path,
             Manager::Pnpm,
+            build_fix,
         )];
     }
     if !has_allow_builds && legacy.is_empty() {
         return vec![pnpm_default_builds_finding(
+            yaml,
             yaml_path,
             builds_blocked_by_default,
             preset,
@@ -180,24 +195,25 @@ pub fn yarn_check(
         return Vec::new();
     }
     let scripts_off_by_default = PackageManagerPin::at_least_or_unknown(pin, 4, 14);
+    let fix = yaml_fix(yarnrc_path, vec![ConfigEdit::set("enableScripts", false)]);
     if yaml::is_true(yaml::get(yarnrc, "enableScripts")) || !scripts_off_by_default {
-        return vec![setting_finding(
+        return vec![fixable_finding(
             "scripts.unrestricted",
             "yarn enableScripts must be false",
             Severity::High,
             yarnrc_path,
             Manager::Yarn,
+            fix,
         )];
     }
-    let mut advice = advice_finding(
+    vec![fixable_finding(
         "scripts.unrestricted",
         "yarn defaults enableScripts to false; set it explicitly to keep that guarantee",
         default_reliance_severity(preset),
         yarnrc_path,
         Manager::Yarn,
-    );
-    advice.fixable = true;
-    vec![advice]
+        fix,
+    )]
 }
 
 const BUN_AUTO_SCRIPT_VALUES: [&str; 5] = ["auto", "force", "fallback", "true", "all"];
@@ -241,12 +257,16 @@ pub fn bun_check(
             && install.is_none_or(|t| t.get("security").and_then(toml::Value::as_table).is_none())
             && !bun_deny_scripts(bunfig, install));
     if unrestricted {
-        vec![setting_finding(
+        vec![fixable_finding(
             "scripts.unrestricted",
             "bun scripts must be restricted",
             Severity::High,
             bunfig_path,
             Manager::Bun,
+            toml_fix(
+                bunfig_path,
+                vec![ConfigEdit::set("install.ignoreScripts", true)],
+            ),
         )]
     } else {
         Vec::new()
@@ -259,40 +279,96 @@ pub fn composer_check(
     config_path: &Path,
 ) -> Vec<Finding> {
     if settings.ignore_scripts && allow_plugins == Some(&serde_json::Value::Bool(true)) {
-        vec![setting_finding(
+        vec![fixable_finding(
             "scripts.unrestricted",
             "composer allow-plugins must not be true",
             Severity::High,
             config_path,
             Manager::Composer,
+            json_fix(
+                config_path,
+                vec![ConfigEdit::set("config.allow-plugins", false)],
+            ),
         )]
     } else {
         Vec::new()
     }
 }
 
+fn yaml_string_seq(value: Option<&Yaml>) -> Vec<String> {
+    value
+        .and_then(Yaml::as_sequence)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn yaml_bool_table(value: Option<&Yaml>) -> BTreeMap<String, ConfigValue> {
+    let Some(map) = value.and_then(Yaml::as_mapping) else {
+        return BTreeMap::new();
+    };
+    let mut out = BTreeMap::new();
+    for (key, child) in map {
+        if let (Some(name), Some(flag)) = (key.as_str(), child.as_bool()) {
+            out.insert(name.to_string(), ConfigValue::Bool(flag));
+        }
+    }
+    out
+}
+
+fn pnpm_build_edits(yaml: &Yaml) -> Vec<ConfigEdit> {
+    let mut allow_builds = yaml_bool_table(yaml::get(yaml, "allowBuilds"));
+    let merge = |allow_builds: &mut BTreeMap<String, ConfigValue>, key: &str, allowed: bool| {
+        for name in yaml_string_seq(yaml::get(yaml, key)) {
+            allow_builds
+                .entry(name)
+                .or_insert(ConfigValue::Bool(allowed));
+        }
+    };
+    merge(&mut allow_builds, "onlyBuiltDependencies", true);
+    merge(&mut allow_builds, "neverBuiltDependencies", false);
+    merge(&mut allow_builds, "ignoredBuiltDependencies", false);
+    let mut edits = vec![ConfigEdit::set("dangerouslyAllowAllBuilds", false)];
+    for key in PNPM_LEGACY_BUILD_KEYS {
+        if yaml::get(yaml, key).is_some() {
+            edits.push(ConfigEdit::unset(key));
+        }
+    }
+    edits.push(ConfigEdit::set(
+        "allowBuilds",
+        ConfigValue::Table(allow_builds),
+    ));
+    edits
+}
+
 fn pnpm_default_builds_finding(
+    yaml: &Yaml,
     yaml_path: &Path,
     builds_blocked_by_default: bool,
     preset: Preset,
 ) -> Finding {
+    let fix = yaml_fix(yaml_path, pnpm_build_edits(yaml));
     if builds_blocked_by_default {
-        let mut advice = advice_finding(
+        fixable_finding(
             "scripts.unrestricted",
             "pnpm blocks dependency builds by default; declare allowBuilds to review them explicitly",
             default_reliance_severity(preset),
             yaml_path,
             Manager::Pnpm,
-        );
-        advice.fixable = true;
-        advice
+            fix,
+        )
     } else {
-        setting_finding(
+        fixable_finding(
             "scripts.unrestricted",
             "pnpm builds must be restricted",
             Severity::High,
             yaml_path,
             Manager::Pnpm,
+            fix,
         )
     }
 }

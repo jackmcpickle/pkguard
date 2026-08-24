@@ -3,6 +3,7 @@ import {
     AGENTIC_CATALOG,
     APP_NAME,
     COMMANDS,
+    argToken,
     commandSynopsis,
     flagLabel,
     type CommandHelp,
@@ -60,6 +61,16 @@ const toc = [
         code={`${APP_NAME} ${commandSynopsis(command)}${command.flags.length > 0 ? " [options]" : ""}`}
     />
     {
+        command.aliases.length > 0 && (
+            <KeyValue
+                rows={command.aliases.map((alias) => ({
+                    key: "alias",
+                    value: `${APP_NAME} ${alias}${command.arguments.length > 0 ? ` ${command.arguments.map(argToken).join(" ")}` : ""}`,
+                }))}
+            />
+        )
+    }
+    {
         command.arguments.length > 0 && (
             <>
                 <SectionHeading id="arguments">Arguments</SectionHeading>
@@ -103,8 +114,8 @@ const toc = [
                 <SectionHeading id="agentic-checks">Agentic checks</SectionHeading>
                 <DocsBody>
                     Reported by default. Turn off with [agentic] enabled = false in
-                    config. These codes are the finding-code contract. Writes come
-                    with the future fix command.
+                    config. These codes are the finding-code contract. --fix writes
+                    settings only. It does not apply agentic findings.
                 </DocsBody>
                 <KeyValue
                     rows={AGENTIC_CATALOG.map((check) => ({

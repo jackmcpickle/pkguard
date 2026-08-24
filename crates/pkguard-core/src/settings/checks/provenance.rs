@@ -1,5 +1,6 @@
-use super::setting_finding;
+use super::{fixable_finding, yaml_fix};
 use crate::findings::{Finding, Severity};
+use crate::fix::ConfigEdit;
 use crate::format::yaml::{self, Yaml};
 use crate::manager::{Manager, PackageManagerPin};
 use std::path::Path;
@@ -15,7 +16,7 @@ pub fn pnpm_checks(yaml: &Yaml, yaml_path: &Path, pin: Option<&PackageManagerPin
         )
         .and_then(yaml::as_f64);
         if !minutes.is_some_and(|m| m >= TRUST_POLICY_IGNORE_AFTER_MINUTES) {
-            findings.push(setting_finding(
+            findings.push(fixable_finding(
                 "provenance.ignore-after",
                 format!(
                     "pnpm trustPolicyIgnoreAfter must be at least {TRUST_POLICY_IGNORE_AFTER_MINUTES} minutes (90 days)"
@@ -23,18 +24,29 @@ pub fn pnpm_checks(yaml: &Yaml, yaml_path: &Path, pin: Option<&PackageManagerPin
                 Severity::High,
                 yaml_path,
                 Manager::Pnpm,
+                yaml_fix(
+                    yaml_path,
+                    vec![ConfigEdit::set(
+                        "trustPolicyIgnoreAfter",
+                        TRUST_POLICY_IGNORE_AFTER_MINUTES as i64,
+                    )],
+                ),
             ));
         }
     }
     if PackageManagerPin::at_least_or_unknown(pin, 10, 21) {
         let policy = yaml::first(yaml, &["trustPolicy", "trust-policy"]).and_then(yaml::as_str);
         if policy != Some("no-downgrade") {
-            findings.push(setting_finding(
+            findings.push(fixable_finding(
                 "provenance.no-downgrade",
                 "pnpm trustPolicy must be no-downgrade",
                 Severity::High,
                 yaml_path,
                 Manager::Pnpm,
+                yaml_fix(
+                    yaml_path,
+                    vec![ConfigEdit::set("trustPolicy", "no-downgrade")],
+                ),
             ));
         }
     }

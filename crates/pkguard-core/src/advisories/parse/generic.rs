@@ -86,6 +86,7 @@ fn yarn_tree_finding(item: &Value, path: &str, manager: Manager) -> Option<Findi
         package: Some(name.to_string()),
         current_version: version,
         fix_version: None,
+        fix: None,
     })
 }
 
@@ -173,6 +174,7 @@ fn advisory_like(item: &Value, path: &str, manager: Manager) -> Option<Finding> 
             })
             .and_then(concrete_version),
         fix_version: None,
+        fix: None,
     })
 }
 
@@ -219,6 +221,7 @@ fn walk_abandoned(abandoned: &Value, path: &str, manager: Manager, out: &mut Vec
             package: Some(name.clone()),
             current_version: None,
             fix_version: None,
+            fix: None,
         });
     }
 }

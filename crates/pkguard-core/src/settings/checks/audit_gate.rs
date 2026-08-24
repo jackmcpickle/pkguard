@@ -1,6 +1,7 @@
-use super::setting_finding;
+use super::{fixable_finding, json_fix, npmrc_fix, toml_fix, yaml_fix};
 use crate::config::ResolvedSettings;
 use crate::findings::{Finding, Severity};
+use crate::fix::ConfigEdit;
 use crate::format::yaml::{self, Yaml};
 use crate::manager::{Manager, PackageManagerPin};
 use std::collections::BTreeMap;
@@ -45,12 +46,19 @@ pub fn npm_check(
     ) {
         Vec::new()
     } else {
-        vec![setting_finding(
+        vec![fixable_finding(
             "audit.disabled",
             "npm audit must be enabled at the preset gate",
             Severity::High,
             npmrc_path,
             Manager::Npm,
+            npmrc_fix(
+                npmrc_path,
+                vec![
+                    ConfigEdit::set("audit", true),
+                    ConfigEdit::set("audit-level", settings.audit_level.as_str()),
+                ],
+            ),
         )]
     }
 }
@@ -74,7 +82,8 @@ pub fn pnpm_check(
         return Vec::new();
     }
     let modern = PackageManagerPin::at_least_or_unknown(pin, 11, 16);
-    vec![setting_finding(
+    let key = if modern { "audit.level" } else { "auditLevel" };
+    vec![fixable_finding(
         "audit.disabled",
         if modern {
             "pnpm audit.level must meet the preset gate"
@@ -84,6 +93,10 @@ pub fn pnpm_check(
         Severity::High,
         yaml_path,
         Manager::Pnpm,
+        yaml_fix(
+            yaml_path,
+            vec![ConfigEdit::set(key, settings.audit_level.as_str())],
+        ),
     )]
 }
 
@@ -92,22 +105,36 @@ pub fn yarn_check(yarnrc: &Yaml, yarnrc_path: &Path) -> Vec<Finding> {
         .into_iter()
         .any(|key| yaml::is_false(yaml::get(yarnrc, key)));
     if disabled {
-        vec![setting_finding(
+        vec![fixable_finding(
             "audit.disabled",
             "yarn audit must not be disabled",
             Severity::High,
             yarnrc_path,
             Manager::Yarn,
+            yaml_fix(yarnrc_path, yarn_audit_edits(yarnrc)),
         )]
     } else {
         Vec::new()
     }
 }
 
+fn yarn_audit_edits(yarnrc: &Yaml) -> Vec<ConfigEdit> {
+    let mut edits = Vec::new();
+    if yaml::get(yarnrc, "audit").is_some() {
+        edits.push(ConfigEdit::unset("audit"));
+    }
+    if yaml::get(yarnrc, "npmAudit").is_some() {
+        edits.push(ConfigEdit::unset("npmAudit"));
+    }
+    edits.push(ConfigEdit::set("enableNpmAudit", true));
+    edits
+}
+
 pub fn uv_malware(
     cfg: &toml::Value,
     config_path: &Path,
     pin: Option<&PackageManagerPin>,
+    key_prefix: &str,
 ) -> Vec<Finding> {
     if !PackageManagerPin::at_least_patch_or_unknown(pin, 0, 11, 31) {
         return Vec::new();
@@ -121,12 +148,19 @@ pub fn uv_malware(
     if enabled {
         Vec::new()
     } else {
-        vec![setting_finding(
+        vec![fixable_finding(
             "audit.malware-disabled",
             "uv audit malware-check must be true",
             Severity::High,
             config_path,
             Manager::Uv,
+            toml_fix(
+                config_path,
+                vec![ConfigEdit::set(
+                    format!("{key_prefix}audit.malware-check"),
+                    true,
+                )],
+            ),
         )]
     }
 }
@@ -140,30 +174,46 @@ pub fn composer_policy(
 ) -> Vec<Finding> {
     let mut findings = Vec::new();
     if policy_disabled || advisories_audit_ignore {
-        findings.push(setting_finding(
+        findings.push(fixable_finding(
             "audit.disabled",
             "composer policy.advisories.audit must not be ignore",
             Severity::High,
             config_path,
             Manager::Composer,
+            json_fix(
+                config_path,
+                vec![
+                    ConfigEdit::set("config.policy.advisories.audit", "fail"),
+                    ConfigEdit::set("config.policy.advisories.block", true),
+                    ConfigEdit::set("config.policy.malware.block", true),
+                ],
+            ),
         ));
     }
     if !advisories_block {
-        findings.push(setting_finding(
+        findings.push(fixable_finding(
             "audit.blocking-disabled",
             "composer policy.advisories.block must be true",
             Severity::High,
             config_path,
             Manager::Composer,
+            json_fix(
+                config_path,
+                vec![ConfigEdit::set("config.policy.advisories.block", true)],
+            ),
         ));
     }
     if !malware_block {
-        findings.push(setting_finding(
+        findings.push(fixable_finding(
             "audit.malware-disabled",
             "composer policy.malware.block must be true",
             Severity::High,
             config_path,
             Manager::Composer,
+            json_fix(
+                config_path,
+                vec![ConfigEdit::set("config.policy.malware.block", true)],
+            ),
         ));
     }
     findings

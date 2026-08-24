@@ -103,6 +103,7 @@ fn finding(
         package,
         current_version: version.and_then(concrete_version),
         fix_version: fix,
+        fix: None,
     }
 }
 

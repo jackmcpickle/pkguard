@@ -10,7 +10,8 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Command {
-    /// Read-only audit of one directory tree (never mutates anything)
+    /// Audit one directory tree. Read-only unless `--fix` is passed
+    #[command(alias = "audit")]
     Scan(ScanArgs),
 
     /// Write a starter config file
@@ -60,6 +61,22 @@ pub struct ScanArgs {
     /// Suppress progress output
     #[arg(long, short)]
     pub quiet: bool,
+
+    /// Write the safe settings into each manager's config file
+    #[arg(long)]
+    pub fix: bool,
+
+    /// Allow `--fix` on a dirty git tree
+    #[arg(long, requires = "fix")]
+    pub force: bool,
+
+    /// With `--fix`, show the changes and write nothing
+    #[arg(long, requires = "fix")]
+    pub dry_run: bool,
+
+    /// Skip every live package-manager audit (offline)
+    #[arg(long)]
+    pub no_audit: bool,
 }
 
 #[derive(Clone, Copy, ValueEnum)]

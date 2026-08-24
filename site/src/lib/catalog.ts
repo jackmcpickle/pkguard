@@ -17,6 +17,7 @@ export interface HelpFlag {
 
 export interface CommandHelp {
   name: string;
+  aliases: readonly string[];
   summary: string;
   arguments: readonly HelpArg[];
   flags: readonly HelpFlag[];

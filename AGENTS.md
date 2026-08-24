@@ -17,7 +17,7 @@ npm run check --prefix site && npm run build --prefix site                 # sit
 
 - The docs site renders `site/src/generated/catalog.json`, dumped from the binary. If you change the CLI surface, `Manager`, or preset defaults, regenerate it — CI diffs it against a fresh dump.
 - Finding codes and exit codes 0/1/2 are contracts; do not change them without a decision.
-- `scan` is read-only. Nothing in the scan path may write to user files.
+- `scan` is read-only **unless `--fix` is passed**; the default path must never open a file for writing.
 - Managers live in one exhaustive `Manager` enum (`crates/pkguard-core/src/manager.rs`); add capabilities there, never in a side table. `Manager::ported()` must track the settings/advisories match arms.
 - Settings checks are organized by check family (`settings/checks/`), not by manager.
 - The docs domain is pkguard.dev.

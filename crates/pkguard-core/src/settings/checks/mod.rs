@@ -14,7 +14,8 @@ pub mod source;
 use crate::config::ResolvedSettings;
 use crate::discover::{DetectedManager, Project};
 use crate::findings::{Finding, FindingKind, Severity};
-use crate::format::{npmrc, yaml};
+use crate::fix::{ConfigEdit, ConfigFormat, SettingsFix};
+use crate::format::{bundle_config, npmrc, yaml};
 use crate::manager::{Manager, PackageManagerPin};
 use crate::policy::Preset;
 use std::collections::BTreeMap;
@@ -51,12 +52,64 @@ pub fn setting_finding(
         message: message.into(),
         severity,
         path: path.to_string_lossy().into_owned(),
-        fixable: true,
+        // Unfixable until a `SettingsFix` is attached via `fixable_finding`.
+        // The two fields must stay in step — see the consistency test.
+        fixable: false,
         manager: Some(manager),
         package: None,
         current_version: None,
         fix_version: None,
+        fix: None,
     }
+}
+
+/// A settings finding that `--fix` can repair. `fixable` and `fix` must stay
+/// in step; this builder is the only way to set them, so they cannot drift.
+pub fn fixable_finding(
+    code: &str,
+    message: impl Into<String>,
+    severity: Severity,
+    path: &Path,
+    manager: Manager,
+    fix: SettingsFix,
+) -> Finding {
+    Finding {
+        fixable: true,
+        fix: Some(fix),
+        ..setting_finding(code, message, severity, path, manager)
+    }
+}
+
+pub fn npmrc_fix(file: &Path, edits: Vec<ConfigEdit>) -> SettingsFix {
+    SettingsFix::new(file, ConfigFormat::Npmrc, edits)
+}
+
+pub fn yaml_fix(file: &Path, edits: Vec<ConfigEdit>) -> SettingsFix {
+    SettingsFix::new(file, ConfigFormat::Yaml, edits)
+}
+
+pub fn toml_fix(file: &Path, edits: Vec<ConfigEdit>) -> SettingsFix {
+    SettingsFix::new(file, ConfigFormat::Toml, edits)
+}
+
+pub fn json_fix(file: &Path, edits: Vec<ConfigEdit>) -> SettingsFix {
+    SettingsFix::new(file, ConfigFormat::Json, edits)
+}
+
+pub fn bundle_fix(file: &Path, edits: Vec<ConfigEdit>) -> SettingsFix {
+    SettingsFix::new(file, ConfigFormat::BundleConfig, edits)
+}
+
+fn registry_url_fix(
+    file: &Path,
+    format: ConfigFormat,
+    key: &str,
+    settings: &ResolvedSettings,
+) -> Option<SettingsFix> {
+    settings
+        .registry
+        .as_ref()
+        .map(|url| SettingsFix::new(file, format, vec![ConfigEdit::set(key, url.as_str())]))
 }
 
 pub fn advice_finding(
@@ -121,6 +174,7 @@ pub fn npm_settings(
         preset,
         &npmrc_path,
         Manager::Npm,
+        registry_url_fix(&npmrc_path, ConfigFormat::Npmrc, "registry", settings),
     ));
     findings.extend(pm_pin::check(
         settings.require_pm_pin,
@@ -186,6 +240,7 @@ fn multiple_pm_finding(
         package: None,
         current_version: None,
         fix_version: None,
+        fix: None,
     })
 }
 
@@ -289,6 +344,7 @@ pub fn pnpm_settings(
         preset,
         &yaml_path,
         Manager::Pnpm,
+        registry_url_fix(&yaml_path, ConfigFormat::Yaml, "registry", settings),
     ));
     findings.extend(pm_pin::check(
         settings.require_pm_pin,
@@ -361,24 +417,6 @@ fn uv_has_extra_indexes(cfg: &toml::Value) -> bool {
                 .as_table()
                 .is_some_and(|table| table.get("default") != Some(&toml::Value::Boolean(true)))
         })
-}
-
-fn parse_bundle_config(raw: &str) -> std::collections::BTreeMap<String, String> {
-    let mut out = std::collections::BTreeMap::new();
-    for line in raw.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed == "---" {
-            continue;
-        }
-        let Some((key, value)) = trimmed.split_once(':') else {
-            continue;
-        };
-        out.insert(
-            key.trim().to_string(),
-            value.trim().trim_matches('"').to_string(),
-        );
-    }
-    out
 }
 
 fn json_bool(value: Option<&serde_json::Value>, fallback: bool) -> bool {
@@ -456,6 +494,7 @@ pub fn python_not_uv(project_root: &Path, manager: Manager) -> Finding {
         package: None,
         current_version: None,
         fix_version: None,
+        fix: None,
     }
 }
 
@@ -518,6 +557,12 @@ pub fn yarn_settings(
         preset,
         &yarnrc_path,
         Manager::Yarn,
+        registry_url_fix(
+            &yarnrc_path,
+            ConfigFormat::Yaml,
+            "npmRegistryServer",
+            settings,
+        ),
     ));
     findings.extend(pm_pin::check(
         settings.require_pm_pin,
@@ -566,6 +611,12 @@ pub fn bun_settings(
         settings.preset,
         &bunfig_path,
         Manager::Bun,
+        registry_url_fix(
+            &bunfig_path,
+            ConfigFormat::Toml,
+            "install.registry",
+            settings,
+        ),
     ));
     findings
 }
@@ -575,10 +626,11 @@ pub fn uv_settings(
     manager: &DetectedManager,
     settings: &ResolvedSettings,
 ) -> Vec<Finding> {
-    let config_path = manager
-        .config_path
-        .clone()
+    let config_path = Manager::Uv
+        .write_target(project_root)
+        .map(|(path, _)| path)
         .unwrap_or_else(|| project_root.join("pyproject.toml"));
+    let key_prefix = Manager::uv_key_prefix(&config_path);
     let cfg = read_uv_config(project_root);
     let pin = PackageManagerPin::from_manifest(project_root).filter(|p| p.name == "uv");
     let mut findings = Vec::new();
@@ -592,7 +644,7 @@ pub fn uv_settings(
         "uv.lock is required",
         Manager::Uv,
     ));
-    findings.extend(min_age::uv_checks(settings, &cfg, &config_path));
+    findings.extend(min_age::uv_checks(settings, &cfg, &config_path, key_prefix));
     if settings.preset == crate::policy::Preset::Strict
         && uv_has_extra_indexes(&cfg)
         && cfg.get("index-strategy").and_then(toml::Value::as_str) != Some("first-index")
@@ -604,9 +656,21 @@ pub fn uv_settings(
             settings.preset,
             &config_path,
             Manager::Uv,
+            Some(toml_fix(
+                &config_path,
+                vec![ConfigEdit::set(
+                    format!("{key_prefix}index-strategy"),
+                    "first-index",
+                )],
+            )),
         ));
     }
-    findings.extend(audit_gate::uv_malware(&cfg, &config_path, pin.as_ref()));
+    findings.extend(audit_gate::uv_malware(
+        &cfg,
+        &config_path,
+        pin.as_ref(),
+        key_prefix,
+    ));
     findings
 }
 
@@ -645,7 +709,11 @@ pub fn cargo_settings(
         "Cargo.lock is required",
         Manager::Cargo,
     ));
-    findings.extend(min_age::cargo_check(settings, install, &config_path));
+    let write_path = Manager::Cargo
+        .write_target(project_root)
+        .map(|(path, _)| path)
+        .unwrap_or(config_path);
+    findings.extend(min_age::cargo_check(settings, install, &write_path));
     findings
 }
 
@@ -691,12 +759,18 @@ pub fn composer_settings(
         &config_path,
     ));
     if disable_tls || !secure_http {
-        findings.push(setting_finding(
+        let mut edits = Vec::new();
+        if disable_tls {
+            edits.push(ConfigEdit::unset("config.disable-tls"));
+        }
+        edits.push(ConfigEdit::set("config.secure-http", true));
+        findings.push(fixable_finding(
             "registry.unpinned",
             "composer must keep secure-http enabled and disable-tls off",
             Severity::High,
             &config_path,
             Manager::Composer,
+            json_fix(&config_path, edits),
         ));
     }
     if let Some(url) = http_repos.first() {
@@ -728,12 +802,12 @@ pub fn bundler_settings(
     manager: &DetectedManager,
     settings: &ResolvedSettings,
 ) -> Vec<Finding> {
-    let config_path = manager
-        .config_path
-        .clone()
+    let config_path = Manager::Bundler
+        .write_target(project_root)
+        .map(|(path, _)| path)
         .unwrap_or_else(|| project_root.join(".bundle/config"));
     let raw = std::fs::read_to_string(&config_path).unwrap_or_default();
-    let config = parse_bundle_config(&raw);
+    let config = bundle_config::parse(&raw);
     let cooldown = config.get("BUNDLE_COOLDOWN").and_then(|v| v.parse().ok());
     let mut findings = Vec::new();
     findings.extend(lockfile::check(

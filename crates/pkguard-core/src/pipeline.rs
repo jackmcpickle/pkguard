@@ -1,4 +1,5 @@
 use crate::advisories::{run_manager_advisories, AdvisoryOptions};
+use crate::apply::ApplyResult;
 use crate::cache::AdvisoryCache;
 use crate::config::{layer_configs, parse_config, resolve_settings, ConfigFile};
 use crate::discover::{discover_projects, Project, Role};
@@ -30,6 +31,7 @@ pub enum AuditEvent {
         /// Config files that were actually layered for this project, in
         /// application order (user < scan-root < per-repo).
         config_sources: Vec<PathBuf>,
+        applied: Option<ApplyResult>,
     },
     Done(ScanSummary),
 }
@@ -50,6 +52,10 @@ pub struct ScanOptions {
     pub no_cache: bool,
     pub cache_dir: PathBuf,
     pub user_config: Option<PathBuf>,
+    pub no_audit: bool,
+    pub fix: bool,
+    pub force: bool,
+    pub dry_run: bool,
 }
 
 impl Default for ScanOptions {
@@ -61,6 +67,10 @@ impl Default for ScanOptions {
             no_cache: false,
             cache_dir: std::env::temp_dir().join("pkguard-cache"),
             user_config: None,
+            no_audit: false,
+            fix: false,
+            force: false,
+            dry_run: false,
         }
     }
 }
@@ -88,6 +98,7 @@ fn missing_binary_finding(project_root: &Path, manager: Manager, binary: &str) -
         package: None,
         current_version: None,
         fix_version: None,
+        fix: None,
     }
 }
 
@@ -96,6 +107,7 @@ struct ProjectResult {
     incomplete: bool,
     preset: Preset,
     config_sources: Vec<PathBuf>,
+    applied: Option<ApplyResult>,
 }
 
 async fn audit_project(
@@ -119,57 +131,75 @@ async fn audit_project(
         config.preset = Some(preset);
     }
 
-    let mut findings = crate::settings::checks::multiple_pm_findings(project);
+    let mut findings = collect_settings_findings(project, &config);
     let mut incomplete = false;
     let advisory_opts = AdvisoryOptions {
         refresh: opts.refresh,
         no_cache: opts.no_cache,
     };
 
-    for manager in &project.managers {
-        let settings = resolve_settings(&config, manager.manager.name());
-        let settings_findings =
-            crate::settings::audit_manager_settings(&project.root, manager, &settings);
-        findings.extend(settings_findings);
+    let applied = if opts.fix {
+        let plan = crate::apply::plan_fixes(project, &findings);
+        if opts.dry_run {
+            Some(crate::apply::ApplyResult {
+                written: Vec::new(),
+                skipped: plan.skipped.clone(),
+                changes: plan.changes.clone(),
+                blocked: None,
+            })
+        } else {
+            let result = crate::apply::apply_fixes(project, &plan, runner, opts.force).await;
+            findings = collect_settings_findings(project, &config);
+            Some(result)
+        }
+    } else {
+        None
+    };
 
-        // Live advisory audits run for ported primaries only. Leftover and
-        // unsupported managers still contribute the settings finding above.
-        if manager.role != Role::Primary || !manager.manager.ported() {
-            continue;
-        }
-        let binary = manager.manager.binary().unwrap_or_default();
-        if !runner.which(binary) {
-            let finding = missing_binary_finding(&project.root, manager.manager, binary);
-            findings.push(finding.clone());
-            let _ = events.send(AuditEvent::ManagerFinished {
-                root: project.root.clone(),
-                manager: manager.manager,
-                findings: vec![finding],
-                from_cache: false,
-                incomplete: false,
-            });
-            continue;
-        }
-        match run_manager_advisories(&project.root, manager, runner, cache, &advisory_opts).await {
-            Ok(outcome) => {
-                findings.extend(outcome.findings.clone());
+    let audits_on = !opts.no_audit && config.audit.unwrap_or(true);
+    if audits_on {
+        for manager in &project.managers {
+            // Live advisory audits run for ported primaries only. Leftover and
+            // unsupported managers still contribute the settings finding above.
+            if manager.role != Role::Primary || !manager.manager.ported() {
+                continue;
+            }
+            let binary = manager.manager.binary().unwrap_or_default();
+            if !runner.which(binary) {
+                let finding = missing_binary_finding(&project.root, manager.manager, binary);
+                findings.push(finding.clone());
                 let _ = events.send(AuditEvent::ManagerFinished {
                     root: project.root.clone(),
                     manager: manager.manager,
-                    findings: outcome.findings,
-                    from_cache: outcome.from_cache,
+                    findings: vec![finding],
+                    from_cache: false,
                     incomplete: false,
                 });
+                continue;
             }
-            Err(_) => {
-                incomplete = true;
-                let _ = events.send(AuditEvent::ManagerFinished {
-                    root: project.root.clone(),
-                    manager: manager.manager,
-                    findings: Vec::new(),
-                    from_cache: false,
-                    incomplete: true,
-                });
+            match run_manager_advisories(&project.root, manager, runner, cache, &advisory_opts)
+                .await
+            {
+                Ok(outcome) => {
+                    findings.extend(outcome.findings.clone());
+                    let _ = events.send(AuditEvent::ManagerFinished {
+                        root: project.root.clone(),
+                        manager: manager.manager,
+                        findings: outcome.findings,
+                        from_cache: outcome.from_cache,
+                        incomplete: false,
+                    });
+                }
+                Err(_) => {
+                    incomplete = true;
+                    let _ = events.send(AuditEvent::ManagerFinished {
+                        root: project.root.clone(),
+                        manager: manager.manager,
+                        findings: Vec::new(),
+                        from_cache: false,
+                        incomplete: true,
+                    });
+                }
             }
         }
     }
@@ -179,7 +209,21 @@ async fn audit_project(
         incomplete,
         preset: config.preset.unwrap_or(Preset::Standard),
         config_sources,
+        applied,
     }
+}
+
+fn collect_settings_findings(project: &Project, config: &ConfigFile) -> Vec<Finding> {
+    let mut findings = crate::settings::checks::multiple_pm_findings(project);
+    for manager in &project.managers {
+        let settings = resolve_settings(config, manager.manager.name());
+        findings.extend(crate::settings::audit_manager_settings(
+            &project.root,
+            manager,
+            &settings,
+        ));
+    }
+    findings
 }
 
 /// Streams `AuditEvent`s for a scan of `root`; the channel closes after `Done`.
@@ -255,6 +299,7 @@ pub fn scan(
                     incomplete: result.incomplete,
                     preset: result.preset,
                     config_sources: result.config_sources.clone(),
+                    applied: result.applied.clone(),
                 });
                 result
             }));
@@ -721,5 +766,290 @@ mod tests {
             "findings: {findings:?}"
         );
         assert_eq!(summary(&events).exit, ExitCode::PolicyFailure);
+    }
+
+    async fn run_scan_opts(
+        root: &Path,
+        runner: CannedRunner,
+        opts: ScanOptions,
+    ) -> Vec<AuditEvent> {
+        let mut events = Vec::new();
+        let mut rx = scan(root.to_path_buf(), Arc::new(runner), opts);
+        while let Some(event) = rx.recv().await {
+            events.push(event);
+        }
+        events
+    }
+
+    fn scan_opts(root: &Path) -> ScanOptions {
+        ScanOptions {
+            cache_dir: root.join(".cache-test"),
+            ..ScanOptions::default()
+        }
+    }
+
+    fn finished_findings(events: &[AuditEvent]) -> Vec<Finding> {
+        events
+            .iter()
+            .filter_map(|e| match e {
+                AuditEvent::ProjectFinished { findings, .. } => Some(findings.clone()),
+                _ => None,
+            })
+            .flatten()
+            .collect()
+    }
+
+    fn finished_codes(events: &[AuditEvent]) -> Vec<String> {
+        finished_findings(events)
+            .iter()
+            .map(|f| f.code.clone())
+            .collect()
+    }
+
+    fn finished_applied(events: &[AuditEvent]) -> Option<crate::apply::ApplyResult> {
+        events.iter().find_map(|e| match e {
+            AuditEvent::ProjectFinished { applied, .. } => applied.clone(),
+            _ => None,
+        })
+    }
+
+    /// Lockfile + script/audit/min-age pins, but no registry and no packageManager.
+    /// Settings findings are info-only under standard, so a clean offline scan exits 0.
+    fn info_settings_npm_repo(root: &Path, name: &str) {
+        npm_repo(root, name);
+        fs::write(
+            root.join(name).join(".npmrc"),
+            "ignore-scripts=true\nallow-scripts-pin=true\naudit=true\nmin-release-age=1\n",
+        )
+        .unwrap();
+    }
+
+    fn high_audit_runner() -> CannedRunner {
+        CannedRunner::new().with(
+            &["npm", "audit", "--json"],
+            CommandOutput {
+                code: 1,
+                stdout: NPM_HIGH.into(),
+                stderr: String::new(),
+            },
+        )
+    }
+
+    #[tokio::test]
+    async fn no_audit_skips_advisories_and_keeps_settings() {
+        let tmp = tempfile::tempdir().unwrap();
+        info_settings_npm_repo(tmp.path(), "a");
+        let events = run_scan_opts(
+            tmp.path(),
+            high_audit_runner(),
+            ScanOptions {
+                no_audit: true,
+                ..scan_opts(tmp.path())
+            },
+        )
+        .await;
+        let codes = finished_codes(&events);
+        assert!(
+            codes
+                .iter()
+                .any(|c| c == "registry.unpinned" || c == "pm.unpinned"),
+            "settings findings present: {codes:?}"
+        );
+        assert!(
+            !codes.iter().any(|c| c.starts_with("GHSA-")),
+            "advisory leaked into an offline scan: {codes:?}"
+        );
+        assert!(!summary(&events).incomplete);
+        assert_eq!(summary(&events).exit, ExitCode::Clean);
+    }
+
+    #[tokio::test]
+    async fn no_audit_does_not_emit_missing_binary_or_incomplete() {
+        let tmp = tempfile::tempdir().unwrap();
+        compliant_npm_repo(tmp.path(), "a");
+        let events = run_scan_opts(
+            tmp.path(),
+            CannedRunner::new(),
+            ScanOptions {
+                no_audit: true,
+                ..scan_opts(tmp.path())
+            },
+        )
+        .await;
+        let codes = finished_codes(&events);
+        assert!(
+            !codes.iter().any(|c| c == "pm.missing-binary"),
+            "offline scan must not require the binary: {codes:?}"
+        );
+        assert!(!summary(&events).incomplete);
+        assert_eq!(summary(&events).exit, ExitCode::Clean);
+    }
+
+    #[tokio::test]
+    async fn no_audit_never_invokes_the_runner() {
+        let tmp = tempfile::tempdir().unwrap();
+        info_settings_npm_repo(tmp.path(), "a");
+        let runner = high_audit_runner();
+        let probe = runner.clone();
+        run_scan_opts(
+            tmp.path(),
+            runner,
+            ScanOptions {
+                no_audit: true,
+                ..scan_opts(tmp.path())
+            },
+        )
+        .await;
+        assert_eq!(probe.run_calls(), Vec::<Vec<String>>::new());
+    }
+
+    #[tokio::test]
+    async fn audit_false_in_repo_config_skips_live_audits() {
+        let tmp = tempfile::tempdir().unwrap();
+        info_settings_npm_repo(tmp.path(), "a");
+        fs::write(tmp.path().join("a/.pkguard.toml"), "audit = false\n").unwrap();
+        let events = run_scan_opts(tmp.path(), high_audit_runner(), scan_opts(tmp.path())).await;
+        let codes = finished_codes(&events);
+        assert!(
+            !codes.iter().any(|c| c.starts_with("GHSA-")),
+            "config audit=false still ran an audit: {codes:?}"
+        );
+        assert_eq!(summary(&events).exit, ExitCode::Clean);
+    }
+
+    #[tokio::test]
+    async fn no_audit_flag_overrides_audit_true_in_config() {
+        let tmp = tempfile::tempdir().unwrap();
+        info_settings_npm_repo(tmp.path(), "a");
+        fs::write(tmp.path().join("a/.pkguard.toml"), "audit = true\n").unwrap();
+        let events = run_scan_opts(
+            tmp.path(),
+            high_audit_runner(),
+            ScanOptions {
+                no_audit: true,
+                ..scan_opts(tmp.path())
+            },
+        )
+        .await;
+        let codes = finished_codes(&events);
+        assert!(
+            !codes.iter().any(|c| c.starts_with("GHSA-")),
+            "flag must win over audit=true: {codes:?}"
+        );
+        assert_eq!(summary(&events).exit, ExitCode::Clean);
+    }
+
+    #[tokio::test]
+    async fn fix_rewrites_npmrc_and_drops_fixed_codes() {
+        let tmp = tempfile::tempdir().unwrap();
+        npm_repo(tmp.path(), "a");
+        let npmrc = tmp.path().join("a/.npmrc");
+        fs::write(&npmrc, "ignore-scripts=false\n").unwrap();
+        let before = fs::read(&npmrc).unwrap();
+        let events = run_scan_opts(
+            tmp.path(),
+            CannedRunner::new().with(
+                &["npm", "audit", "--json"],
+                CommandOutput {
+                    code: 0,
+                    stdout: NPM_CLEAN.into(),
+                    stderr: String::new(),
+                },
+            ),
+            ScanOptions {
+                fix: true,
+                ..scan_opts(tmp.path())
+            },
+        )
+        .await;
+        let after = fs::read(&npmrc).unwrap();
+        assert_ne!(before, after, "--fix must rewrite .npmrc");
+        let body = String::from_utf8(after).unwrap();
+        assert!(body.contains("ignore-scripts=true"), "{body}");
+        let codes = finished_codes(&events);
+        assert!(
+            !codes.iter().any(|c| c == "scripts.unrestricted"),
+            "reported findings still include the fixed code: {codes:?}"
+        );
+        assert!(finished_applied(&events).is_some());
+    }
+
+    #[tokio::test]
+    async fn fix_on_a_dirty_tree_without_force_writes_nothing() {
+        let tmp = tempfile::tempdir().unwrap();
+        npm_repo(tmp.path(), "a");
+        let npmrc = tmp.path().join("a/.npmrc");
+        fs::write(&npmrc, "ignore-scripts=false\n").unwrap();
+        let before = fs::read(&npmrc).unwrap();
+        let runner = CannedRunner::new()
+            .with(
+                &["git", "status", "--porcelain"],
+                CommandOutput {
+                    code: 0,
+                    stdout: " M .npmrc\n".into(),
+                    stderr: String::new(),
+                },
+            )
+            .with(
+                &["npm", "audit", "--json"],
+                CommandOutput {
+                    code: 0,
+                    stdout: NPM_CLEAN.into(),
+                    stderr: String::new(),
+                },
+            );
+        let events = run_scan_opts(
+            tmp.path(),
+            runner,
+            ScanOptions {
+                fix: true,
+                ..scan_opts(tmp.path())
+            },
+        )
+        .await;
+        assert_eq!(fs::read(&npmrc).unwrap(), before);
+        let applied = finished_applied(&events).expect("applied result");
+        assert!(matches!(
+            applied.blocked,
+            Some(crate::apply::Blocked::DirtyGit(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn scan_without_fix_is_read_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        npm_repo(tmp.path(), "a");
+        let npmrc = tmp.path().join("a/.npmrc");
+        fs::write(&npmrc, "ignore-scripts=false\n").unwrap();
+        let before = fs::read(&npmrc).unwrap();
+        run_scan_opts(
+            tmp.path(),
+            CannedRunner::new().with(
+                &["npm", "audit", "--json"],
+                CommandOutput {
+                    code: 0,
+                    stdout: NPM_CLEAN.into(),
+                    stderr: String::new(),
+                },
+            ),
+            scan_opts(tmp.path()),
+        )
+        .await;
+        assert_eq!(fs::read(&npmrc).unwrap(), before);
+        // default path must not even produce an apply result
+        let events = run_scan_opts(
+            tmp.path(),
+            CannedRunner::new().with(
+                &["npm", "audit", "--json"],
+                CommandOutput {
+                    code: 0,
+                    stdout: NPM_CLEAN.into(),
+                    stderr: String::new(),
+                },
+            ),
+            scan_opts(tmp.path()),
+        )
+        .await;
+        assert!(finished_applied(&events).is_none());
     }
 }

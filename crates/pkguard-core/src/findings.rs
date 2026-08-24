@@ -67,6 +67,10 @@ pub struct Finding {
     pub current_version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fix_version: Option<String>,
+    /// How `--fix` repairs this finding. `None` whenever `fixable` is false;
+    /// `settings::checks` keeps the two in step (see the consistency test).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fix: Option<crate::fix::SettingsFix>,
 }
 
 pub mod codes {

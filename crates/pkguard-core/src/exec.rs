@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::Stdio;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommandOutput {
@@ -52,10 +52,12 @@ impl CommandRunner for TokioRunner {
 }
 
 /// Test double: replays canned output keyed by argv; unknown argv errors like
-/// a missing binary would.
-#[derive(Default)]
+/// a missing binary would. Call history is shared across clones so a scan
+/// can take ownership while the test still inspects `run` calls.
+#[derive(Clone, Default)]
 pub struct CannedRunner {
-    responses: Mutex<HashMap<Vec<String>, CommandOutput>>,
+    responses: Arc<Mutex<HashMap<Vec<String>, CommandOutput>>>,
+    calls: Arc<Mutex<Vec<Vec<String>>>>,
 }
 
 impl CannedRunner {
@@ -70,11 +72,16 @@ impl CannedRunner {
             .insert(argv.iter().map(|s| s.to_string()).collect(), output);
         self
     }
+
+    pub fn run_calls(&self) -> Vec<Vec<String>> {
+        self.calls.lock().unwrap().clone()
+    }
 }
 
 #[async_trait]
 impl CommandRunner for CannedRunner {
     async fn run(&self, argv: &[String], _cwd: &Path) -> std::io::Result<CommandOutput> {
+        self.calls.lock().unwrap().push(argv.to_vec());
         self.responses
             .lock()
             .unwrap()
