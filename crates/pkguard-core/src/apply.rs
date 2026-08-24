@@ -113,11 +113,13 @@ pub async fn apply_fixes(
     }
 
     let mut written = Vec::new();
+    let mut skipped = plan.skipped.clone();
     for (file, body) in &plan.files {
-        if let Some(parent) = file.parent() {
-            let _ = std::fs::create_dir_all(parent);
+        if is_forbidden_write(file, &project.root) {
+            skipped.push((file.clone(), SkipReason::Forbidden));
+            continue;
         }
-        if std::fs::write(file, body).is_ok() {
+        if write_inside_root(file, body, &project.root) {
             written.push(file.clone());
         }
     }
@@ -129,10 +131,40 @@ pub async fn apply_fixes(
         .collect();
     ApplyResult {
         written,
-        skipped: plan.skipped.clone(),
+        skipped,
         changes,
         blocked: None,
     }
+}
+
+/// Write by creating a sibling temp file and renaming over the destination.
+/// `rename` replaces a dest symlink instead of following it, so a swap
+/// after the last containment check cannot escape the project.
+fn write_inside_root(file: &Path, body: &str, root: &Path) -> bool {
+    if let Some(parent) = file.parent() {
+        if std::fs::create_dir_all(parent).is_err() {
+            return false;
+        }
+    }
+    if is_forbidden_write(file, root) {
+        return false;
+    }
+    let tmp = {
+        let mut name = file.file_name().unwrap_or_default().to_os_string();
+        name.push(".pkguard-tmp");
+        file.with_file_name(name)
+    };
+    if is_forbidden_write(&tmp, root) {
+        return false;
+    }
+    if std::fs::write(&tmp, body).is_err() {
+        return false;
+    }
+    if std::fs::rename(&tmp, file).is_ok() {
+        return true;
+    }
+    let _ = std::fs::remove_file(&tmp);
+    false
 }
 
 async fn dirty_git_root(project: &Project, runner: &dyn CommandRunner) -> Option<PathBuf> {
@@ -504,6 +536,64 @@ mod tests {
         assert_eq!(
             plan.skipped,
             vec![(PathBuf::from("~/.npmrc"), SkipReason::Forbidden)]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_symlink_swap_after_plan_does_not_write_outside() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("proj");
+        let outside = tmp.path().join("outside");
+        fs::create_dir(&root).unwrap();
+        let npmrc = root.join(".npmrc");
+        fs::write(&npmrc, "ignore-scripts=false\n").unwrap();
+        let findings = [finding(
+            &root,
+            npmrc.clone(),
+            vec![ConfigEdit::set("ignore-scripts", true)],
+        )];
+        let plan = plan_fixes(&project(&root, None), &findings);
+        assert!(!plan.files.is_empty());
+        fs::remove_file(&npmrc).unwrap();
+        std::os::unix::fs::symlink(&outside, &npmrc).unwrap();
+        let result = apply_fixes(&project(&root, None), &plan, &CannedRunner::new(), false).await;
+        assert!(result.written.is_empty());
+        assert!(result.changes.is_empty());
+        assert_eq!(result.skipped, vec![(npmrc, SkipReason::Forbidden)]);
+        assert!(
+            !outside.exists(),
+            "write followed a swapped symlink: {}",
+            fs::read_to_string(&outside).unwrap_or_default()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_parent_symlink_swap_after_plan_does_not_write_outside() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("proj");
+        let outside = tmp.path().join("outside");
+        let pkg = root.join("pkg");
+        fs::create_dir_all(&pkg).unwrap();
+        fs::create_dir(&outside).unwrap();
+        let npmrc = pkg.join(".npmrc");
+        fs::write(&npmrc, "ignore-scripts=false\n").unwrap();
+        let findings = [finding(
+            &root,
+            npmrc.clone(),
+            vec![ConfigEdit::set("ignore-scripts", true)],
+        )];
+        let plan = plan_fixes(&project(&root, None), &findings);
+        assert!(!plan.files.is_empty());
+        fs::remove_file(&npmrc).unwrap();
+        fs::remove_dir(&pkg).unwrap();
+        std::os::unix::fs::symlink(&outside, &pkg).unwrap();
+        let result = apply_fixes(&project(&root, None), &plan, &CannedRunner::new(), false).await;
+        assert!(result.written.is_empty());
+        assert!(result.changes.is_empty());
+        assert_eq!(result.skipped, vec![(npmrc, SkipReason::Forbidden)]);
+        assert!(
+            !outside.join(".npmrc").exists(),
+            "write followed a swapped parent symlink"
         );
     }
 
