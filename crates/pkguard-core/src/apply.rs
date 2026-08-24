@@ -6,8 +6,14 @@ use crate::exec::CommandRunner;
 use crate::findings::Finding;
 use crate::fix::{ConfigEdit, ConfigFormat, ConfigValue};
 use crate::format::{self, EditError};
+use cap_std::ambient_authority;
+use cap_std::fs::{Dir, OpenOptions};
 use std::collections::BTreeMap;
+use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
+use std::process;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const UNSET: &str = "(unset)";
 const REMOVED: &str = "(removed)";
@@ -137,35 +143,97 @@ pub async fn apply_fixes(
     }
 }
 
-/// Write by creating a sibling temp file and renaming over the destination.
-/// `rename` replaces a dest symlink instead of following it, so a swap
-/// after the last containment check cannot escape the project.
+/// Write through a capability handle on the project root.
+///
+/// Every path here is resolved by `cap-std` relative to an open root
+/// directory, one component at a time, refusing any symlink or `..` that
+/// leaves the root. Resolution happens inside the syscall, so a concurrent
+/// swap of the destination or of any parent directory cannot redirect the
+/// write outside the project — there is no check-then-use window to race.
+///
+/// The body lands in a fresh temp sibling opened `create_new` (`O_EXCL`, which
+/// never follows a symlink), then a sandboxed rename puts it in place.
 fn write_inside_root(file: &Path, body: &str, root: &Path) -> bool {
-    if let Some(parent) = file.parent() {
-        if std::fs::create_dir_all(parent).is_err() {
-            return false;
+    let Some(relative) = relative_to_root(file, root) else {
+        return false;
+    };
+    let Ok(dir) = Dir::open_ambient_dir(root, ambient_authority()) else {
+        return false;
+    };
+    if let Some(parent) = relative.parent().filter(|p| !p.as_os_str().is_empty()) {
+        // A parent that is a symlink reports `AlreadyExists` rather than
+        // succeeding. Let it through: opening the temp file below resolves the
+        // parent inside the sandbox, so that is where containment is decided.
+        match dir.create_dir_all(parent) {
+            Ok(()) => {}
+            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(_) => return false,
         }
     }
-    if is_forbidden_write(file, root) {
+    let Some(tmp) = create_temp_sibling(&dir, &relative) else {
         return false;
-    }
-    let tmp = {
-        let mut name = file.file_name().unwrap_or_default().to_os_string();
-        name.push(".pkguard-tmp");
-        file.with_file_name(name)
     };
-    if is_forbidden_write(&tmp, root) {
-        return false;
-    }
-    if std::fs::write(&tmp, body).is_err() {
-        return false;
-    }
-    if std::fs::rename(&tmp, file).is_ok() {
+    let wrote = {
+        let mut handle = match dir.open_with(&tmp, OpenOptions::new().write(true)) {
+            Ok(handle) => handle,
+            Err(_) => {
+                let _ = dir.remove_file(&tmp);
+                return false;
+            }
+        };
+        handle.write_all(body.as_bytes()).is_ok()
+    };
+    if wrote && dir.rename(&tmp, &dir, &relative).is_ok() {
         return true;
     }
-    let _ = std::fs::remove_file(&tmp);
+    let _ = dir.remove_file(&tmp);
     false
 }
+
+/// Lexical path of `file` beneath `root`, or `None` when it is not beneath it.
+/// Containment is re-checked by `cap-std` on every component during the write;
+/// this only turns the planned absolute path into something root-relative.
+fn relative_to_root(file: &Path, root: &Path) -> Option<PathBuf> {
+    let absolute = if file.is_absolute() {
+        normalize(file)
+    } else {
+        normalize(&root.join(file))
+    };
+    let relative = absolute.strip_prefix(normalize(root)).ok()?;
+    if relative.as_os_str().is_empty() {
+        return None;
+    }
+    Some(relative.to_path_buf())
+}
+
+/// Claim an unused temp name next to `relative` with `create_new`, so an
+/// attacker who guesses the name cannot pre-plant a file or symlink for us
+/// to write through — the open fails instead.
+fn create_temp_sibling(dir: &Dir, relative: &Path) -> Option<PathBuf> {
+    static COUNTER: AtomicU32 = AtomicU32::new(0);
+    let base = relative.file_name()?.to_os_string();
+    for _ in 0..TEMP_ATTEMPTS {
+        let nonce = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.subsec_nanos())
+            .unwrap_or(0);
+        let mut name = base.clone();
+        name.push(format!(
+            ".{}.{stamp:08x}{nonce:04x}.pkguard-tmp",
+            process::id()
+        ));
+        let candidate = relative.with_file_name(name);
+        match dir.open_with(&candidate, OpenOptions::new().write(true).create_new(true)) {
+            Ok(_) => return Some(candidate),
+            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(_) => return None,
+        }
+    }
+    None
+}
+
+const TEMP_ATTEMPTS: u8 = 16;
 
 async fn dirty_git_root(project: &Project, runner: &dyn CommandRunner) -> Option<PathBuf> {
     let root = project.git_root.as_deref()?;
@@ -374,7 +442,6 @@ mod tests {
     use crate::manager::Manager;
     use crate::settings::audit_manager_settings;
     use std::fs;
-    use std::time::UNIX_EPOCH;
 
     fn project(root: &Path, git_root: Option<&Path>) -> Project {
         Project {
@@ -595,6 +662,148 @@ mod tests {
             !outside.join(".npmrc").exists(),
             "write followed a swapped parent symlink"
         );
+    }
+
+    /// The tests above stop escapes at `is_forbidden_write`, which is a
+    /// check before the write. These call `write_inside_root` directly with
+    /// the swap already in place — the state a racing attacker would create
+    /// after that check passed — so only the capability sandbox can refuse.
+    mod racing_the_write {
+        use super::*;
+
+        fn tmp_residue(dir: &Path) -> Vec<PathBuf> {
+            fs::read_dir(dir)
+                .unwrap()
+                .filter_map(|entry| {
+                    let path = entry.unwrap().path();
+                    let name = path.file_name()?.to_string_lossy().into_owned();
+                    name.contains("pkguard-tmp").then_some(path)
+                })
+                .collect()
+        }
+
+        #[test]
+        fn a_destination_symlink_swapped_in_after_the_check_is_replaced_not_followed() {
+            let tmp = tempfile::tempdir().unwrap();
+            let root = tmp.path().join("proj");
+            let outside = tmp.path().join("outside");
+            fs::create_dir(&root).unwrap();
+            let npmrc = root.join(".npmrc");
+            std::os::unix::fs::symlink(&outside, &npmrc).unwrap();
+
+            // The body goes to a temp sibling and is renamed over the link.
+            // Rename replaces the link rather than following it, so the write
+            // lands inside the project and `outside` is never created.
+            assert!(write_inside_root(&npmrc, "ignore-scripts=true\n", &root));
+            assert!(!outside.exists(), "write followed the swapped destination");
+            assert!(
+                !fs::symlink_metadata(&npmrc)
+                    .unwrap()
+                    .file_type()
+                    .is_symlink(),
+                "the swapped link survived the write"
+            );
+            assert_eq!(fs::read_to_string(&npmrc).unwrap(), "ignore-scripts=true\n");
+            assert!(tmp_residue(&root).is_empty(), "temp file left behind");
+        }
+
+        #[test]
+        fn a_parent_symlink_swapped_in_after_the_check_is_refused() {
+            let tmp = tempfile::tempdir().unwrap();
+            let root = tmp.path().join("proj");
+            let outside = tmp.path().join("outside");
+            fs::create_dir(&root).unwrap();
+            fs::create_dir(&outside).unwrap();
+            let pkg = root.join("pkg");
+            std::os::unix::fs::symlink(&outside, &pkg).unwrap();
+
+            let npmrc = pkg.join(".npmrc");
+            assert!(!write_inside_root(&npmrc, "ignore-scripts=true\n", &root));
+            assert_eq!(
+                fs::read_dir(&outside).unwrap().count(),
+                0,
+                "write escaped through the swapped parent"
+            );
+        }
+
+        #[test]
+        fn a_relative_parent_symlink_inside_the_root_still_writes() {
+            let tmp = tempfile::tempdir().unwrap();
+            let root = tmp.path().join("proj");
+            let real = root.join("real");
+            fs::create_dir_all(&real).unwrap();
+            std::os::unix::fs::symlink("real", root.join("pkg")).unwrap();
+
+            let npmrc = root.join("pkg/.npmrc");
+            assert!(write_inside_root(&npmrc, "ignore-scripts=true\n", &root));
+            assert_eq!(
+                fs::read_to_string(real.join(".npmrc")).unwrap(),
+                "ignore-scripts=true\n"
+            );
+        }
+
+        /// An absolute symlink target cannot be verified against the root
+        /// without re-introducing a resolve-then-write gap, so the sandbox
+        /// refuses it even when it happens to point back inside. Writes fail
+        /// closed: pkguard reports the file as unfixed and touches nothing.
+        #[test]
+        fn an_absolute_parent_symlink_is_refused_even_pointing_back_inside() {
+            let tmp = tempfile::tempdir().unwrap();
+            let root = tmp.path().join("proj");
+            let real = root.join("real");
+            fs::create_dir_all(&real).unwrap();
+            std::os::unix::fs::symlink(&real, root.join("pkg")).unwrap();
+
+            let npmrc = root.join("pkg/.npmrc");
+            assert!(!write_inside_root(&npmrc, "ignore-scripts=true\n", &root));
+            assert!(!real.join(".npmrc").exists());
+            assert!(tmp_residue(&real).is_empty(), "temp file left behind");
+        }
+
+        #[test]
+        fn a_traversing_path_is_refused_before_any_handle_is_opened() {
+            let tmp = tempfile::tempdir().unwrap();
+            let root = tmp.path().join("proj");
+            fs::create_dir(&root).unwrap();
+
+            let escaped = root.join("../outside/.npmrc");
+            assert!(!write_inside_root(&escaped, "ignore-scripts=true\n", &root));
+            assert!(!tmp.path().join("outside").exists());
+        }
+
+        #[test]
+        fn the_root_itself_is_not_a_writable_destination() {
+            let tmp = tempfile::tempdir().unwrap();
+            let root = tmp.path().join("proj");
+            fs::create_dir(&root).unwrap();
+
+            assert!(!write_inside_root(&root, "ignore-scripts=true\n", &root));
+        }
+
+        #[test]
+        fn a_successful_write_leaves_no_temp_file_behind() {
+            let tmp = tempfile::tempdir().unwrap();
+            let root = tmp.path();
+            let npmrc = root.join("nested/deep/.npmrc");
+
+            assert!(write_inside_root(&npmrc, "ignore-scripts=true\n", root));
+            assert_eq!(fs::read_to_string(&npmrc).unwrap(), "ignore-scripts=true\n");
+            assert!(tmp_residue(root.join("nested/deep").as_path()).is_empty());
+        }
+
+        #[test]
+        fn temp_names_are_not_reused_across_concurrent_writes() {
+            let tmp = tempfile::tempdir().unwrap();
+            let dir = Dir::open_ambient_dir(tmp.path(), ambient_authority()).unwrap();
+            let relative = Path::new(".npmrc");
+
+            let first = create_temp_sibling(&dir, relative).unwrap();
+            let second = create_temp_sibling(&dir, relative).unwrap();
+            assert_ne!(
+                first, second,
+                "a second write reused a live temp name: {first:?}"
+            );
+        }
     }
 
     #[tokio::test]
