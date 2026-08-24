@@ -121,10 +121,16 @@ pub async fn apply_fixes(
             written.push(file.clone());
         }
     }
+    let changes = plan
+        .changes
+        .iter()
+        .filter(|change| written.iter().any(|path| path == &change.file))
+        .cloned()
+        .collect();
     ApplyResult {
         written,
         skipped: plan.skipped.clone(),
-        changes: plan.changes.clone(),
+        changes,
         blocked: None,
     }
 }
@@ -375,7 +381,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn a_symlink_escaping_the_project_root_is_dropped() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().join("proj");
@@ -493,6 +498,26 @@ mod tests {
             .modified()
             .unwrap_or(UNIX_EPOCH);
         assert_eq!(before, after);
+    }
+
+    #[tokio::test]
+    async fn failed_write_is_not_reported_as_fixed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::create_dir(root.join(".npmrc")).unwrap();
+        let findings = [npm_finding(
+            root,
+            vec![ConfigEdit::set("ignore-scripts", true)],
+        )];
+        let plan = plan_fixes(&project(root, None), &findings);
+        assert!(!plan.changes.is_empty());
+        let result = apply_fixes(&project(root, None), &plan, &CannedRunner::new(), false).await;
+        assert!(result.written.is_empty());
+        assert!(
+            result.changes.is_empty(),
+            "failed writes must not appear as fixed: {:?}",
+            result.changes
+        );
     }
 
     #[tokio::test]
