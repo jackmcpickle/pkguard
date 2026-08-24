@@ -16,7 +16,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-llvm-cov
       - run: cargo fmt --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
+      # Levels come from the workspace [lints] table, so this matches the
+      # pre-commit hook and a bare `cargo clippy` exactly.
+      - run: cargo clippy --workspace --all-targets --all-features --locked
       - run: cargo llvm-cov --workspace --summary-only
       - name: Docs catalog is fresh
         run: |
