@@ -348,5 +348,5 @@
     "linux": "~/.config/pkguard/config.toml",
     "macos": "~/Library/Application Support/dev.pkguard.pkguard/config.toml"
   },
-  "version": "1.0.0"
+  "version": "1.0.1"
 }

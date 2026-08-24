@@ -7,6 +7,9 @@ on:
         description: Git tag to release (e.g. v1.0.0)
         required: true
         type: string
+    secrets:
+      HOMEBREW_TAP_DEPLOY_KEY:
+        required: true
   push:
     tags: ["v*"]
   workflow_dispatch:
@@ -106,3 +109,46 @@ jobs:
           if [[ "$ARTIFACT" == *.exe ]]; then src="target/release/pkguard.exe"; fi
           cp "$src" "$ARTIFACT"
           gh release upload "$TAG" "$ARTIFACT" --clobber
+
+  homebrew:
+    needs: binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+      - uses: actions/checkout@v4
+        with:
+          repository: jackmcpickle/homebrew-pkguard
+          ssh-key: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+          path: homebrew-pkguard
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Bump tap formula
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          tmp="$(mktemp -d)"
+          assets=(pkguard-darwin-arm64 pkguard-darwin-x64 pkguard-linux-arm64 pkguard-linux-x64)
+          for asset in "${assets[@]}"; do
+            gh release download "$TAG" --repo "${{ github.repository }}" --pattern "$asset" --dir "$tmp"
+          done
+          node scripts/homebrew-formula.mjs "$version" \
+            "$(sha256sum "$tmp/pkguard-darwin-arm64" | awk '{print $1}')" \
+            "$(sha256sum "$tmp/pkguard-darwin-x64" | awk '{print $1}')" \
+            "$(sha256sum "$tmp/pkguard-linux-arm64" | awk '{print $1}')" \
+            "$(sha256sum "$tmp/pkguard-linux-x64" | awk '{print $1}')" \
+            > homebrew-pkguard/Formula/pkguard.rb
+          git -C homebrew-pkguard config user.name "github-actions[bot]"
+          git -C homebrew-pkguard config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C homebrew-pkguard add Formula/pkguard.rb
+          if git -C homebrew-pkguard diff --cached --quiet; then
+            echo "Formula already at ${version}"
+            exit 0
+          fi
+          git -C homebrew-pkguard commit -m "Bump pkguard to ${version}"
+          git -C homebrew-pkguard push origin HEAD:main

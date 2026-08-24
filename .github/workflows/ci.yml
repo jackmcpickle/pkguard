@@ -27,7 +27,8 @@ jobs:
           node-version: "22"
       - name: Release helper scripts
         run: |
-          node --test scripts/release-notes.test.mjs scripts/cargo-version-updater.test.cjs
+          node --test scripts/release-notes.test.mjs scripts/cargo-version-updater.test.cjs scripts/homebrew-formula.test.mjs
+
 
   site:
     runs-on: ubuntu-latest

@@ -70,5 +70,8 @@ jobs:
     uses: ./.github/workflows/release.yml
     with:
       tag: v${{ needs.bump.outputs.version }}
+    secrets:
+      HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
     permissions:
       contents: write
+
