@@ -59,8 +59,9 @@ pub async fn run(args: ScanArgs) -> i32 {
         None
     };
 
-    let render_opts = crate::render::RenderOptions {
+    let mut render_opts = crate::render::RenderOptions {
         color: color_enabled(),
+        ..Default::default()
     };
     let mut counts = crate::render::SeverityCounts::default();
     let mut discovered = 0usize;
@@ -83,13 +84,17 @@ pub async fn run(args: ScanArgs) -> i32 {
                 incomplete,
                 preset,
                 config_sources,
-                applied: _,
+                applied,
             } => {
                 finished += 1;
                 for finding in &findings {
                     counts.add(finding.severity);
                 }
+                if let Some(applied) = &applied {
+                    render_opts.settings_fixed += applied.changes.len();
+                }
                 if human {
+                    render_opts.applied = applied;
                     let block = crate::render::project_block(
                         &root,
                         &findings,

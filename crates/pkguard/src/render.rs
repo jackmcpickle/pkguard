@@ -1,11 +1,16 @@
 use owo_colors::{OwoColorize, Style};
+use pkguard_core::apply::ApplyResult;
 use pkguard_core::findings::{Finding, Severity};
 use pkguard_core::pipeline::ScanSummary;
 use pkguard_core::policy::Preset;
 use std::path::{Path, PathBuf};
 
+#[derive(Default)]
 pub struct RenderOptions {
     pub color: bool,
+    pub audits_skipped: bool,
+    pub applied: Option<ApplyResult>,
+    pub settings_fixed: usize,
 }
 
 fn paint(text: &str, style: Style, opts: &RenderOptions) -> String {
@@ -48,7 +53,7 @@ fn package_cell(finding: &Finding) -> String {
     cell
 }
 
-fn config_line(preset: Preset, config_sources: &[PathBuf], opts: &RenderOptions) -> String {
+fn preset_label(preset: Preset, config_sources: &[PathBuf], opts: &RenderOptions) -> String {
     let mut line = format!("preset {}", preset.as_str());
     if !config_sources.is_empty() {
         let names: Vec<String> = config_sources
@@ -58,7 +63,21 @@ fn config_line(preset: Preset, config_sources: &[PathBuf], opts: &RenderOptions)
         line.push_str(" · config ");
         line.push_str(&names.join(", "));
     }
-    format!("  {}\n", paint(&line, Style::new().dimmed(), opts))
+    if opts.audits_skipped {
+        line.push_str(" · audits skipped");
+    }
+    line
+}
+
+fn config_line(preset: Preset, config_sources: &[PathBuf], opts: &RenderOptions) -> String {
+    format!(
+        "  {}\n",
+        paint(
+            &preset_label(preset, config_sources, opts),
+            Style::new().dimmed(),
+            opts
+        )
+    )
 }
 
 /// One project's result block: header, dim config provenance, and a
@@ -73,16 +92,18 @@ pub fn project_block(
 ) -> String {
     let name = display_name(root);
     if findings.is_empty() && !incomplete {
-        return format!(
+        let mut out = format!(
             "{} {}  {}\n",
             paint("ok", Style::new().green(), opts),
             paint(&name, Style::new().bold(), opts),
             paint(
-                &format!("preset {}", preset.as_str()),
+                &preset_label(preset, &[], opts),
                 Style::new().dimmed(),
                 opts
             ),
         );
+        write_fixed_lines(&mut out, root, opts);
+        return out;
     }
 
     let mut out = String::new();
@@ -98,32 +119,84 @@ pub fn project_block(
     ));
     out.push_str(&config_line(preset, config_sources, opts));
 
-    let mut rows: Vec<&Finding> = findings.iter().collect();
-    rows.sort_by(|a, b| b.severity.cmp(&a.severity).then(a.code.cmp(&b.code)));
+    let mut settings: Vec<&Finding> = findings.iter().filter(|f| !f.kind.is_advisory()).collect();
+    let mut advisories: Vec<&Finding> = findings.iter().filter(|f| f.kind.is_advisory()).collect();
+    sort_findings(&mut settings);
+    sort_findings(&mut advisories);
 
-    let cells: Vec<(String, String, String, String, String)> = rows
-        .iter()
-        .map(|f| {
-            (
-                f.severity.as_str().to_string(),
-                f.manager.map(|m| m.name()).unwrap_or("-").to_string(),
-                f.code.clone(),
-                package_cell(f),
-                f.message.clone(),
-            )
-        })
-        .collect();
-    let width = |pick: fn(&(String, String, String, String, String)) -> usize| {
-        cells.iter().map(pick).max().unwrap_or(0)
-    };
-    let widths = (
-        width(|c| c.0.len()),
-        width(|c| c.1.len()),
-        width(|c| c.2.len()),
-        width(|c| c.3.len()),
+    let setting_cells: Vec<RowCells> = settings.iter().map(|f| row_cells(f)).collect();
+    let advisory_cells: Vec<RowCells> = advisories.iter().map(|f| row_cells(f)).collect();
+    let widths = column_widths(setting_cells.iter().chain(advisory_cells.iter()));
+    let show_headers = !settings.is_empty() && !advisories.is_empty();
+
+    write_group(
+        &mut out,
+        "settings",
+        &settings,
+        &setting_cells,
+        widths,
+        show_headers,
+        opts,
     );
+    write_group(
+        &mut out,
+        "advisories",
+        &advisories,
+        &advisory_cells,
+        widths,
+        show_headers,
+        opts,
+    );
+    write_fixed_lines(&mut out, root, opts);
+    out
+}
 
-    for (row, finding) in cells.iter().zip(rows.iter()) {
+fn sort_findings(rows: &mut [&Finding]) {
+    rows.sort_by(|a, b| b.severity.cmp(&a.severity).then(a.code.cmp(&b.code)));
+}
+
+type RowCells = (String, String, String, String, String);
+
+fn row_cells(finding: &Finding) -> RowCells {
+    (
+        finding.severity.as_str().to_string(),
+        finding.manager.map(|m| m.name()).unwrap_or("-").to_string(),
+        finding.code.clone(),
+        package_cell(finding),
+        finding.message.clone(),
+    )
+}
+
+fn column_widths<'a>(cells: impl Iterator<Item = &'a RowCells>) -> (usize, usize, usize, usize) {
+    cells.fold((0, 0, 0, 0), |widths, cell| {
+        (
+            widths.0.max(cell.0.len()),
+            widths.1.max(cell.1.len()),
+            widths.2.max(cell.2.len()),
+            widths.3.max(cell.3.len()),
+        )
+    })
+}
+
+fn write_group(
+    out: &mut String,
+    header: &str,
+    findings: &[&Finding],
+    cells: &[RowCells],
+    widths: (usize, usize, usize, usize),
+    show_header: bool,
+    opts: &RenderOptions,
+) {
+    if findings.is_empty() {
+        return;
+    }
+    if show_header {
+        out.push_str(&format!(
+            "  {}\n",
+            paint(header, Style::new().dimmed(), opts)
+        ));
+    }
+    for (row, finding) in cells.iter().zip(findings.iter()) {
         let severity = paint(
             &format!("{:<w$}", row.0, w = widths.0),
             severity_style(finding.severity),
@@ -137,7 +210,30 @@ pub fn project_block(
             row.4
         ));
     }
-    out
+}
+
+fn write_fixed_lines(out: &mut String, root: &Path, opts: &RenderOptions) {
+    let Some(applied) = &opts.applied else {
+        return;
+    };
+    for change in &applied.changes {
+        let file = change
+            .file
+            .strip_prefix(&change.project_root)
+            .or_else(|_| change.file.strip_prefix(root))
+            .unwrap_or(change.file.as_path());
+        let line = format!(
+            "fixed  {}: {} {} -> {}",
+            file.display(),
+            change.setting,
+            change.current,
+            change.next
+        );
+        out.push_str(&format!(
+            "  {}\n",
+            paint(&line, Style::new().dimmed(), opts)
+        ));
+    }
 }
 
 #[derive(Default)]
@@ -210,6 +306,18 @@ pub fn summary_block(
         line.push_str(" · ");
         line.push_str(&paint("audit incomplete", Style::new().red(), opts));
     }
+    if opts.settings_fixed > 0 {
+        line.push_str(" · ");
+        line.push_str(&paint(
+            &format!(
+                "{} setting{} fixed",
+                opts.settings_fixed,
+                if opts.settings_fixed == 1 { "" } else { "s" }
+            ),
+            Style::new().dimmed(),
+            opts,
+        ));
+    }
     line.push_str(&format!(" · exit {}\n", summary.exit.code()));
     line
 }
@@ -217,6 +325,7 @@ pub fn summary_block(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pkguard_core::apply::{ApplyResult, PlannedChange};
     use pkguard_core::findings::{Finding, FindingKind, Severity};
     use pkguard_core::manager::Manager;
     use pkguard_core::pipeline::ScanSummary;
@@ -229,8 +338,22 @@ mod tests {
         package: Option<&str>,
         fix: Option<&str>,
     ) -> Finding {
+        finding_kind(FindingKind::Advisory, code, severity, package, fix)
+    }
+
+    fn settings_finding(code: &str, severity: Severity) -> Finding {
+        finding_kind(FindingKind::Settings, code, severity, None, None)
+    }
+
+    fn finding_kind(
+        kind: FindingKind,
+        code: &str,
+        severity: Severity,
+        package: Option<&str>,
+        fix: Option<&str>,
+    ) -> Finding {
         Finding {
-            kind: FindingKind::Advisory,
+            kind,
             code: code.into(),
             message: format!("{code} message"),
             severity,
@@ -245,7 +368,12 @@ mod tests {
     }
 
     fn plain() -> RenderOptions {
-        RenderOptions { color: false }
+        RenderOptions {
+            color: false,
+            audits_skipped: false,
+            applied: None,
+            settings_fixed: 0,
+        }
     }
 
     #[test]
@@ -333,7 +461,10 @@ mod tests {
             false,
             Preset::Standard,
             &[PathBuf::from("/scan/app/.pkguard.toml")],
-            &RenderOptions { color: true },
+            &RenderOptions {
+                color: true,
+                ..Default::default()
+            },
         );
         // dim gray config line, red+bold critical severity
         assert!(block.contains("\u{1b}[2m"), "expected dim: {block:?}");
@@ -370,5 +501,234 @@ mod tests {
         assert!(!text.contains("moderate"));
         assert!(text.contains("policy failed"));
         assert!(text.contains("exit 1"));
+    }
+
+    #[test]
+    fn mixed_project_renders_settings_then_advisories_headers() {
+        let findings = vec![
+            finding("GHSA-v7", Severity::High, Some("left-pad"), Some("1.3.0")),
+            settings_finding("scripts.pin-missing", Severity::Info),
+        ];
+        let block = project_block(
+            Path::new("/scan/app"),
+            &findings,
+            false,
+            Preset::Standard,
+            &[PathBuf::from("/scan/app/.pkguard.toml")],
+            &plain(),
+        );
+        let lines: Vec<&str> = block.lines().collect();
+        assert_eq!(
+            lines,
+            [
+                "app  2 findings",
+                "  preset standard · config .pkguard.toml",
+                "  settings",
+                "  info  npm  scripts.pin-missing  -                        scripts.pin-missing message",
+                "  advisories",
+                "  high  npm  GHSA-v7              left-pad@1.0.0 -> 1.3.0  GHSA-v7 message",
+            ]
+        );
+    }
+
+    #[test]
+    fn settings_only_project_omits_group_headers() {
+        let findings = vec![settings_finding("scripts.pin-missing", Severity::Info)];
+        let block = project_block(
+            Path::new("/scan/app"),
+            &findings,
+            false,
+            Preset::Standard,
+            &[],
+            &plain(),
+        );
+        let lines: Vec<&str> = block.lines().collect();
+        assert_eq!(
+            lines,
+            [
+                "app  1 finding",
+                "  preset standard",
+                "  info  npm  scripts.pin-missing  -  scripts.pin-missing message",
+            ]
+        );
+    }
+
+    #[test]
+    fn advisories_only_project_omits_group_headers() {
+        let findings = vec![finding(
+            "GHSA-v7",
+            Severity::High,
+            Some("left-pad"),
+            Some("1.3.0"),
+        )];
+        let block = project_block(
+            Path::new("/scan/app"),
+            &findings,
+            false,
+            Preset::Standard,
+            &[],
+            &plain(),
+        );
+        let lines: Vec<&str> = block.lines().collect();
+        assert_eq!(
+            lines,
+            [
+                "app  1 finding",
+                "  preset standard",
+                "  high  npm  GHSA-v7  left-pad@1.0.0 -> 1.3.0  GHSA-v7 message",
+            ]
+        );
+        assert!(!lines
+            .iter()
+            .any(|line| *line == "  settings" || *line == "  advisories"));
+    }
+
+    #[test]
+    fn columns_align_across_settings_and_advisories_groups() {
+        let findings = vec![
+            finding("GHSA-v7", Severity::High, Some("left-pad"), Some("1.3.0")),
+            settings_finding("scripts.pin-missing", Severity::Info),
+        ];
+        let block = project_block(
+            Path::new("/scan/app"),
+            &findings,
+            false,
+            Preset::Standard,
+            &[],
+            &plain(),
+        );
+        let settings_msg = "scripts.pin-missing message";
+        let advisory_msg = "GHSA-v7 message";
+        let settings_line = block
+            .lines()
+            .find(|line| line.contains(settings_msg))
+            .expect("settings row");
+        let advisory_line = block
+            .lines()
+            .find(|line| line.contains(advisory_msg))
+            .expect("advisory row");
+        assert_eq!(
+            settings_line.find(settings_msg),
+            advisory_line.find(advisory_msg)
+        );
+    }
+
+    #[test]
+    fn fixed_lines_render_one_row_per_change() {
+        let applied = ApplyResult {
+            written: vec![PathBuf::from("/scan/app/.npmrc")],
+            skipped: vec![],
+            changes: vec![
+                PlannedChange {
+                    project_root: PathBuf::from("/scan/app"),
+                    file: PathBuf::from("/scan/app/.npmrc"),
+                    setting: "ignore-scripts".into(),
+                    current: "false".into(),
+                    next: "true".into(),
+                },
+                PlannedChange {
+                    project_root: PathBuf::from("/scan/app"),
+                    file: PathBuf::from("/scan/app/.npmrc"),
+                    setting: "audit".into(),
+                    current: "(unset)".into(),
+                    next: "true".into(),
+                },
+            ],
+            blocked: None,
+        };
+        let block = project_block(
+            Path::new("/scan/app"),
+            &[],
+            true,
+            Preset::Standard,
+            &[],
+            &RenderOptions {
+                applied: Some(applied),
+                ..plain()
+            },
+        );
+        let lines: Vec<&str> = block.lines().collect();
+        assert!(
+            lines.contains(&"  fixed  .npmrc: ignore-scripts false -> true"),
+            "{block}"
+        );
+        assert!(
+            lines.contains(&"  fixed  .npmrc: audit (unset) -> true"),
+            "{block}"
+        );
+    }
+
+    #[test]
+    fn audits_skipped_marker_appears_on_config_line_only_when_skipped() {
+        let findings = vec![settings_finding("scripts.pin-missing", Severity::Info)];
+        let skipped = project_block(
+            Path::new("/scan/app"),
+            &findings,
+            false,
+            Preset::Standard,
+            &[PathBuf::from("/scan/app/.pkguard.toml")],
+            &RenderOptions {
+                audits_skipped: true,
+                ..plain()
+            },
+        );
+        assert_eq!(
+            skipped.lines().nth(1),
+            Some("  preset standard · config .pkguard.toml · audits skipped")
+        );
+        let live = project_block(
+            Path::new("/scan/app"),
+            &findings,
+            false,
+            Preset::Standard,
+            &[PathBuf::from("/scan/app/.pkguard.toml")],
+            &plain(),
+        );
+        assert_eq!(
+            live.lines().nth(1),
+            Some("  preset standard · config .pkguard.toml")
+        );
+        assert!(!live.contains("audits skipped"));
+        let clean_offline = project_block(
+            Path::new("/scan/app"),
+            &[],
+            false,
+            Preset::Standard,
+            &[],
+            &RenderOptions {
+                audits_skipped: true,
+                ..plain()
+            },
+        );
+        assert_eq!(clean_offline, "ok app  preset standard · audits skipped\n");
+    }
+
+    #[test]
+    fn summary_includes_settings_fixed_count() {
+        let text = summary_block(
+            &ScanSummary {
+                projects: 1,
+                incomplete: false,
+                policy_failure: false,
+                exit: ExitCode::Clean,
+            },
+            &SeverityCounts::default(),
+            &RenderOptions {
+                settings_fixed: 2,
+                ..plain()
+            },
+        );
+        assert!(text.contains("2 settings fixed"), "{text}");
+        let none = summary_block(
+            &ScanSummary {
+                projects: 1,
+                incomplete: false,
+                policy_failure: false,
+                exit: ExitCode::Clean,
+            },
+            &SeverityCounts::default(),
+            &plain(),
+        );
+        assert!(!none.contains("settings fixed"), "{none}");
     }
 }
