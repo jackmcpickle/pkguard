@@ -126,6 +126,8 @@ Unknown keys are rejected, so typos fail loudly instead of being ignored.
 
 Set `registry` when installs should go through a company proxy; a committed pin that does not match emits `registry.mismatch`. Leave it unset and any pinned registry still passes.
 
+When `--fix` repairs `registry.unpinned` it picks a URL in this order: the configured `registry`, then any registry this project already pins under another manager (so an internal mirror in `.npmrc` is what gets written into `bunfig.toml`, not the public registry), then `https://registry.npmjs.org` for the node managers. `registry.mismatch` is still only raised against an explicitly configured `registry`, so the public fallback never causes a false mismatch.
+
 ### Presets
 
 | | relaxed | standard (default) | strict |
@@ -186,6 +188,7 @@ For bun, from `bunfig.toml`:
 | release-age gate | `install.minimumReleaseAge` in seconds |
 | lockfile | `bun.lock` or `bun.lockb` |
 | registry pin | `install.registry` or `install.registry.url` |
+| packageManager pin | `packageManager` in `package.json` must start with `bun@` |
 
 For uv, from `[tool.uv]` / `uv.toml`:
 

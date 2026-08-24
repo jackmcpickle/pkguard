@@ -90,6 +90,7 @@ mod tests {
             kind: FindingKind::Advisory,
             code: "GHSA-x".into(),
             message: "m".into(),
+            detail: None,
             severity: Severity::High,
             path: "/p/package-lock.json".into(),
             fixable: false,

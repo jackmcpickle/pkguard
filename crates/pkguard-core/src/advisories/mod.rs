@@ -45,6 +45,25 @@ fn parse_output(
     match manager {
         Manager::Npm | Manager::Pnpm => parse::npm::parse_npm_audit(stdout, file_path, manager)
             .map_err(|_| AdvisoryError::Incomplete),
+        // bun keys its report by package name, which matches none of the roots
+        // the generic walker descends into, so it needs its own parser. An
+        // npm-shaped payload still goes to the npm parser: that is where the
+        // advisory id and fix version survive.
+        Manager::Bun => {
+            // Slice past bun's version banner before either parser sees it.
+            let body = parse::bun::json_slice(stdout);
+            if body.is_empty() {
+                return Ok(Vec::new());
+            }
+            let parsed =
+                parse::generic::parse_stdout(body).map_err(|_| AdvisoryError::Incomplete)?;
+            if parse::generic::looks_like_npm_report(&parsed) {
+                parse::npm::parse_npm_audit(body, file_path, manager)
+            } else {
+                parse::bun::parse_bun_audit(body, file_path, manager)
+            }
+            .map_err(|_| AdvisoryError::Incomplete)
+        }
         Manager::Poetry | Manager::Pip | Manager::Pipenv => Ok(Vec::new()),
         other => {
             let parsed =

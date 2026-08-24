@@ -15,10 +15,11 @@ use crate::clock::Clock;
 use crate::config::ResolvedSettings;
 use crate::discover::{DetectedManager, Project};
 use crate::findings::{Finding, FindingKind, Severity};
-use crate::fix::{ConfigEdit, SettingsFix};
+use crate::fix::{ConfigEdit, ConfigFormat, SettingsFix};
 use crate::format::{bundle_config, npmrc, yaml};
 use crate::manager::{Manager, PackageManagerPin};
 use crate::policy::Preset;
+use crate::settings::ProjectFacts;
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -53,6 +54,7 @@ pub fn setting_finding(
         kind: FindingKind::Settings,
         code: code.to_string(),
         message: message.into(),
+        detail: None,
         severity,
         path: path.to_string_lossy().into_owned(),
         // Unfixable until a `SettingsFix` is attached via `fixable_finding`.
@@ -99,16 +101,85 @@ pub fn fix_for(manager: Manager, file: &Path, edits: Vec<ConfigEdit>) -> Setting
     SettingsFix::new(file, format, edits)
 }
 
+/// Which registry URL `--fix` should pin, most specific first.
+///
+/// 1. The one configured in `.pkguard.toml` — an explicit corporate proxy.
+/// 2. One this project already pins under another manager, so adding a
+///    registry to a second manager cannot silently route it at the public
+///    registry while the rest of the repo uses an internal mirror.
+/// 3. The manager's public default, which is only a no-op restatement of what
+///    it would have done anyway.
+fn registry_fix_url(
+    manager: Manager,
+    settings: &ResolvedSettings,
+    facts: &ProjectFacts,
+) -> Option<String> {
+    settings
+        .registry
+        .clone()
+        .or_else(|| facts.existing_registry.clone())
+        .or_else(|| manager.default_registry().map(ToOwned::to_owned))
+}
+
 fn registry_url_fix(
     manager: Manager,
     file: &Path,
     key: &str,
     settings: &ResolvedSettings,
+    facts: &ProjectFacts,
 ) -> Option<SettingsFix> {
-    settings
-        .registry
-        .as_ref()
+    registry_fix_url(manager, settings, facts)
         .map(|url| fix_for(manager, file, vec![ConfigEdit::set(key, url.as_str())]))
+}
+
+/// The `packageManager` value `--fix` writes, e.g. `bun@1.3.13`.
+///
+/// `package.json` is not the manager's own config file, so this cannot go
+/// through `fix_for` — every node manager pins itself in the same JSON
+/// manifest. Without a probed version there is no fix at all: writing
+/// `packageManager: "bun@"` would be worse than leaving it unpinned.
+fn pm_pin_fix(project_root: &Path, manager: Manager, facts: &ProjectFacts) -> Option<SettingsFix> {
+    let version = facts.pm_version.as_deref()?;
+    Some(SettingsFix::new(
+        project_root.join("package.json"),
+        ConfigFormat::Json,
+        vec![ConfigEdit::set(
+            "packageManager",
+            format!("{}@{version}", manager.name()),
+        )],
+    ))
+}
+
+/// A registry this project already pins, under whichever manager names one.
+///
+/// Pure file reads, in the same spirit as the rest of this module — the caller
+/// runs it once per project and hands the answer back in `ProjectFacts`.
+#[must_use]
+pub fn existing_registry(project_root: &Path, project: &Project) -> Option<String> {
+    project.managers.iter().find_map(|detected| {
+        let path = config_path_for(project_root, detected);
+        match detected.manager {
+            Manager::Npm => std::fs::read_to_string(&path)
+                .ok()
+                .and_then(|raw| npmrc::parse(&raw).get("registry").cloned()),
+            Manager::Pnpm => pnpm_registry_url(&read_yaml(&path)),
+            Manager::Yarn => yaml::get(&read_yaml(&path), "npmRegistryServer")
+                .and_then(yaml::as_str)
+                .map(ToOwned::to_owned),
+            Manager::Bun => bun_registry_url(
+                read_toml(&path)
+                    .get("install")
+                    .and_then(toml::Value::as_table),
+            ),
+            _ => None,
+        }
+        .map(|url| url.trim().to_string())
+        .filter(|url| !url.is_empty())
+    })
+}
+
+fn read_yaml(path: &Path) -> yaml::Yaml {
+    std::fs::read_to_string(path).map_or_else(|_| yaml::parse(""), |raw| yaml::parse(&raw))
 }
 
 /// The config file to read and fix: whatever discovery found, else the
@@ -156,6 +227,7 @@ pub fn npm_settings(
     project_root: &Path,
     manager: &DetectedManager,
     settings: &ResolvedSettings,
+    facts: &ProjectFacts,
 ) -> Vec<Finding> {
     let npmrc_path = config_path_for(project_root, manager);
     let npmrc: BTreeMap<String, String> = std::fs::read_to_string(&npmrc_path)
@@ -187,7 +259,7 @@ pub fn npm_settings(
         "registry must be set in .npmrc",
         &npmrc_path,
         Manager::Npm,
-        registry_url_fix(Manager::Npm, &npmrc_path, "registry", settings),
+        registry_url_fix(Manager::Npm, &npmrc_path, "registry", settings, facts),
     ));
     findings.extend(pm_pin::check(
         settings.require_pm_pin,
@@ -195,6 +267,7 @@ pub fn npm_settings(
         Manager::Npm,
         preset,
         project_root,
+        pm_pin_fix(project_root, Manager::Npm, facts),
     ));
     findings
 }
@@ -242,6 +315,7 @@ fn multiple_pm_finding(
         kind: FindingKind::Settings,
         code: code.into(),
         message: format!("Multiple {label} package managers in use: {names}"),
+        detail: None,
         severity: Severity::High,
         path: project.root.to_string_lossy().into_owned(),
         fixable: false,
@@ -292,6 +366,7 @@ pub fn pnpm_settings(
     project_root: &Path,
     manager: &DetectedManager,
     settings: &ResolvedSettings,
+    facts: &ProjectFacts,
 ) -> Vec<Finding> {
     let yaml_path = config_path_for(project_root, manager);
     let yaml_value = std::fs::read_to_string(&yaml_path)
@@ -346,7 +421,7 @@ pub fn pnpm_settings(
         "registry or registries.default must be set",
         &yaml_path,
         Manager::Pnpm,
-        registry_url_fix(Manager::Pnpm, &yaml_path, "registry", settings),
+        registry_url_fix(Manager::Pnpm, &yaml_path, "registry", settings, facts),
     ));
     findings.extend(pm_pin::check(
         settings.require_pm_pin,
@@ -354,6 +429,7 @@ pub fn pnpm_settings(
         Manager::Pnpm,
         preset,
         project_root,
+        pm_pin_fix(project_root, Manager::Pnpm, facts),
     ));
     findings
 }
@@ -503,6 +579,7 @@ pub fn python_not_uv(project_root: &Path, manager: Manager) -> Finding {
         kind: FindingKind::NotUsingUv,
         code: "python.not-uv".into(),
         message: format!("{} project is not using uv", manager.name()),
+        detail: None,
         severity: Severity::High,
         path: project_root.to_string_lossy().into_owned(),
         fixable: false,
@@ -518,6 +595,7 @@ pub fn yarn_settings(
     project_root: &Path,
     manager: &DetectedManager,
     settings: &ResolvedSettings,
+    facts: &ProjectFacts,
 ) -> Vec<Finding> {
     let yarnrc_path = config_path_for(project_root, manager);
     let yarnrc = std::fs::read_to_string(&yarnrc_path)
@@ -564,7 +642,13 @@ pub fn yarn_settings(
         "npmRegistryServer must be set",
         &yarnrc_path,
         Manager::Yarn,
-        registry_url_fix(Manager::Yarn, &yarnrc_path, "npmRegistryServer", settings),
+        registry_url_fix(
+            Manager::Yarn,
+            &yarnrc_path,
+            "npmRegistryServer",
+            settings,
+            facts,
+        ),
     ));
     findings.extend(pm_pin::check(
         settings.require_pm_pin,
@@ -572,6 +656,7 @@ pub fn yarn_settings(
         Manager::Yarn,
         preset,
         project_root,
+        pm_pin_fix(project_root, Manager::Yarn, facts),
     ));
     findings
 }
@@ -580,6 +665,7 @@ pub fn bun_settings(
     project_root: &Path,
     manager: &DetectedManager,
     settings: &ResolvedSettings,
+    facts: &ProjectFacts,
 ) -> Vec<Finding> {
     let bunfig_path = config_path_for(project_root, manager);
     let bunfig = read_toml(&bunfig_path);
@@ -604,7 +690,23 @@ pub fn bun_settings(
         "install.registry must be set",
         &bunfig_path,
         Manager::Bun,
-        registry_url_fix(Manager::Bun, &bunfig_path, "install.registry", settings),
+        registry_url_fix(
+            Manager::Bun,
+            &bunfig_path,
+            "install.registry",
+            settings,
+            facts,
+        ),
+    ));
+    // bun honours `package.json#packageManager` exactly as npm, pnpm and yarn
+    // do; it was simply the one node manager never asked the question.
+    findings.extend(pm_pin::check(
+        settings.require_pm_pin,
+        PackageManagerPin::from_manifest(project_root).as_ref(),
+        Manager::Bun,
+        settings.preset,
+        project_root,
+        pm_pin_fix(project_root, Manager::Bun, facts),
     ));
     findings
 }

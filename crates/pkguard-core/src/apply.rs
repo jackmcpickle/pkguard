@@ -499,7 +499,7 @@ mod tests {
     use crate::findings::{FindingKind, Severity};
     use crate::fix::SettingsFix;
     use crate::manager::Manager;
-    use crate::settings::audit_manager_settings;
+    use crate::settings::{audit_manager_settings, ProjectFacts};
     use std::fs;
 
     fn project(root: &Path, git_root: Option<&Path>) -> Project {
@@ -515,6 +515,7 @@ mod tests {
             kind: FindingKind::Settings,
             code: "scripts.unrestricted".into(),
             message: "m".into(),
+            detail: None,
             severity: Severity::High,
             path: file.to_string_lossy().into_owned(),
             fixable: true,
@@ -1062,14 +1063,26 @@ mod tests {
             config_path: None,
         };
         let settings = resolve_settings(&parse_config("preset = \"standard\"").unwrap(), "npm");
-        let findings = audit_manager_settings(root, &manager, &settings, &test_clock());
+        let findings = audit_manager_settings(
+            root,
+            &manager,
+            &settings,
+            &ProjectFacts::default(),
+            &test_clock(),
+        );
         assert!(findings.iter().any(|f| f.fix.is_some()));
         let proj = project(root, None);
         let plan = plan_fixes(&proj, &findings);
         let first = apply_fixes(&proj, &plan, &CannedRunner::new(), false, ApplyMode::Write).await;
         assert!(!first.written.is_empty());
 
-        let findings = audit_manager_settings(root, &manager, &settings, &test_clock());
+        let findings = audit_manager_settings(
+            root,
+            &manager,
+            &settings,
+            &ProjectFacts::default(),
+            &test_clock(),
+        );
         let plan = plan_fixes(&proj, &findings);
         assert!(
             plan.files.is_empty(),

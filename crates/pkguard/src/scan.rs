@@ -88,6 +88,7 @@ pub async fn run(args: ScanArgs) -> i32 {
             AuditEvent::ProjectFinished {
                 root,
                 findings,
+                managers,
                 incomplete,
                 preset,
                 config_sources,
@@ -102,6 +103,7 @@ pub async fn run(args: ScanArgs) -> i32 {
                 let report = ProjectReport {
                     root,
                     findings,
+                    managers,
                     incomplete,
                     preset,
                     config_sources,

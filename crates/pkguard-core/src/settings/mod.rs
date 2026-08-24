@@ -7,6 +7,26 @@ use crate::findings::Finding;
 use crate::manager::Manager;
 use std::path::Path;
 
+/// What the settings audit needs to know about the world outside the config
+/// files, gathered by the caller.
+///
+/// `audit_manager_settings` may not spawn a subprocess, but two fixes need
+/// answers only the outside world has: which version of the package manager is
+/// installed, and whether this project already points at a private registry.
+/// Passing them in keeps the audit pure and testable.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ProjectFacts {
+    /// Version reported by *this* manager's binary, used to pin
+    /// `package.json#packageManager` when `--fix` repairs `pm.unpinned`.
+    /// `None` leaves the finding unfixable — a pin without a version is worse
+    /// than no pin.
+    pub pm_version: Option<String>,
+    /// A registry this project already pins under some manager. An internal
+    /// proxy that is already in use must win over the public default when
+    /// `--fix` pins a registry for a second manager.
+    pub existing_registry: Option<String>,
+}
+
 /// Pure-file settings audit for one detected manager.
 ///
 /// Reads config files under the project root; never spawns anything. `clock`
@@ -16,16 +36,17 @@ pub fn audit_manager_settings(
     project_root: &Path,
     manager: &DetectedManager,
     settings: &ResolvedSettings,
+    facts: &ProjectFacts,
     clock: &dyn Clock,
 ) -> Vec<Finding> {
     match manager.role {
         Role::Leftover => vec![checks::leftover_finding(project_root, manager)],
         Role::Unsupported => vec![checks::unsupported_finding(project_root, manager)],
         Role::Primary => match manager.manager {
-            Manager::Npm => checks::npm_settings(project_root, manager, settings),
-            Manager::Pnpm => checks::pnpm_settings(project_root, manager, settings),
-            Manager::Yarn => checks::yarn_settings(project_root, manager, settings),
-            Manager::Bun => checks::bun_settings(project_root, manager, settings),
+            Manager::Npm => checks::npm_settings(project_root, manager, settings, facts),
+            Manager::Pnpm => checks::pnpm_settings(project_root, manager, settings, facts),
+            Manager::Yarn => checks::yarn_settings(project_root, manager, settings, facts),
+            Manager::Bun => checks::bun_settings(project_root, manager, settings, facts),
             Manager::Uv => checks::uv_settings(project_root, manager, settings, clock),
             Manager::Cargo => checks::cargo_settings(project_root, manager, settings),
             Manager::Composer => checks::composer_settings(project_root, manager, settings),
@@ -93,6 +114,7 @@ mod tests {
             &fx.root,
             &manager,
             &settings_for(config_toml),
+            &ProjectFacts::default(),
             &test_clock(),
         )
     }
@@ -257,6 +279,7 @@ mod tests {
             &fx.root,
             &manager,
             &resolve_settings(&cfg, "pnpm"),
+            &ProjectFacts::default(),
             &test_clock(),
         )
     }
@@ -414,6 +437,7 @@ registry: https://registry.npmjs.org/
             &fx.root,
             &leftover,
             &settings_for("preset = \"standard\""),
+            &ProjectFacts::default(),
             &test_clock(),
         );
         assert_eq!(findings.len(), 1);
@@ -456,6 +480,7 @@ registry: https://registry.npmjs.org/
             &fx.root,
             manager,
             &resolve_settings(&cfg, name),
+            &ProjectFacts::default(),
             &test_clock(),
         )
     }
@@ -546,6 +571,9 @@ registry: https://registry.npmjs.org/
             codes(&findings),
             vec![
                 "min-age.disabled",
+                // bun honours package.json#packageManager like the other node
+                // managers, and is now asked about it.
+                "pm.unpinned",
                 "registry.unpinned",
                 "scripts.unrestricted",
             ]
@@ -568,10 +596,26 @@ registry: https://registry.npmjs.org/
             "[install]\nignoreScripts = true\nminimumReleaseAge = 86400\nregistry = \"https://registry.npmjs.org/\"\n",
         )
         .unwrap();
+        fs::write(
+            fx.root.join("package.json"),
+            r#"{"packageManager": "bun@1.3.13"}"#,
+        )
+        .unwrap();
         assert_eq!(
             audit_named(&fx, &bun_manager(&fx.root), "bun"),
             Vec::<Finding>::new()
         );
+    }
+
+    #[test]
+    fn a_bun_repo_pinned_to_another_manager_is_still_unpinned() {
+        let fx = bun_fixture();
+        fs::write(
+            fx.root.join("package.json"),
+            r#"{"packageManager": "pnpm@10.0.0"}"#,
+        )
+        .unwrap();
+        assert!(codes(&audit_named(&fx, &bun_manager(&fx.root), "bun")).contains(&"pm.unpinned"));
     }
 
     fn uv_fixture() -> Fixture {
@@ -790,6 +834,7 @@ registry: https://registry.npmjs.org/
             &fx.root,
             manager,
             &resolve_settings(&cfg, name),
+            &ProjectFacts::default(),
             &test_clock(),
         )
     }
@@ -870,6 +915,11 @@ registry: https://registry.npmjs.org/
     #[test]
     fn bun_minimum_release_age_is_seconds() {
         let fx = bun_fixture();
+        fs::write(
+            fx.root.join("package.json"),
+            r#"{"packageManager": "bun@1.3.13"}"#,
+        )
+        .unwrap();
         fs::write(
             fx.root.join("bunfig.toml"),
             "trustedDependencies = [\"foo\"]\n\n[install]\nregistry = \"https://registry.npmjs.org/\"\nminimumReleaseAge = 86400\n",
@@ -1143,6 +1193,7 @@ registry: https://registry.npmjs.org/
             &pnpm.root,
             &leftover,
             &settings_for("preset = \"standard\""),
+            &ProjectFacts::default(),
             &test_clock(),
         ));
 
@@ -1419,15 +1470,74 @@ registry: https://registry.npmjs.org/
         }
     }
 
-    #[test]
-    fn registry_unpinned_without_a_configured_registry_has_no_fix() {
-        let fx = fixture();
-        let finding = audit(&fx, "preset = \"standard\"")
+    fn registry_fix_url(findings: Vec<Finding>) -> Option<String> {
+        let fix = findings
             .into_iter()
-            .find(|f| f.code == "registry.unpinned")
-            .unwrap();
-        assert!(finding.fix.is_none());
-        assert!(!finding.fixable);
+            .find(|f| f.code == "registry.unpinned")?
+            .fix?;
+        match fix.edits.first()? {
+            ConfigEdit::Set {
+                value: ConfigValue::Str(url),
+                ..
+            } => Some(url.clone()),
+            _ => None,
+        }
+    }
+
+    /// With nothing else to go on, a node manager pins the public registry —
+    /// a restatement of the default that silences `registry.unpinned`.
+    #[test]
+    fn registry_unpinned_without_any_registry_falls_back_to_the_public_one() {
+        let fx = fixture();
+        assert_eq!(
+            registry_fix_url(audit(&fx, "preset = \"standard\"")).as_deref(),
+            Some("https://registry.npmjs.org")
+        );
+    }
+
+    /// The internal-proxy case: another manager in this project already points
+    /// at a private mirror, so the fix must keep using it.
+    #[test]
+    fn a_registry_already_pinned_in_the_project_beats_the_public_default() {
+        let fx = fixture();
+        let manager = npm_manager(&fx.root, true);
+        let findings = audit_manager_settings(
+            &fx.root,
+            &manager,
+            &settings_for("preset = \"standard\""),
+            &ProjectFacts {
+                existing_registry: Some("https://npm.corp.example".into()),
+                ..ProjectFacts::default()
+            },
+            &test_clock(),
+        );
+        assert_eq!(
+            registry_fix_url(findings).as_deref(),
+            Some("https://npm.corp.example")
+        );
+    }
+
+    /// A configured registry is the most specific answer and outranks both.
+    #[test]
+    fn a_configured_registry_beats_one_observed_in_the_project() {
+        let fx = fixture();
+        let manager = npm_manager(&fx.root, true);
+        let findings = audit_manager_settings(
+            &fx.root,
+            &manager,
+            &settings_for(
+                "preset = \"standard\"\n[policy]\nregistry = \"https://registry.corp.dev/\"",
+            ),
+            &ProjectFacts {
+                existing_registry: Some("https://npm.corp.example".into()),
+                ..ProjectFacts::default()
+            },
+            &test_clock(),
+        );
+        assert_eq!(
+            registry_fix_url(findings).as_deref(),
+            Some("https://registry.corp.dev/")
+        );
     }
 
     #[test]

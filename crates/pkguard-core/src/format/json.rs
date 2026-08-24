@@ -3,6 +3,7 @@
 
 use super::EditError;
 use crate::fix::{ConfigEdit, ConfigValue};
+use serde::Serialize as _;
 use serde_json::{Map, Value};
 
 #[must_use]
@@ -66,12 +67,29 @@ pub fn apply(table: &mut Map<String, Value>, edits: &[ConfigEdit]) {
     }
 }
 
-/// Apply edits to a JSON config. An empty input starts from an empty object.
+/// The indent the file already uses, so a one-key edit does not reformat every
+/// line of someone's `package.json`. Read off the first indented line; two
+/// spaces when there is nothing to learn from.
+fn detected_indent(raw: &str) -> String {
+    raw.lines()
+        .find(|line| line.starts_with([' ', '\t']) && !line.trim().is_empty())
+        .map_or_else(
+            || "  ".to_string(),
+            |line| {
+                line.chars()
+                    .take_while(|c| *c == ' ' || *c == '\t')
+                    .collect()
+            },
+        )
+}
+
+/// Apply edits to a JSON config, preserving key order and the file's own
+/// indent. An empty input starts from an empty object.
 ///
 /// # Errors
 ///
 /// Returns [`EditError::Unparseable`] if `raw` is neither empty nor a valid
-/// JSON object.
+/// JSON object, or if the edited document cannot be serialized back.
 pub fn edit(raw: &str, edits: &[ConfigEdit]) -> Result<String, EditError> {
     let mut table = if raw.trim().is_empty() {
         Map::new()
@@ -82,8 +100,14 @@ pub fn edit(raw: &str, edits: &[ConfigEdit]) -> Result<String, EditError> {
         }
     };
     apply(&mut table, edits);
-    let body = serde_json::to_string_pretty(&Value::Object(table))
+    let indent = detected_indent(raw);
+    let mut body = Vec::new();
+    let formatter = serde_json::ser::PrettyFormatter::with_indent(indent.as_bytes());
+    let mut ser = serde_json::Serializer::with_formatter(&mut body, formatter);
+    Value::Object(table)
+        .serialize(&mut ser)
         .map_err(|_| EditError::Unparseable("JSON"))?;
+    let body = String::from_utf8(body).map_err(|_| EditError::Unparseable("JSON"))?;
     Ok(format!("{body}\n"))
 }
 
@@ -124,6 +148,32 @@ mod tests {
         let parsed: Value = serde_json::from_str(&out).unwrap();
         assert_eq!(parsed["config"]["vendor-dir"], "vendor");
         assert_eq!(parsed["config"]["secure-http"], true);
+    }
+
+    /// Pinning `packageManager` must not reindent someone's whole
+    /// `package.json`; a one-key edit should read as a one-line diff.
+    #[test]
+    fn a_four_space_file_stays_four_space() {
+        let raw = "{\n    \"name\": \"app\",\n    \"private\": true\n}\n";
+        let out = edit(raw, &[ConfigEdit::set("packageManager", "bun@1.3.13")]).unwrap();
+        assert!(out.contains("\n    \"name\": \"app\","), "{out}");
+        assert!(
+            out.contains("\n    \"packageManager\": \"bun@1.3.13\""),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn a_tab_indented_file_stays_tab_indented() {
+        let raw = "{\n\t\"name\": \"app\"\n}\n";
+        let out = edit(raw, &[ConfigEdit::set("packageManager", "bun@1.3.13")]).unwrap();
+        assert!(out.contains("\n\t\"packageManager\""), "{out}");
+    }
+
+    #[test]
+    fn a_file_with_nothing_to_learn_from_gets_two_spaces() {
+        let out = edit("{}", &[ConfigEdit::set("packageManager", "bun@1.3.13")]).unwrap();
+        assert_eq!(out, "{\n  \"packageManager\": \"bun@1.3.13\"\n}\n");
     }
 
     #[test]

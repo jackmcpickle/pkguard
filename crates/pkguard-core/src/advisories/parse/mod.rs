@@ -1,3 +1,4 @@
+pub mod bun;
 pub mod generic;
 pub mod npm;
 
@@ -25,7 +26,7 @@ pub fn normalize_severity(value: Option<&Value>) -> Severity {
     }
 }
 
-fn id_value(value: Option<&Value>) -> Option<String> {
+pub fn id_value(value: Option<&Value>) -> Option<String> {
     match value? {
         Value::String(s) if !s.is_empty() => Some(s.clone()),
         Value::Number(n) => Some(n.to_string()),
@@ -33,7 +34,7 @@ fn id_value(value: Option<&Value>) -> Option<String> {
     }
 }
 
-fn ghsa_from_url(url: &str) -> Option<String> {
+pub fn ghsa_from_url(url: &str) -> Option<String> {
     let start = url.to_uppercase().find("GHSA-")?;
     let id: String = url[start..]
         .chars()

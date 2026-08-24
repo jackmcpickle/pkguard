@@ -33,6 +33,7 @@ pub fn leftover(path: &Path, manager: Manager) -> Finding {
             "Leftover {} lockfile is not an apply target",
             manager.name()
         ),
+        detail: None,
         severity: Severity::High,
         path: path.to_string_lossy().into_owned(),
         fixable: false,
@@ -50,6 +51,7 @@ pub fn unsupported(path: &Path, manager: Manager) -> Finding {
         kind: FindingKind::UnsupportedPm,
         code: "pm.unsupported".into(),
         message: format!("{} is unsupported", manager.name()),
+        detail: None,
         severity: Severity::High,
         path: path.to_string_lossy().into_owned(),
         fixable: false,
