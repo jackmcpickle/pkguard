@@ -255,6 +255,11 @@ pub fn scan(
 
 /// `scan` against a chosen clock. Only uv's `exclude-newer` date check and the
 /// advisory cache TTL consult it.
+///
+/// # Panics
+///
+/// Panics if the internal concurrency semaphore is closed, which cannot happen
+/// while the scan task holds it.
 pub fn scan_with_clock(
     root: PathBuf,
     runner: Arc<dyn CommandRunner>,

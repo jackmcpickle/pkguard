@@ -87,6 +87,8 @@ pub fn fixable_finding(
 /// `Manager::config_format`, so a check module states *which manager* it is
 /// checking — never which format that manager happens to use.
 ///
+/// # Panics
+///
 /// Panics only for managers that cannot be written (`is_legacy_python`), which
 /// never reach a check module.
 #[must_use]
@@ -360,7 +362,7 @@ fn read_toml(path: &Path) -> toml::Value {
     std::fs::read_to_string(path)
         .ok()
         .and_then(|raw| raw.parse().ok())
-        .unwrap_or(toml::Value::Table(toml::map::Map::new()))
+        .unwrap_or_else(|| toml::Value::Table(toml::map::Map::new()))
 }
 
 fn read_uv_config(project_root: &Path) -> toml::Value {

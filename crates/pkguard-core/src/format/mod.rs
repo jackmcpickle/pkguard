@@ -19,6 +19,11 @@ pub enum EditError {
 /// The flat formats (npmrc, bundle-config) rewrite line by line so comments,
 /// blank lines, and key order survive. The structured ones parse and
 /// re-serialize; TOML keeps its comments via `toml_edit`, YAML does not.
+///
+/// # Errors
+///
+/// Returns [`EditError::Unparseable`] when `raw` is not valid input for
+/// `format`, so the caller can skip the file instead of overwriting it.
 pub fn edit(format: ConfigFormat, raw: &str, edits: &[ConfigEdit]) -> Result<String, EditError> {
     match format {
         ConfigFormat::Npmrc => Ok(npmrc::edit(raw, edits)),

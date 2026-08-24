@@ -66,6 +66,12 @@ pub fn apply(table: &mut Map<String, Value>, edits: &[ConfigEdit]) {
     }
 }
 
+/// Apply edits to a JSON config. An empty input starts from an empty object.
+///
+/// # Errors
+///
+/// Returns [`EditError::Unparseable`] if `raw` is neither empty nor a valid
+/// JSON object.
 pub fn edit(raw: &str, edits: &[ConfigEdit]) -> Result<String, EditError> {
     let mut table = if raw.trim().is_empty() {
         Map::new()

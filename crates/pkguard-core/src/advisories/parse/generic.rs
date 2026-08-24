@@ -140,14 +140,16 @@ fn advisory_like(item: &Value, path: &str, manager: Manager) -> Option<Finding> 
     );
     let message = string_field(source, &["title", "summary", "Issue"])
         .or_else(|| string_field(item, &["title", "summary"]))
-        .map(ToOwned::to_owned)
-        .unwrap_or_else(|| {
-            format!(
-                "{} {} advisory",
-                package.unwrap_or("unknown"),
-                severity.as_str()
-            )
-        });
+        .map_or_else(
+            || {
+                format!(
+                    "{} {} advisory",
+                    package.unwrap_or("unknown"),
+                    severity.as_str()
+                )
+            },
+            ToOwned::to_owned,
+        );
     Some(Finding {
         kind: FindingKind::Advisory,
         code: super::advisory_code(id),

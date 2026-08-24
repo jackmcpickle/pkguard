@@ -103,6 +103,10 @@ fn unset_path(map: &mut Mapping, key: &str) {
 ///
 /// Comments are lost: `serde_yaml` has no comment-preserving edit mode. This
 /// matches the behaviour of the TypeScript implementation this was ported from.
+///
+/// # Errors
+///
+/// Returns [`EditError::Unparseable`] if `raw` is not valid YAML.
 pub fn edit(raw: &str, edits: &[ConfigEdit]) -> Result<String, EditError> {
     let mut map = if raw.trim().is_empty() {
         Mapping::new()

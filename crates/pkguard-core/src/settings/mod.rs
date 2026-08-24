@@ -7,10 +7,11 @@ use crate::findings::Finding;
 use crate::manager::Manager;
 use std::path::Path;
 
-/// Pure-file settings audit for one detected manager. Reads config files under
-/// the project root; never spawns anything.
-/// `clock` is only consulted by uv's `exclude-newer` date check, but it is
-/// taken here so the whole settings audit can be driven at a fixed instant.
+/// Pure-file settings audit for one detected manager.
+///
+/// Reads config files under the project root; never spawns anything. `clock`
+/// is only consulted by uv's `exclude-newer` date check, but it is taken here
+/// so the whole settings audit can be driven at a fixed instant.
 pub fn audit_manager_settings(
     project_root: &Path,
     manager: &DetectedManager,

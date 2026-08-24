@@ -44,6 +44,7 @@ impl AdvisoryCache {
         self
     }
 
+    #[must_use]
     pub fn with_clock(mut self, clock: Arc<dyn Clock>) -> Self {
         self.clock = clock;
         self
@@ -63,6 +64,12 @@ impl AdvisoryCache {
         Some(envelope.findings)
     }
 
+    /// Store advisories under `key`, stamped with the current time.
+    ///
+    /// # Errors
+    ///
+    /// Returns the underlying I/O error if the cache directory cannot be
+    /// created or the entry cannot be written.
     pub fn put(&self, key: &str, findings: &[Finding]) -> std::io::Result<()> {
         std::fs::create_dir_all(&self.dir)?;
         let envelope = Envelope {

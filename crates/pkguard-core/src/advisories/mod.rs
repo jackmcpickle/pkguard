@@ -59,6 +59,14 @@ fn parse_output(
     }
 }
 
+/// Run a manager's own audit command and turn its output into advisories,
+/// serving a cached result when the lockfile digest still matches.
+///
+/// # Errors
+///
+/// Returns [`AdvisoryError::Incomplete`] when the audit could not produce a
+/// trustworthy result — an empty or unparseable report. An audit that ran and
+/// found nothing is a success with no findings, not an error.
 pub async fn run_manager_advisories(
     project_root: &Path,
     manager: &DetectedManager,
@@ -83,7 +91,7 @@ pub async fn run_manager_advisories(
         if !opts.refresh && !opts.no_cache {
             if let Some(mut findings) = cache.get(key) {
                 for finding in &mut findings {
-                    finding.path = file_path.clone();
+                    finding.path.clone_from(&file_path);
                 }
                 return Ok(AdvisoryOutcome {
                     findings,

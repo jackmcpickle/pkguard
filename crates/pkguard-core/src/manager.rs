@@ -2,9 +2,11 @@ use crate::fix::ConfigFormat;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-/// The single registry of package-manager knowledge. Every capability is an
-/// exhaustive `match`, so adding a manager without wiring a consumer is a
-/// compile error (the TS version kept three hand-synced registries).
+/// The single registry of package-manager knowledge.
+///
+/// Every capability is an exhaustive `match`, so adding a manager without
+/// wiring a consumer is a compile error (the TS version kept three hand-synced
+/// registries).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Manager {

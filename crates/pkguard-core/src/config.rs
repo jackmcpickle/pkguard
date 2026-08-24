@@ -72,6 +72,12 @@ pub struct ConfigFile {
     pub manager: BTreeMap<String, PolicyOverrides>,
 }
 
+/// Parse a `pkguard.toml` config file.
+///
+/// # Errors
+///
+/// Returns the `toml` deserialization error if `text` is not valid TOML or
+/// does not match the config schema.
 pub fn parse_config(text: &str) -> Result<ConfigFile, toml::de::Error> {
     toml::from_str(text)
 }

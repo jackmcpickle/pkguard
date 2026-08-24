@@ -3,6 +3,7 @@ use owo_colors::{OwoColorize, Style};
 use pkguard_core::findings::{Finding, Severity};
 use pkguard_core::pipeline::ScanSummary;
 use pkguard_core::policy::Preset;
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 /// Run-scoped output settings. Per-project data is an argument, not a field —
@@ -111,11 +112,12 @@ pub fn project_block(report: &ProjectReport, opts: &RenderOptions) -> String {
         out.push(' ');
     }
     out.push_str(&paint(&name, Style::new().bold(), opts));
-    out.push_str(&format!(
-        "  {} finding{}\n",
+    let _ = writeln!(
+        out,
+        "  {} finding{}",
         findings.len(),
         if findings.len() == 1 { "" } else { "s" }
-    ));
+    );
     out.push_str(&config_line(preset, config_sources, opts));
 
     let mut settings: Vec<&Finding> = findings.iter().filter(|f| !f.kind.is_advisory()).collect();
@@ -193,10 +195,7 @@ fn write_group(
         return;
     }
     if show_header {
-        out.push_str(&format!(
-            "  {}\n",
-            paint(header, Style::new().dimmed(), opts)
-        ));
+        let _ = writeln!(out, "  {}", paint(header, Style::new().dimmed(), opts));
     }
     for (row, finding) in cells.iter().zip(findings.iter()) {
         let severity = paint(
@@ -207,10 +206,7 @@ fn write_group(
         let manager = format!("{:<w$}", row.1, w = widths.1);
         let code = format!("{:<w$}", row.2, w = widths.2);
         let package = format!("{:<w$}", row.3, w = widths.3);
-        out.push_str(&format!(
-            "  {severity}  {manager}  {code}  {package}  {}\n",
-            row.4
-        ));
+        let _ = writeln!(out, "  {severity}  {manager}  {code}  {package}  {}", row.4);
     }
 }
 
@@ -221,10 +217,7 @@ fn write_fixed_lines(out: &mut String, root: &Path, report: &ProjectReport, opts
     for (file, reason) in &applied.skipped {
         let path = file.strip_prefix(root).unwrap_or(file.as_path());
         let line = format!("skipped  {}: {}", path.display(), reason.as_str());
-        out.push_str(&format!(
-            "  {}\n",
-            paint(&line, Style::new().yellow(), opts)
-        ));
+        let _ = writeln!(out, "  {}", paint(&line, Style::new().yellow(), opts));
     }
     for change in &applied.changes {
         let file = change
@@ -239,10 +232,7 @@ fn write_fixed_lines(out: &mut String, root: &Path, report: &ProjectReport, opts
             change.current,
             change.next
         );
-        out.push_str(&format!(
-            "  {}\n",
-            paint(&line, Style::new().dimmed(), opts)
-        ));
+        let _ = writeln!(out, "  {}", paint(&line, Style::new().dimmed(), opts));
     }
 }
 
@@ -328,7 +318,7 @@ pub fn summary_block(
             opts,
         ));
     }
-    line.push_str(&format!(" · exit {}\n", summary.exit.code()));
+    let _ = writeln!(line, " · exit {}", summary.exit.code());
     line
 }
 

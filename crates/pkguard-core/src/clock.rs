@@ -19,7 +19,7 @@ pub trait Clock: Send + Sync {
 
     /// Whole days since the Unix epoch.
     fn today(&self) -> i64 {
-        (self.now_secs() / SECS_PER_DAY) as i64
+        (self.now_secs() / SECS_PER_DAY).cast_signed()
     }
 }
 
@@ -52,7 +52,7 @@ impl FixedClock {
     #[must_use]
     pub fn at_day(day: i64) -> Self {
         Self {
-            secs: (day.max(0) as u64) * SECS_PER_DAY,
+            secs: day.max(0).cast_unsigned() * SECS_PER_DAY,
         }
     }
 }

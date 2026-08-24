@@ -232,9 +232,7 @@ fn write_inside_root(file: &Path, body: &str, root: &Path) -> Result<(), SkipRea
         return Err(SkipReason::WriteFailed);
     };
     let wrote = {
-        let mut handle = if let Ok(handle) = dir.open_with(&tmp, OpenOptions::new().write(true)) {
-            handle
-        } else {
+        let Ok(mut handle) = dir.open_with(&tmp, OpenOptions::new().write(true)) else {
             let _ = dir.remove_file(&tmp);
             return Err(SkipReason::WriteFailed);
         };
@@ -283,7 +281,8 @@ fn create_temp_sibling(dir: &Dir, relative: &Path) -> Option<PathBuf> {
         let candidate = relative.with_file_name(name);
         match dir.open_with(&candidate, OpenOptions::new().write(true).create_new(true)) {
             Ok(_) => return Some(candidate),
-            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
+            // Name collision: fall through to the next candidate.
+            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {}
             Err(_) => return None,
         }
     }
@@ -346,7 +345,7 @@ fn resolve_path_inner(path: &Path, depth: u8) -> Option<PathBuf> {
         let dest = if target.is_absolute() {
             target
         } else {
-            path.parent().unwrap_or(Path::new(".")).join(target)
+            path.parent().unwrap_or_else(|| Path::new(".")).join(target)
         };
         return resolve_path_inner(&dest, depth + 1);
     }

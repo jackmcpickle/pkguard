@@ -1,6 +1,8 @@
-//! The fix payload a settings finding carries: which file to edit, in which
-//! format, and which key/value edits to make. Pure data — the writers live in
-//! `format`, and the safety rules and disk IO live in `apply`.
+//! The fix payload a settings finding carries.
+//!
+//! Which file to edit, in which format, and which key/value edits to make.
+//! Pure data — the writers live in `format`, and the safety rules and disk IO
+//! live in `apply`.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
