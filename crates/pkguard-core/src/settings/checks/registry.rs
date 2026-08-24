@@ -1,6 +1,7 @@
-use super::{pin_severity, setting_finding};
+use super::{fixable_finding, pin_severity, setting_finding};
 use crate::config::ResolvedSettings;
 use crate::findings::Finding;
+use crate::fix::SettingsFix;
 use crate::manager::Manager;
 use crate::policy::Preset;
 use std::path::Path;
@@ -20,16 +21,27 @@ pub fn check(
     preset: Preset,
     path: &Path,
     manager: Manager,
+    fix: Option<SettingsFix>,
 ) -> Vec<Finding> {
     let current = current_url.map(str::trim).filter(|s| !s.is_empty());
     let Some(current) = current else {
-        return vec![setting_finding(
-            "registry.unpinned",
-            unpinned_message,
-            pin_severity(preset),
-            path,
-            manager,
-        )];
+        return vec![match fix {
+            Some(fix) => fixable_finding(
+                "registry.unpinned",
+                unpinned_message,
+                pin_severity(preset),
+                path,
+                manager,
+                fix,
+            ),
+            None => setting_finding(
+                "registry.unpinned",
+                unpinned_message,
+                pin_severity(preset),
+                path,
+                manager,
+            ),
+        }];
     };
     match settings.registry.as_deref() {
         Some(expected) if !same_registry(current, expected) => vec![setting_finding(

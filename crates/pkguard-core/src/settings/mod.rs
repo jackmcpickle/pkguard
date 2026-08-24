@@ -38,6 +38,8 @@ mod tests {
     use crate::config::{parse_config, resolve_settings, ConfigFile};
     use crate::discover::Role;
     use crate::findings::Severity;
+    use crate::fix::{ConfigEdit, ConfigFormat, ConfigValue, SettingsFix};
+    use std::collections::BTreeMap;
     use std::fs;
     use std::path::PathBuf;
 
@@ -1018,6 +1020,402 @@ registry: https://registry.npmjs.org/
         assert_eq!(
             checks::multiple_pm_findings(&project),
             Vec::<Finding>::new()
+        );
+    }
+
+    fn assert_fix_consistency(findings: &[Finding]) {
+        for finding in findings {
+            assert_eq!(
+                finding.fixable,
+                finding.fix.is_some(),
+                "{} drifted: fixable={} fix={:?}",
+                finding.code,
+                finding.fixable,
+                finding.fix
+            );
+        }
+    }
+
+    fn collect_settings_findings() -> Vec<Finding> {
+        let mut all = Vec::new();
+
+        let npm = fixture();
+        all.extend(audit(&npm, "preset = \"standard\""));
+        fs::write(
+            npm.root.join(".npmrc"),
+            "ignore-scripts=true\ndangerously-allow-all-scripts=true\nallow-git=all\nallow-scripts-pin=false\n",
+        )
+        .unwrap();
+        all.extend(audit(&npm, "preset = \"standard\""));
+        fs::write(
+            npm.root.join("package.json"),
+            r#"{"packageManager":"npm@11.0.0","allowScripts":{"esbuild":true}}"#,
+        )
+        .unwrap();
+        fs::write(npm.root.join(".npmrc"), "ignore-scripts=true\n").unwrap();
+        all.extend(audit(&npm, "preset = \"standard\""));
+        fs::remove_file(npm.root.join("package-lock.json")).unwrap();
+        all.extend(audit(&npm, "preset = \"standard\""));
+        fs::write(
+            npm.root.join(".npmrc"),
+            "registry=https://evil.example.com\n",
+        )
+        .unwrap();
+        all.extend(audit(
+            &npm,
+            "preset = \"strict\"\n[policy]\nregistry = \"https://registry.corp.dev\"",
+        ));
+
+        let pnpm = pnpm_fixture();
+        all.extend(audit_pnpm(&pnpm, "preset = \"standard\""));
+        write_pnpm_workspace(
+            &pnpm,
+            "dangerouslyAllowAllBuilds: true\nonlyBuiltDependencies:\n  - esbuild\nminimumReleaseAgeExclude:\n  - \"*\"\ntrustLockfile: true\n",
+        );
+        all.extend(audit_pnpm(&pnpm, "preset = \"standard\""));
+        pin_pnpm(&pnpm);
+        write_pnpm_workspace(
+            &pnpm,
+            "allowBuilds:\n  esbuild: false\nminimumReleaseAge: 1440\nminimumReleaseAgeStrict: false\nblockExoticSubdeps: false\nstrictDepBuilds: false\naudit:\n  level: high\ntrustPolicy: no-downgrade\ntrustPolicyIgnoreAfter: 129600\nverifyDepsBeforeRun: error\nregistry: https://registry.npmjs.org/\n",
+        );
+        all.extend(audit_pnpm(&pnpm, "preset = \"standard\""));
+        all.extend(audit_pnpm(&pnpm, "preset = \"strict\""));
+
+        let leftover = DetectedManager {
+            manager: Manager::Npm,
+            role: Role::Leftover,
+            lockfile_path: Some(pnpm.root.join("package-lock.json")),
+            config_path: None,
+        };
+        fs::write(pnpm.root.join("package-lock.json"), "leftover").unwrap();
+        all.extend(audit_manager_settings(
+            &pnpm.root,
+            &leftover,
+            &settings_for("preset = \"standard\""),
+        ));
+
+        let yarn = yarn_fixture();
+        all.extend(audit_named(&yarn, yarn_manager(&yarn.root), "yarn"));
+        fs::write(
+            yarn.root.join(".yarnrc.yml"),
+            "enableScripts: true\naudit: false\nnpmAudit: false\nchecksumBehavior: update\nenableStrictSsl: false\nenableHardenedMode: false\nnpmPreapprovedPackages:\n  - \"*\"\n",
+        )
+        .unwrap();
+        all.extend(audit_named(&yarn, yarn_manager(&yarn.root), "yarn"));
+
+        let bun = bun_fixture();
+        all.extend(audit_named(&bun, bun_manager(&bun.root), "bun"));
+
+        let uv = uv_fixture();
+        all.extend(audit_named(&uv, uv_manager(&uv.root), "uv"));
+
+        let cargo = cargo_fixture();
+        all.extend(audit_named(&cargo, cargo_manager(&cargo.root), "cargo"));
+
+        let composer = composer_fixture();
+        fs::write(
+            composer.root.join("composer.json"),
+            r#"{"config":{"allow-plugins":true,"disable-tls":true,"policy":false,"source-fallback":true}}"#,
+        )
+        .unwrap();
+        all.extend(audit_named(
+            &composer,
+            composer_manager(&composer.root),
+            "composer",
+        ));
+
+        let bundler = bundler_fixture();
+        all.extend(audit_named(
+            &bundler,
+            bundler_manager(&bundler.root),
+            "bundler",
+        ));
+
+        let poetry = {
+            let tmp = tempfile::tempdir().unwrap();
+            let root = tmp.path().to_path_buf();
+            fs::write(root.join("pyproject.toml"), "[tool.poetry]\nname = \"x\"\n").unwrap();
+            Fixture { _tmp: tmp, root }
+        };
+        all.extend(audit_named(
+            &poetry,
+            DetectedManager {
+                manager: Manager::Poetry,
+                role: Role::Primary,
+                lockfile_path: None,
+                config_path: Some(poetry.root.join("pyproject.toml")),
+            },
+            "poetry",
+        ));
+
+        all
+    }
+
+    #[test]
+    fn fixable_flag_matches_presence_of_a_fix_for_every_emitted_code() {
+        let findings = collect_settings_findings();
+        assert!(
+            !findings.is_empty(),
+            "fixture sweep produced no findings to check"
+        );
+        assert_fix_consistency(&findings);
+    }
+
+    fn expected_write(manager: Manager) -> (&'static str, ConfigFormat) {
+        match manager {
+            Manager::Npm => (".npmrc", ConfigFormat::Npmrc),
+            Manager::Pnpm => ("pnpm-workspace.yaml", ConfigFormat::Yaml),
+            Manager::Yarn => (".yarnrc.yml", ConfigFormat::Yaml),
+            Manager::Bun => ("bunfig.toml", ConfigFormat::Toml),
+            Manager::Uv => ("pyproject.toml", ConfigFormat::Toml),
+            Manager::Cargo => (".cargo/config.toml", ConfigFormat::Toml),
+            Manager::Composer => ("composer.json", ConfigFormat::Json),
+            Manager::Bundler => (".bundle/config", ConfigFormat::BundleConfig),
+            other => panic!("{other:?} has no write target in this test"),
+        }
+    }
+
+    fn assert_fixes_target(findings: &[Finding], root: &std::path::Path, manager: Manager) {
+        let (rel, format) = expected_write(manager);
+        let expected = root.join(rel);
+        for finding in findings.iter().filter(|f| f.fix.is_some()) {
+            let fix = finding.fix.as_ref().unwrap();
+            assert_eq!(
+                fix.file,
+                expected,
+                "{} targeted {} instead of {}",
+                finding.code,
+                fix.file.display(),
+                expected.display()
+            );
+            assert_eq!(fix.format, format, "{} used {:?}", finding.code, fix.format);
+        }
+    }
+
+    fn assert_manager_fixes(label: &str, fx: &Fixture, manager: DetectedManager) {
+        let findings = audit_named(fx, manager, label);
+        assert!(
+            findings.iter().any(|f| f.fix.is_some()),
+            "{label} produced no fixable findings"
+        );
+        assert_fixes_target(&findings, &fx.root, Manager::from_name(label).unwrap());
+        assert_fix_consistency(&findings);
+    }
+
+    #[test]
+    fn each_manager_fix_targets_its_write_file_and_format() {
+        let npm = fixture();
+        assert_manager_fixes("npm", &npm, npm_manager(&npm.root, true));
+
+        let pnpm = pnpm_fixture();
+        assert_manager_fixes("pnpm", &pnpm, pnpm_manager(&pnpm.root, true));
+
+        let yarn = yarn_fixture();
+        assert_manager_fixes("yarn", &yarn, yarn_manager(&yarn.root));
+
+        let bun = bun_fixture();
+        assert_manager_fixes("bun", &bun, bun_manager(&bun.root));
+
+        let uv = uv_fixture();
+        assert_manager_fixes("uv", &uv, uv_manager(&uv.root));
+
+        let cargo = cargo_fixture();
+        assert_manager_fixes("cargo", &cargo, cargo_manager(&cargo.root));
+
+        let composer = composer_fixture();
+        fs::write(
+            composer.root.join("composer.json"),
+            r#"{"config":{"allow-plugins":true,"disable-tls":true,"policy":false}}"#,
+        )
+        .unwrap();
+        assert_manager_fixes("composer", &composer, composer_manager(&composer.root));
+
+        let bundler = bundler_fixture();
+        assert_manager_fixes("bundler", &bundler, bundler_manager(&bundler.root));
+    }
+
+    #[test]
+    fn npm_scripts_unrestricted_sets_ignore_scripts() {
+        let fx = fixture();
+        let finding = audit(&fx, "preset = \"standard\"")
+            .into_iter()
+            .find(|f| f.code == "scripts.unrestricted")
+            .unwrap();
+        assert_eq!(
+            finding.fix,
+            Some(SettingsFix::new(
+                fx.root.join(".npmrc"),
+                ConfigFormat::Npmrc,
+                vec![ConfigEdit::set("ignore-scripts", true)],
+            ))
+        );
+    }
+
+    #[test]
+    fn pnpm_scripts_unrestricted_includes_legacy_build_unsets() {
+        let fx = pnpm_fixture();
+        write_pnpm_workspace(
+            &fx,
+            "dangerouslyAllowAllBuilds: true\nonlyBuiltDependencies:\n  - esbuild\n",
+        );
+        let finding = audit_pnpm(&fx, "preset = \"standard\"")
+            .into_iter()
+            .find(|f| f.code == "scripts.unrestricted")
+            .unwrap();
+        let fix = finding.fix.expect("scripts.unrestricted must be fixable");
+        assert_eq!(fix.file, fx.root.join("pnpm-workspace.yaml"));
+        assert_eq!(fix.format, ConfigFormat::Yaml);
+        assert_eq!(
+            fix.edits,
+            vec![
+                ConfigEdit::set("dangerouslyAllowAllBuilds", false),
+                ConfigEdit::unset("onlyBuiltDependencies"),
+                ConfigEdit::set(
+                    "allowBuilds",
+                    ConfigValue::Table(BTreeMap::from([(
+                        "esbuild".into(),
+                        ConfigValue::Bool(true)
+                    )]))
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn uv_write_target_follows_uv_toml_when_present() {
+        let fx = uv_fixture();
+        fs::write(fx.root.join("uv.toml"), "").unwrap();
+        let findings = audit_named(&fx, uv_manager(&fx.root), "uv");
+        let min_age = findings
+            .iter()
+            .find(|f| f.code == "min-age.disabled")
+            .unwrap();
+        let fix = min_age
+            .fix
+            .as_ref()
+            .expect("min-age.disabled must be fixable");
+        assert_eq!(fix.file, fx.root.join("uv.toml"));
+        assert_eq!(fix.format, ConfigFormat::Toml);
+        assert!(
+            fix.edits.iter().any(|edit| edit.key() == "exclude-newer"),
+            "uv.toml keys are unprefixed: {:?}",
+            fix.edits
+        );
+
+        let py = uv_fixture();
+        let findings = audit_named(&py, uv_manager(&py.root), "uv");
+        let min_age = findings
+            .iter()
+            .find(|f| f.code == "min-age.disabled")
+            .unwrap();
+        let fix = min_age
+            .fix
+            .as_ref()
+            .expect("min-age.disabled must be fixable");
+        assert_eq!(fix.file, py.root.join("pyproject.toml"));
+        assert!(
+            fix.edits
+                .iter()
+                .any(|edit| edit.key() == "tool.uv.exclude-newer"),
+            "pyproject.toml keys use tool.uv. prefix: {:?}",
+            fix.edits
+        );
+    }
+
+    #[test]
+    fn listed_unfixable_codes_carry_no_fix_even_when_the_manager_can_write() {
+        const UNFIXABLE: &[&str] = &[
+            "pm.missing-binary",
+            "pm.unsupported",
+            "pm.multiple-node",
+            "pm.multiple-python",
+            "python.not-uv",
+            "lockfile.missing",
+            "lockfile.leftover",
+            "overrides.present",
+            "overrides.legacy-location",
+            "scripts.allowlist-advisory",
+            "scripts.allowlist-masked",
+            "min-age.exclude-all",
+            "registry.mismatch",
+            "layout.pnp",
+            "layout.shamefully-hoist",
+            "cache.path-committed",
+            "advisory.unknown",
+            "agentic.cache-disabled",
+        ];
+        let findings = collect_settings_findings();
+        let seen: Vec<&str> = findings
+            .iter()
+            .map(|f| f.code.as_str())
+            .filter(|code| UNFIXABLE.contains(code))
+            .collect();
+        assert!(
+            seen.contains(&"lockfile.missing"),
+            "sweep must emit lockfile.missing"
+        );
+        assert!(
+            seen.contains(&"registry.mismatch"),
+            "sweep must emit registry.mismatch"
+        );
+        assert!(
+            seen.contains(&"lockfile.leftover"),
+            "sweep must emit lockfile.leftover"
+        );
+        assert!(
+            seen.contains(&"python.not-uv"),
+            "sweep must emit python.not-uv"
+        );
+        assert!(
+            seen.contains(&"scripts.allowlist-masked"),
+            "sweep must emit scripts.allowlist-masked"
+        );
+        assert!(
+            seen.contains(&"min-age.exclude-all"),
+            "sweep must emit min-age.exclude-all"
+        );
+        for finding in findings
+            .iter()
+            .filter(|f| UNFIXABLE.contains(&f.code.as_str()))
+        {
+            assert!(
+                finding.fix.is_none(),
+                "{} must stay unfixable, got {:?}",
+                finding.code,
+                finding.fix
+            );
+            assert!(!finding.fixable, "{} must stay unfixable", finding.code);
+        }
+    }
+
+    #[test]
+    fn registry_unpinned_without_a_configured_registry_has_no_fix() {
+        let fx = fixture();
+        let finding = audit(&fx, "preset = \"standard\"")
+            .into_iter()
+            .find(|f| f.code == "registry.unpinned")
+            .unwrap();
+        assert!(finding.fix.is_none());
+        assert!(!finding.fixable);
+    }
+
+    #[test]
+    fn registry_unpinned_with_a_configured_registry_writes_that_url() {
+        let fx = fixture();
+        let finding = audit(
+            &fx,
+            "preset = \"standard\"\n[policy]\nregistry = \"https://registry.corp.dev/\"",
+        )
+        .into_iter()
+        .find(|f| f.code == "registry.unpinned")
+        .unwrap();
+        assert_eq!(
+            finding.fix,
+            Some(SettingsFix::new(
+                fx.root.join(".npmrc"),
+                ConfigFormat::Npmrc,
+                vec![ConfigEdit::set("registry", "https://registry.corp.dev/")],
+            ))
         );
     }
 }

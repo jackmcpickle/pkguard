@@ -1,4 +1,6 @@
+use crate::fix::ConfigFormat;
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
 /// The single registry of package-manager knowledge. Every capability is an
 /// exhaustive `match`, so adding a manager without wiring a consumer is a
@@ -228,6 +230,46 @@ impl Manager {
             Manager::Poetry | Manager::Pip | Manager::Pipenv => None,
         }
     }
+
+    /// File `--fix` writes for this manager. uv prefers `uv.toml` when that
+    /// file is already present; otherwise it writes `[tool.uv]` in
+    /// `pyproject.toml`.
+    pub fn write_target(self, project_root: &Path) -> Option<(PathBuf, ConfigFormat)> {
+        match self {
+            Manager::Npm => Some((project_root.join(".npmrc"), ConfigFormat::Npmrc)),
+            Manager::Pnpm => Some((project_root.join("pnpm-workspace.yaml"), ConfigFormat::Yaml)),
+            Manager::Yarn => Some((project_root.join(".yarnrc.yml"), ConfigFormat::Yaml)),
+            Manager::Bun => Some((project_root.join("bunfig.toml"), ConfigFormat::Toml)),
+            Manager::Uv => {
+                let uv_toml = project_root.join("uv.toml");
+                if uv_toml.is_file() {
+                    Some((uv_toml, ConfigFormat::Toml))
+                } else {
+                    Some((project_root.join("pyproject.toml"), ConfigFormat::Toml))
+                }
+            }
+            Manager::Cargo => Some((project_root.join(".cargo/config.toml"), ConfigFormat::Toml)),
+            Manager::Composer => Some((project_root.join("composer.json"), ConfigFormat::Json)),
+            Manager::Bundler => Some((
+                project_root.join(".bundle/config"),
+                ConfigFormat::BundleConfig,
+            )),
+            Manager::Poetry | Manager::Pip | Manager::Pipenv => None,
+        }
+    }
+
+    /// Dotted-key prefix for uv settings. `pyproject.toml` stores them under
+    /// `[tool.uv]`; `uv.toml` is a bare uv config.
+    pub fn uv_key_prefix(write_file: &Path) -> &'static str {
+        if write_file
+            .file_name()
+            .is_some_and(|name| name == "pyproject.toml")
+        {
+            "tool.uv."
+        } else {
+            ""
+        }
+    }
 }
 
 #[cfg(test)]
@@ -266,6 +308,11 @@ mod tests {
         );
         assert_eq!(Manager::Npm.lockfile_names(), &["package-lock.json"]);
         assert_eq!(Manager::Npm.write_config_name(), Some(".npmrc"));
+        let (file, format) = Manager::Npm
+            .write_target(std::path::Path::new("/p"))
+            .unwrap();
+        assert_eq!(file, std::path::PathBuf::from("/p/.npmrc"));
+        assert_eq!(format, crate::fix::ConfigFormat::Npmrc);
     }
 
     #[test]

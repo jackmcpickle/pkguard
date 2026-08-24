@@ -240,6 +240,7 @@ mod tests {
             package: package.map(str::to_string),
             current_version: package.map(|_| "1.0.0".into()),
             fix_version: fix.map(str::to_string),
+            fix: None,
         }
     }
 

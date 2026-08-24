@@ -1,6 +1,7 @@
-use super::setting_finding;
+use super::{bundle_fix, fixable_finding, npmrc_fix, setting_finding, toml_fix, yaml_fix};
 use crate::config::ResolvedSettings;
 use crate::findings::{Finding, Severity};
+use crate::fix::ConfigEdit;
 use crate::format::yaml::{self, Yaml};
 use crate::manager::{Manager, PackageManagerPin};
 use crate::policy::Preset;
@@ -21,7 +22,7 @@ pub fn npm_check(
     if days.is_some_and(|d| d >= f64::from(settings.min_release_age_days)) {
         return Vec::new();
     }
-    vec![setting_finding(
+    vec![fixable_finding(
         "min-age.disabled",
         format!(
             "min-release-age must be at least {} days",
@@ -30,6 +31,13 @@ pub fn npm_check(
         Severity::High,
         npmrc_path,
         Manager::Npm,
+        npmrc_fix(
+            npmrc_path,
+            vec![ConfigEdit::set(
+                "min-release-age",
+                settings.min_release_age_days.to_string(),
+            )],
+        ),
     )]
 }
 
@@ -80,7 +88,7 @@ pub fn pnpm_checks(
         Some(raw) => parse_pnpm_age_hours(raw),
     };
     if !hours.is_some_and(|h| h >= required_hours) {
-        findings.push(setting_finding(
+        findings.push(fixable_finding(
             "min-age.disabled",
             format!(
                 "minimumReleaseAge must be at least {} minutes",
@@ -89,15 +97,26 @@ pub fn pnpm_checks(
             Severity::High,
             yaml_path,
             Manager::Pnpm,
+            yaml_fix(
+                yaml_path,
+                vec![ConfigEdit::set(
+                    "minimumReleaseAge",
+                    i64::from(settings.min_release_age_days) * 1_440,
+                )],
+            ),
         ));
     }
     if yaml::is_false(yaml::get(yaml, "minimumReleaseAgeStrict")) {
-        findings.push(setting_finding(
+        findings.push(fixable_finding(
             "min-age.non-strict",
             "pnpm minimumReleaseAgeStrict must not be false",
             Severity::High,
             yaml_path,
             Manager::Pnpm,
+            yaml_fix(
+                yaml_path,
+                vec![ConfigEdit::set("minimumReleaseAgeStrict", true)],
+            ),
         ));
     }
     if yaml::is_blanket_exclude(yaml::get(yaml, "minimumReleaseAgeExclude")) {
@@ -112,12 +131,16 @@ pub fn pnpm_checks(
     if settings.preset == Preset::Strict
         && !yaml::is_false(yaml::get(yaml, "minimumReleaseAgeIgnoreMissingTime"))
     {
-        findings.push(setting_finding(
+        findings.push(fixable_finding(
             "min-age.missing-time",
             "minimumReleaseAgeIgnoreMissingTime must be false to fail closed",
             Severity::Moderate,
             yaml_path,
             Manager::Pnpm,
+            yaml_fix(
+                yaml_path,
+                vec![ConfigEdit::set("minimumReleaseAgeIgnoreMissingTime", false)],
+            ),
         ));
     }
     findings
@@ -144,7 +167,7 @@ pub fn yarn_checks(
         Some(raw) => parse_pnpm_age_hours(raw),
     };
     if !hours.is_some_and(|h| h >= required_hours) {
-        findings.push(setting_finding(
+        findings.push(fixable_finding(
             "min-age.disabled",
             format!(
                 "npmMinimalAgeGate must be at least {} minutes",
@@ -153,6 +176,13 @@ pub fn yarn_checks(
             Severity::High,
             yarnrc_path,
             Manager::Yarn,
+            yaml_fix(
+                yarnrc_path,
+                vec![ConfigEdit::set(
+                    "npmMinimalAgeGate",
+                    i64::from(settings.min_release_age_days) * 1_440,
+                )],
+            ),
         ));
     }
     if yaml::is_blanket_exclude(yaml::get(yarnrc, "npmPreapprovedPackages")) {
@@ -181,12 +211,19 @@ pub fn bun_checks(
         .and_then(|t| t.get("minimumReleaseAge"))
         .and_then(|v| v.as_float().or_else(|| v.as_integer().map(|n| n as f64)));
     if !seconds.is_some_and(|s| s >= required_seconds) {
-        findings.push(setting_finding(
+        findings.push(fixable_finding(
             "min-age.disabled",
             format!("install.minimumReleaseAge must be at least {required_seconds} seconds"),
             Severity::High,
             bunfig_path,
             Manager::Bun,
+            toml_fix(
+                bunfig_path,
+                vec![ConfigEdit::set(
+                    "install.minimumReleaseAge",
+                    i64::from(settings.min_release_age_days) * 86_400,
+                )],
+            ),
         ));
     }
     let excludes = install.and_then(|t| t.get("minimumReleaseAgeExcludes"));
@@ -273,13 +310,14 @@ pub fn uv_checks(
     settings: &ResolvedSettings,
     cfg: &toml::Value,
     config_path: &Path,
+    key_prefix: &str,
 ) -> Vec<Finding> {
     if settings.min_release_age_days == 0 {
         return Vec::new();
     }
     let mut findings = Vec::new();
     if !uv_exclude_newer_meets(cfg.get("exclude-newer"), settings.min_release_age_days) {
-        findings.push(setting_finding(
+        findings.push(fixable_finding(
             "min-age.disabled",
             format!(
                 "exclude-newer must meet {} days",
@@ -288,6 +326,13 @@ pub fn uv_checks(
             Severity::High,
             config_path,
             Manager::Uv,
+            toml_fix(
+                config_path,
+                vec![ConfigEdit::set(
+                    format!("{key_prefix}exclude-newer"),
+                    i64::from(settings.min_release_age_days),
+                )],
+            ),
         ));
     }
     if toml_is_blanket(cfg.get("exclude-newer-package")) {
@@ -300,6 +345,14 @@ pub fn uv_checks(
         ));
     }
     findings
+}
+
+fn cargo_duration(days: u32) -> String {
+    if days.is_multiple_of(7) {
+        format!("{}w", days / 7)
+    } else {
+        format!("{days}d")
+    }
 }
 
 pub fn cargo_check(
@@ -321,7 +374,7 @@ pub fn cargo_check(
     if hours.is_some_and(|h| h / 24.0 >= f64::from(settings.min_release_age_days)) {
         Vec::new()
     } else {
-        vec![setting_finding(
+        vec![fixable_finding(
             "min-age.disabled",
             format!(
                 "install.minimum-release-age must meet {} days",
@@ -330,6 +383,13 @@ pub fn cargo_check(
             Severity::High,
             config_path,
             Manager::Cargo,
+            toml_fix(
+                config_path,
+                vec![ConfigEdit::set(
+                    "install.minimum-release-age",
+                    cargo_duration(settings.min_release_age_days),
+                )],
+            ),
         )]
     }
 }
@@ -345,7 +405,7 @@ pub fn bundler_check(
     if cooldown.is_some_and(|days| days >= f64::from(settings.min_release_age_days)) {
         Vec::new()
     } else {
-        vec![setting_finding(
+        vec![fixable_finding(
             "min-age.disabled",
             format!(
                 "BUNDLE_COOLDOWN must be at least {} days",
@@ -354,6 +414,13 @@ pub fn bundler_check(
             Severity::High,
             config_path,
             Manager::Bundler,
+            bundle_fix(
+                config_path,
+                vec![ConfigEdit::set(
+                    "BUNDLE_COOLDOWN",
+                    settings.min_release_age_days.to_string(),
+                )],
+            ),
         )]
     }
 }

@@ -1,6 +1,7 @@
-use super::setting_finding;
+use super::{fixable_finding, npmrc_fix, setting_finding, yaml_fix};
 use crate::config::ResolvedSettings;
 use crate::findings::{Finding, Severity};
+use crate::fix::{ConfigEdit, ConfigValue};
 use crate::format::yaml::{self, Yaml};
 use crate::manager::{Manager, PackageManagerPin};
 use std::collections::BTreeMap;
@@ -17,12 +18,21 @@ pub fn npm_check(
         .iter()
         .any(|key| npmrc.get(*key).map(String::as_str) == Some("all"));
     if settings.ignore_scripts && allows_non_registry {
-        vec![setting_finding(
+        vec![fixable_finding(
             "source.non-registry",
             "allow-git, allow-remote, allow-file, and allow-directory must not be set to all",
             Severity::High,
             npmrc_path,
             Manager::Npm,
+            npmrc_fix(
+                npmrc_path,
+                vec![
+                    ConfigEdit::set("allow-directory", "none"),
+                    ConfigEdit::set("allow-file", "none"),
+                    ConfigEdit::set("allow-git", "none"),
+                    ConfigEdit::set("allow-remote", "none"),
+                ],
+            ),
         )]
     } else {
         Vec::new()
@@ -31,12 +41,13 @@ pub fn npm_check(
 
 pub fn pnpm_check(yaml: &Yaml, yaml_path: &Path) -> Vec<Finding> {
     if yaml::is_false(yaml::get(yaml, "blockExoticSubdeps")) {
-        vec![setting_finding(
+        vec![fixable_finding(
             "source.non-registry",
             "pnpm blockExoticSubdeps must not be false",
             Severity::High,
             yaml_path,
             Manager::Pnpm,
+            yaml_fix(yaml_path, vec![ConfigEdit::set("blockExoticSubdeps", true)]),
         )]
     } else {
         Vec::new()
@@ -71,12 +82,19 @@ pub fn yarn_git_check(
     } else {
         "yarn approvedGitRepositories must not allow every git repository"
     };
-    vec![setting_finding(
+    vec![fixable_finding(
         "source.git-unrestricted",
         message,
         Severity::High,
         yarnrc_path,
         Manager::Yarn,
+        yaml_fix(
+            yarnrc_path,
+            vec![ConfigEdit::set(
+                "approvedGitRepositories",
+                ConfigValue::List(Vec::new()),
+            )],
+        ),
     )]
 }
 

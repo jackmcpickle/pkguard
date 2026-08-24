@@ -41,6 +41,9 @@ pub async fn run(args: ScanArgs) -> i32 {
         no_cache: args.no_cache,
         cache_dir: cache_dir(),
         user_config: user_config_path(),
+        no_audit: false,
+        fix: false,
+        force: false,
     };
 
     let mut rx = scan(root, Arc::new(TokioRunner), opts);
@@ -80,6 +83,7 @@ pub async fn run(args: ScanArgs) -> i32 {
                 incomplete,
                 preset,
                 config_sources,
+                applied: _,
             } => {
                 finished += 1;
                 for finding in &findings {

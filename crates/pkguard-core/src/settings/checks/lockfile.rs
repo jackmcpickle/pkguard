@@ -1,5 +1,6 @@
-use super::setting_finding;
+use super::{fixable_finding, setting_finding, yaml_fix};
 use crate::findings::{Finding, FindingKind, Severity};
+use crate::fix::ConfigEdit;
 use crate::format::yaml::{self, Yaml};
 use crate::manager::{Manager, PackageManagerPin};
 use std::path::Path;
@@ -39,6 +40,7 @@ pub fn leftover(path: &Path, manager: Manager) -> Finding {
         package: None,
         current_version: None,
         fix_version: None,
+        fix: None,
     }
 }
 
@@ -54,17 +56,19 @@ pub fn unsupported(path: &Path, manager: Manager) -> Finding {
         package: None,
         current_version: None,
         fix_version: None,
+        fix: None,
     }
 }
 
 pub fn pnpm_trust_bypass(yaml: &Yaml, yaml_path: &Path) -> Vec<Finding> {
     if yaml::is_true(yaml::first(yaml, &["trustLockfile", "trust-lockfile"])) {
-        vec![setting_finding(
+        vec![fixable_finding(
             "lockfile.trust-bypass",
             "pnpm trustLockfile must not be true",
             Severity::High,
             yaml_path,
             Manager::Pnpm,
+            yaml_fix(yaml_path, vec![ConfigEdit::set("trustLockfile", false)]),
         )]
     } else {
         Vec::new()
@@ -84,12 +88,16 @@ pub fn pnpm_run_verify(
     if verify.is_some_and(|value| value.eq_ignore_ascii_case("error")) {
         Vec::new()
     } else {
-        vec![setting_finding(
+        vec![fixable_finding(
             "lockfile.run-verify",
             "pnpm verifyDepsBeforeRun must be error",
             Severity::High,
             yaml_path,
             Manager::Pnpm,
+            yaml_fix(
+                yaml_path,
+                vec![ConfigEdit::set("verifyDepsBeforeRun", "error")],
+            ),
         )]
     }
 }
