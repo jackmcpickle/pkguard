@@ -161,34 +161,37 @@ fn is_forbidden_write(file: &Path, root: &Path) -> bool {
     if !is_inside(&normalize(&absolute), &lexical_root) {
         return true;
     }
-    !is_inside(&resolve_path(&absolute), &resolve_path(root))
+    match (resolve_path(&absolute), resolve_path(root)) {
+        (Some(file), Some(resolved_root)) => !is_inside(&file, &resolved_root),
+        _ => true,
+    }
 }
 
 /// Resolve existing prefixes so a symlink inside the project that points
 /// outside it is treated as an escape. Missing path tails stay lexical.
-/// Broken symlinks are followed by their link text, not reconstructed
-/// under the project as if they were ordinary missing files.
-fn resolve_path(path: &Path) -> PathBuf {
+/// Broken symlinks are followed by their link text. An unresolved chain
+/// (cycle or depth cap) is `None` so the write is refused.
+fn resolve_path(path: &Path) -> Option<PathBuf> {
     resolve_path_inner(path, 0)
 }
 
-fn resolve_path_inner(path: &Path, depth: u8) -> PathBuf {
+const SYMLINK_DEPTH: u8 = 8;
+
+fn resolve_path_inner(path: &Path, depth: u8) -> Option<PathBuf> {
     if let Ok(real) = std::fs::canonicalize(path) {
-        return real;
+        return Some(real);
     }
-    if depth < 8 {
-        if let Ok(meta) = std::fs::symlink_metadata(path) {
-            if meta.file_type().is_symlink() {
-                if let Ok(target) = std::fs::read_link(path) {
-                    let dest = if target.is_absolute() {
-                        target
-                    } else {
-                        path.parent().unwrap_or(Path::new(".")).join(target)
-                    };
-                    return resolve_path_inner(&dest, depth + 1);
-                }
-            }
+    if std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
+        if depth >= SYMLINK_DEPTH {
+            return None;
         }
+        let target = std::fs::read_link(path).ok()?;
+        let dest = if target.is_absolute() {
+            target
+        } else {
+            path.parent().unwrap_or(Path::new(".")).join(target)
+        };
+        return resolve_path_inner(&dest, depth + 1);
     }
     let mut cur = path.to_path_buf();
     let mut suffix = Vec::new();
@@ -207,18 +210,18 @@ fn resolve_path_inner(path: &Path, depth: u8) -> PathBuf {
             None => break,
         }
     }
-    if depth < 8 && std::fs::symlink_metadata(&cur).is_ok_and(|m| m.file_type().is_symlink()) {
-        let mut dest = resolve_path_inner(&cur, depth + 1);
+    if std::fs::symlink_metadata(&cur).is_ok_and(|m| m.file_type().is_symlink()) {
+        let mut dest = resolve_path_inner(&cur, depth)?;
         for part in suffix.into_iter().rev() {
             dest.push(part);
         }
-        return dest;
+        return Some(dest);
     }
     let mut base = std::fs::canonicalize(&cur).unwrap_or_else(|_| normalize(&cur));
     for part in suffix.into_iter().rev() {
         base.push(part);
     }
-    base
+    Some(base)
 }
 
 fn is_inside(file: &Path, root: &Path) -> bool {
@@ -457,6 +460,34 @@ mod tests {
             !outside.exists(),
             "write must not create the outside target"
         );
+    }
+
+    #[test]
+    fn a_long_broken_symlink_chain_escaping_the_project_is_dropped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("proj");
+        let outside = tmp.path().join("outside");
+        fs::create_dir(&root).unwrap();
+        let mut target = outside.clone();
+        for i in 0..12 {
+            let link = root.join(format!("hop{i}"));
+            std::os::unix::fs::symlink(&target, &link).unwrap();
+            target = link;
+        }
+        let npmrc = root.join(".npmrc");
+        std::os::unix::fs::symlink(&target, &npmrc).unwrap();
+        let findings = [finding(
+            &root,
+            npmrc.clone(),
+            vec![ConfigEdit::set("ignore-scripts", true)],
+        )];
+        let plan = plan_fixes(&project(&root, None), &findings);
+        assert!(
+            plan.files.is_empty(),
+            "deep symlink chain must not be planned"
+        );
+        assert_eq!(plan.skipped, vec![(npmrc, SkipReason::Forbidden)]);
+        assert!(!outside.exists());
     }
 
     #[test]
