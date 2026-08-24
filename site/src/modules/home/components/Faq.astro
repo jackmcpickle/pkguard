@@ -1,0 +1,37 @@
+---
+import { FAQ_ITEMS } from "@/modules/home/faq";
+---
+
+<section
+    id="faq"
+    class="border-t border-hairline bg-canvas-soft"
+    aria-labelledby="faq-heading"
+>
+    <div
+        class="mx-auto grid max-w-[1400px] gap-12 px-4 py-20 sm:px-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-start"
+    >
+        <div>
+            <h2
+                id="faq-heading"
+                class="text-3xl leading-tight font-normal tracking-tight md:text-5xl md:leading-[1.1]"
+            >
+                Questions and&nbsp;answers.
+            </h2>
+            <p class="mt-6 max-w-[42ch] text-base leading-6 text-body-mid">
+                The short answers. The docs go deeper.
+            </p>
+        </div>
+        <div class="flex flex-col">
+            {
+                FAQ_ITEMS.map((item) => (
+                    <article class="border-t border-hairline py-6 first:border-t-0 first:pt-0">
+                        <h3 class="text-lg leading-7 text-ink">{item.question}</h3>
+                        <p class="mt-2 max-w-[62ch] text-sm leading-6 text-body-mid">
+                            {item.answer}
+                        </p>
+                    </article>
+                ))
+            }
+        </div>
+    </div>
+</section>

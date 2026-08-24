@@ -12,9 +12,15 @@ import { BREW_INSTALL } from "@/lib/site";
             >
                 Audit every package manager in the&nbsp;tree.
             </h1>
-            <p class="mt-6 max-w-[36ch] text-lg leading-7 text-body">
-                Finds each package-manager root, reads committed settings, and runs that
-                manager's own&nbsp;audit.
+            <p class="mt-6 max-w-[46ch] text-lg leading-7 text-body">
+                pkguard is a free command-line tool. It scans a folder full of repos. It
+                finds every package manager, reads the settings you keep in git, and runs
+                each manager's own audit. One command covers npm, pnpm, yarn, bun, uv,
+                cargo, composer, and&nbsp;bundler.
+            </p>
+            <p class="mt-4 max-w-[46ch] text-base leading-6 text-body-mid">
+                A scan never writes files. Add <code class="font-mono">--fix</code> when you
+                want it to repair the unsafe settings it&nbsp;finds.
             </p>
             <div class="mt-10 flex flex-col gap-3">
                 <CopyCommand command={BREW_INSTALL} />

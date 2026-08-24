@@ -1,6 +1,8 @@
 # pkguard
 
-> Scan package-manager settings and advisories across a folder of repos. Rust binary. `pkguard scan` does not write files.
+> Scan package-manager settings and advisories across a folder of repos. Rust binary. `pkguard scan` does not write files. Free and open source under the MIT license, maintained by Jack McNicol.
+
+The full version of this file, with every command, flag, preset, and manager, is at https://pkguard.dev/llms-full.txt
 
 ## Install
 
@@ -28,5 +30,7 @@ See https://pkguard.dev/docs/commands/scan for flags from the binary (`pkguard d
 
 - Site: https://pkguard.dev
 - Docs: https://pkguard.dev/docs
+- About and contact: https://pkguard.dev/about
+- Full text for AI: https://pkguard.dev/llms-full.txt
 - GitHub: https://github.com/jackmcpickle/pkguard
 - Releases: https://github.com/jackmcpickle/pkguard/releases

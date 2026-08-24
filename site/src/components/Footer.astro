@@ -1,5 +1,15 @@
 ---
-import { GITHUB_URL, RELEASES_URL, SITE_NAME } from "@/lib/site";
+import {
+    AUTHOR_NAME,
+    AUTHOR_URL,
+    GITHUB_URL,
+    ISSUES_URL,
+    LICENSE_NAME,
+    LICENSE_URL,
+    RELEASES_URL,
+    SITE_NAME,
+    SITE_UPDATED,
+} from "@/lib/site";
 ---
 
 <footer class="border-t border-hairline">
@@ -10,6 +20,18 @@ import { GITHUB_URL, RELEASES_URL, SITE_NAME } from "@/lib/site";
             <p class="font-mono text-sm tracking-[1.4px] uppercase">{SITE_NAME}</p>
             <p class="text-sm leading-5 text-body-mid">
                 Package-manager security audit for a folder of&nbsp;repos.
+            </p>
+            <p class="text-sm leading-5 text-body-mid">
+                Free and open source under the
+                <a href={LICENSE_URL} class="text-body underline" rel="noopener">
+                    {LICENSE_NAME} license
+                </a>. Built by
+                <a href={AUTHOR_URL} class="text-body underline" rel="noopener">
+                    {AUTHOR_NAME}
+                </a>.
+            </p>
+            <p class="text-sm leading-5 text-body-mid">
+                Updated <time datetime={SITE_UPDATED}>{SITE_UPDATED}</time>
             </p>
         </div>
         <div class="flex flex-wrap gap-10">
@@ -37,6 +59,20 @@ import { GITHUB_URL, RELEASES_URL, SITE_NAME } from "@/lib/site";
                     rel="noopener"
                     target="_blank">Releases</a
                 >
+                <a
+                    href={ISSUES_URL}
+                    class="text-sm leading-5 text-body"
+                    rel="noopener"
+                    target="_blank">Issues</a
+                >
+            </nav>
+            <nav class="flex flex-col gap-2" aria-label="Project">
+                <p class="font-mono text-xs tracking-[1.2px] text-body-mid uppercase">
+                    Project
+                </p>
+                <a href="/about" class="text-sm leading-5 text-body">About</a>
+                <a href="/about#contact" class="text-sm leading-5 text-body">Contact</a>
+                <a href="/#faq" class="text-sm leading-5 text-body">FAQ</a>
             </nav>
         </div>
     </div>

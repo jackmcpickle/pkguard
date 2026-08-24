@@ -4,7 +4,7 @@ import Logo from "@/components/Logo.astro";
 import { GITHUB_URL } from "@/lib/site";
 
 interface Props {
-    current?: "home" | "docs";
+    current?: "home" | "docs" | "about";
 }
 
 const { current = "home" } = Astro.props;
@@ -27,6 +27,16 @@ const { current = "home" } = Astro.props;
             >
                 Docs
             </a>
+            <a
+                href="/about"
+                class:list={[
+                    "text-sm leading-5",
+                    current === "about" ? "text-ink" : "text-body-mid hover:text-ink",
+                ]}
+                aria-current={current === "about" ? "page" : undefined}
+            >
+                About
+            </a>
             <GitHubIcon />
         </nav>
         <details class="relative sm:hidden">
@@ -39,6 +49,7 @@ const { current = "home" } = Astro.props;
                 class="absolute right-0 mt-2 flex w-44 flex-col gap-3 rounded-sm border border-hairline bg-canvas-card p-4"
             >
                 <a href="/docs" class="text-sm leading-5 text-ink">Docs</a>
+                <a href="/about" class="text-sm leading-5 text-ink">About</a>
                 <a href={GITHUB_URL} class="text-sm leading-5 text-ink" rel="noopener" target="_blank">
                     GitHub
                 </a>

@@ -3,29 +3,94 @@ import { ClientRouter } from "astro:transitions";
 
 import Footer from "@/components/Footer.astro";
 import Nav from "@/components/Nav.astro";
-import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
+import { APP_VERSION } from "@/lib/catalog";
+import {
+  AUTHOR_NAME,
+  AUTHOR_URL,
+  GITHUB_URL,
+  LICENSE_NAME,
+  LICENSE_URL,
+  SITE_DESCRIPTION,
+  SITE_NAME,
+  SITE_OG_IMAGE,
+  SITE_UPDATED,
+  SITE_URL,
+} from "@/lib/site";
 import "@/styles/global.css";
 
 interface Props {
   title: string;
   description?: string;
-  current?: "home" | "docs";
+  current?: "home" | "docs" | "about";
+  /** Extra JSON-LD nodes merged into the page @graph. */
+  schemas?: Record<string, unknown>[];
 }
 
 const {
   title,
   description = SITE_DESCRIPTION,
   current = "home",
+  schemas = [],
 } = Astro.props;
 const canonicalUrl = new URL(Astro.url.pathname, SITE_URL);
+
+const organization = {
+  "@type": "Organization",
+  "@id": `${SITE_URL}/#organization`,
+  name: SITE_NAME,
+  alternateName: "pkguard project",
+  url: SITE_URL,
+  logo: `${SITE_URL}/favicon.svg`,
+  description:
+    "pkguard is a free, open-source command-line tool that audits package-manager settings and advisories across a folder of repositories.",
+  founder: { "@type": "Person", name: AUTHOR_NAME, url: AUTHOR_URL },
+  sameAs: [GITHUB_URL, AUTHOR_URL],
+  contactPoint: [
+    {
+      "@type": "ContactPoint",
+      contactType: "technical support",
+      url: `${GITHUB_URL}/issues`,
+      availableLanguage: ["English"],
+    },
+  ],
+};
+
+const website = {
+  "@type": "WebSite",
+  "@id": `${SITE_URL}/#website`,
+  name: SITE_NAME,
+  url: SITE_URL,
+  description: SITE_DESCRIPTION,
+  inLanguage: "en",
+  publisher: { "@id": `${SITE_URL}/#organization` },
+};
+
+const software = {
+  "@type": "SoftwareApplication",
+  "@id": `${SITE_URL}/#software`,
+  name: SITE_NAME,
+  applicationCategory: "DeveloperApplication",
+  applicationSubCategory: "Security auditing",
+  description,
+  operatingSystem: "macOS, Linux, Windows",
+  softwareVersion: APP_VERSION,
+  url: SITE_URL,
+  downloadUrl: `${GITHUB_URL}/releases`,
+  license: LICENSE_URL,
+  isAccessibleForFree: true,
+  author: { "@id": `${SITE_URL}/#organization` },
+  publisher: { "@id": `${SITE_URL}/#organization` },
+  offers: {
+    "@type": "Offer",
+    price: "0",
+    priceCurrency: "USD",
+    availability: "https://schema.org/InStock",
+  },
+};
+
 const jsonLd = JSON.stringify({
   "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  applicationCategory: "DeveloperApplication",
-  description,
-  name: SITE_NAME,
-  operatingSystem: "macOS, Linux, Windows",
-  url: SITE_URL,
+  "@graph": [organization, website, software, ...schemas],
 });
 ---
 
@@ -36,12 +101,39 @@ const jsonLd = JSON.stringify({
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
     <meta name="description" content={description} />
+    <meta name="author" content={AUTHOR_NAME} />
+    <meta name="license" content={LICENSE_NAME} />
     <link rel="canonical" href={canonicalUrl} />
+    <link rel="author" href={AUTHOR_URL} />
+    <link rel="license" href={LICENSE_URL} />
+    <link
+      rel="alternate"
+      type="text/plain"
+      href={`${SITE_URL}/llms.txt`}
+      title="llms.txt"
+    />
+    <link
+      rel="alternate"
+      type="text/plain"
+      href={`${SITE_URL}/llms-full.txt`}
+      title="llms-full.txt"
+    />
+    <meta property="og:site_name" content={SITE_NAME} />
+    <meta property="og:locale" content="en" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonicalUrl} />
     <meta property="og:type" content="website" />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:image" content={SITE_OG_IMAGE} />
+    <meta
+      property="og:image:alt"
+      content="A dark metal tree with orange electric veins and packages hanging from the branches."
+    />
+    <meta property="article:modified_time" content={SITE_UPDATED} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={SITE_OG_IMAGE} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>{title}</title>
     <script is:inline type="application/ld+json" set:html={jsonLd} />
