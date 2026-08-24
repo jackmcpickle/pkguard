@@ -249,14 +249,6 @@ fn walk_audit_roots(
     }
 }
 
-pub fn parse_audit_json(
-    stdout: &str,
-    lockfile_path: &str,
-    manager: Manager,
-) -> Result<Vec<Finding>, serde_json::Error> {
-    parse_value(parse_stdout(stdout)?, lockfile_path, manager)
-}
-
 /// Walk an already-parsed audit payload. Takes the `Value` so the dispatcher
 /// can inspect the shape without this module parsing it twice.
 pub(crate) fn parse_value(
@@ -282,6 +274,17 @@ pub(crate) fn parse_value(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Parse then walk. Deliberately not a production entry point: walking a
+    /// payload and *choosing* which walker it needs are separate jobs, and only
+    /// `advisories::parse_output` does the choosing.
+    fn parse_audit_json(
+        stdout: &str,
+        lockfile_path: &str,
+        manager: Manager,
+    ) -> Result<Vec<Finding>, serde_json::Error> {
+        parse_value(parse_stdout(stdout)?, lockfile_path, manager)
+    }
 
     #[test]
     fn parses_yarn_tree_node() {

@@ -1,4 +1,7 @@
-pub mod parse;
+// The parsers are crate-internal: `parse_output` below is the only place a
+// parser is chosen, and reaching one directly bypasses that choice. A caller
+// outside the crate wants `run_manager_advisories`.
+pub(crate) mod parse;
 
 use crate::cache::{lockfile_digest, AdvisoryCache};
 use crate::discover::DetectedManager;
@@ -267,5 +270,82 @@ mod tests {
             .await
             .unwrap();
         assert!(!out.from_cache);
+    }
+}
+
+#[cfg(test)]
+mod dispatch_tests {
+    use super::*;
+
+    /// npm v7 shape, but reported by a manager that normally uses the generic
+    /// walker.
+    const NPM_SHAPED: &str = r#"{
+        "auditReportVersion": 2,
+        "vulnerabilities": {
+            "left-pad": {
+                "name": "left-pad",
+                "severity": "high",
+                "via": [{
+                    "source": 1234,
+                    "name": "left-pad",
+                    "title": "Prototype pollution",
+                    "url": "https://github.com/advisories/GHSA-aaaa-bbbb-cccc",
+                    "severity": "high",
+                    "range": "<1.3.0"
+                }],
+                "range": "<1.3.0",
+                "fixAvailable": {"name": "left-pad", "version": "1.3.0"}
+            }
+        }
+    }"#;
+
+    #[test]
+    fn an_npm_shaped_payload_reaches_the_npm_parser_whatever_the_manager() {
+        // The generic walker would flatten this to a package-level
+        // `advisory.unknown`; the npm parser keeps the advisory id and fix.
+        for manager in [Manager::Yarn, Manager::Bun, Manager::Composer] {
+            let findings = parse_output(manager, NPM_SHAPED, "/p/yarn.lock").unwrap();
+            assert!(
+                findings.iter().any(|f| f.code == "GHSA-aaaa-bbbb-cccc"),
+                "{manager:?} lost the advisory id: {:?}",
+                findings.iter().map(|f| &f.code).collect::<Vec<_>>()
+            );
+            assert!(
+                findings
+                    .iter()
+                    .any(|f| f.fix_version.as_deref() == Some("1.3.0")),
+                "{manager:?} lost the fix version"
+            );
+        }
+    }
+
+    #[test]
+    fn cargos_vulnerabilities_list_still_uses_the_generic_walker() {
+        // `{vulnerabilities: {list: [...]}}` is not npm v7 and must not be
+        // mistaken for it.
+        let stdout = r#"{"vulnerabilities":{"list":[{"advisory":{
+            "id":"RUSTSEC-2024-0001","title":"bad","url":"https://x"},
+            "package":{"name":"foo","version":"0.1.0"}}]}}"#;
+        let findings = parse_output(Manager::Cargo, stdout, "/p/Cargo.lock").unwrap();
+        assert!(
+            findings.iter().any(|f| f.code == "RUSTSEC-2024-0001"),
+            "{findings:?}"
+        );
+    }
+
+    #[test]
+    fn npm_and_pnpm_never_reach_the_generic_walker() {
+        for manager in [Manager::Npm, Manager::Pnpm] {
+            let findings = parse_output(manager, NPM_SHAPED, "/p/package-lock.json").unwrap();
+            assert!(findings.iter().any(|f| f.code == "GHSA-aaaa-bbbb-cccc"));
+        }
+    }
+
+    #[test]
+    fn an_empty_report_is_incomplete_rather_than_clean() {
+        assert!(matches!(
+            parse_output(Manager::Yarn, "   ", "/p/yarn.lock"),
+            Err(AdvisoryError::Incomplete)
+        ));
     }
 }
