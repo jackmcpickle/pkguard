@@ -166,13 +166,37 @@ fn is_forbidden_write(file: &Path, root: &Path) -> bool {
 
 /// Resolve existing prefixes so a symlink inside the project that points
 /// outside it is treated as an escape. Missing path tails stay lexical.
+/// Broken symlinks are followed by their link text, not reconstructed
+/// under the project as if they were ordinary missing files.
 fn resolve_path(path: &Path) -> PathBuf {
+    resolve_path_inner(path, 0)
+}
+
+fn resolve_path_inner(path: &Path, depth: u8) -> PathBuf {
     if let Ok(real) = std::fs::canonicalize(path) {
         return real;
     }
+    if depth < 8 {
+        if let Ok(meta) = std::fs::symlink_metadata(path) {
+            if meta.file_type().is_symlink() {
+                if let Ok(target) = std::fs::read_link(path) {
+                    let dest = if target.is_absolute() {
+                        target
+                    } else {
+                        path.parent().unwrap_or(Path::new(".")).join(target)
+                    };
+                    return resolve_path_inner(&dest, depth + 1);
+                }
+            }
+        }
+    }
     let mut cur = path.to_path_buf();
     let mut suffix = Vec::new();
-    while !cur.exists() {
+    while !cur.exists()
+        && std::fs::symlink_metadata(&cur)
+            .map(|m| !m.file_type().is_symlink())
+            .unwrap_or(true)
+    {
         match cur.file_name() {
             Some(name) => {
                 suffix.push(name.to_os_string());
@@ -182,6 +206,13 @@ fn resolve_path(path: &Path) -> PathBuf {
             }
             None => break,
         }
+    }
+    if depth < 8 && std::fs::symlink_metadata(&cur).is_ok_and(|m| m.file_type().is_symlink()) {
+        let mut dest = resolve_path_inner(&cur, depth + 1);
+        for part in suffix.into_iter().rev() {
+            dest.push(part);
+        }
+        return dest;
     }
     let mut base = std::fs::canonicalize(&cur).unwrap_or_else(|_| normalize(&cur));
     for part in suffix.into_iter().rev() {
@@ -400,6 +431,31 @@ mod tests {
         assert_eq!(
             fs::read_to_string(&outside).unwrap(),
             "ignore-scripts=false\n"
+        );
+    }
+
+    #[test]
+    fn a_broken_symlink_escaping_the_project_root_is_dropped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("proj");
+        let outside = tmp.path().join("outside");
+        fs::create_dir(&root).unwrap();
+        let link = root.join(".npmrc");
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+        let findings = [finding(
+            &root,
+            link.clone(),
+            vec![ConfigEdit::set("ignore-scripts", true)],
+        )];
+        let plan = plan_fixes(&project(&root, None), &findings);
+        assert!(
+            plan.files.is_empty(),
+            "broken symlink escape must not be planned"
+        );
+        assert_eq!(plan.skipped, vec![(link, SkipReason::Forbidden)]);
+        assert!(
+            !outside.exists(),
+            "write must not create the outside target"
         );
     }
 
