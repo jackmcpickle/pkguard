@@ -4,7 +4,7 @@
 
 use super::EditError;
 use crate::fix::{ConfigEdit, ConfigValue};
-use toml_edit::{value as toml_value, Array, DocumentMut, Item, Table};
+use toml_edit::{value as toml_value, Array, DocumentMut, Item, Table, TableLike};
 
 fn to_item(value: &ConfigValue) -> Item {
     match value {
@@ -31,8 +31,9 @@ fn to_item(value: &ConfigValue) -> Item {
 
 /// Walk a dotted path, creating implicit intermediate tables. An implicit
 /// table renders as `[a.b]` rather than an empty `[a]` header, which keeps
-/// `pyproject.toml` edits from adding noise.
-fn set_path(table: &mut Table, key: &str, value: Item) {
+/// `pyproject.toml` edits from adding noise. Inline tables are table-like
+/// too, so a nested set walks them instead of silently dropping the edit.
+fn set_path(table: &mut dyn TableLike, key: &str, value: Item) {
     match key.split_once('.') {
         // Assign through `get_mut` when the key exists: `insert` swaps in a
         // fresh `Key` and drops the comment attached to the old one.
@@ -43,25 +44,28 @@ fn set_path(table: &mut Table, key: &str, value: Item) {
             }
         },
         Some((head, rest)) => {
-            if !table.contains_key(head) || table[head].as_table_like().is_none() {
+            let needs_table = table
+                .get(head)
+                .is_none_or(|item| item.as_table_like().is_none());
+            if needs_table {
                 let mut child = Table::new();
                 child.set_implicit(true);
                 table.insert(head, Item::Table(child));
             }
-            if let Some(child) = table[head].as_table_mut() {
+            if let Some(child) = table.get_mut(head).and_then(Item::as_table_like_mut) {
                 set_path(child, rest, value);
             }
         }
     }
 }
 
-fn unset_path(table: &mut Table, key: &str) {
+fn unset_path(table: &mut dyn TableLike, key: &str) {
     match key.split_once('.') {
         None => {
             table.remove(key);
         }
         Some((head, rest)) => {
-            if let Some(child) = table.get_mut(head).and_then(Item::as_table_mut) {
+            if let Some(child) = table.get_mut(head).and_then(Item::as_table_like_mut) {
                 unset_path(child, rest);
             }
         }
@@ -90,6 +94,18 @@ pub fn edit(raw: &str, edits: &[ConfigEdit]) -> Result<String, EditError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nested_key_updates_an_inline_table() {
+        let raw = "install = { ignoreScripts = false, registry = \"https://r.example\" }\n";
+        let out = edit(raw, &[ConfigEdit::set("install.ignoreScripts", true)]).unwrap();
+        let parsed: toml::Value = toml::from_str(&out).unwrap();
+        assert_eq!(parsed["install"]["ignoreScripts"].as_bool(), Some(true));
+        assert_eq!(
+            parsed["install"]["registry"].as_str(),
+            Some("https://r.example")
+        );
+    }
 
     #[test]
     fn nested_key_is_created_in_an_empty_file() {
