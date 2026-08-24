@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [1.1.2](https://github.com/jackmcpickle/pkguard/compare/v1.1.1...v1.1.2) (2026-08-24)
+
+### Bug Fixes
+
+* **bun:** surface bun audit advisories, which parsed to nothing ([#32](https://github.com/jackmcpickle/pkguard/issues/32)) ([516fff8](https://github.com/jackmcpickle/pkguard/commit/516fff8affb72894782e97a02329953b47437417))
 ## [1.1.1](https://github.com/jackmcpickle/pkguard/compare/v1.1.0...v1.1.1) (2026-08-24)
 ## [1.1.0](https://github.com/jackmcpickle/pkguard/compare/v1.0.3...v1.1.0) (2026-08-24)
 
