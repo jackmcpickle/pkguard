@@ -126,6 +126,11 @@ pub fn layer_configs<'a>(layers: impl IntoIterator<Item = &'a ConfigFile>) -> Co
     out
 }
 
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "one field per independently configurable setting; grouping them \
+              into enums would decouple this from the config schema it mirrors"
+)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedSettings {
     pub preset: Preset,

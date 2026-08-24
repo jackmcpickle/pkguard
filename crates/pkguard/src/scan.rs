@@ -34,6 +34,11 @@ fn color_enabled() -> bool {
     std::env::var_os("NO_COLOR").is_none() && std::io::stdout().is_terminal()
 }
 
+#[expect(
+    clippy::future_not_send,
+    reason = "holds a Box<dyn Reporter> across an await; awaited directly from \
+              main and never spawned, so Send is not required"
+)]
 pub async fn run(args: ScanArgs) -> i32 {
     let root = args.path.clone().unwrap_or_else(|| PathBuf::from("."));
     let opts = ScanOptions {

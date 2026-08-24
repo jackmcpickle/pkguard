@@ -447,7 +447,7 @@ fn current_display(format: ConfigFormat, raw: &str, key: &str) -> String {
             .cloned()
             .unwrap_or_else(|| UNSET.to_string()),
         ConfigFormat::Yaml | ConfigFormat::Toml | ConfigFormat::Json => {
-            walk_dotted(parse_structured(format, raw), key)
+            walk_dotted(&parse_structured(format, raw), key)
         }
     }
 }
@@ -470,8 +470,8 @@ fn parse_structured(format: ConfigFormat, raw: &str) -> serde_json::Value {
     }
 }
 
-fn walk_dotted(value: serde_json::Value, key: &str) -> String {
-    let mut current = &value;
+fn walk_dotted(value: &serde_json::Value, key: &str) -> String {
+    let mut current = value;
     for part in key.split('.') {
         current = match current.get(part) {
             Some(child) => child,

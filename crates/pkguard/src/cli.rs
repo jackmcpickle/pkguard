@@ -33,6 +33,10 @@ pub struct InitArgs {
     pub force: bool,
 }
 
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "clap derives one bool per --flag; the CLI surface is a contract"
+)]
 #[derive(clap::Args)]
 pub struct ScanArgs {
     /// Directory to scan (defaults to the current directory)

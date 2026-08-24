@@ -273,6 +273,11 @@ impl Manager {
     }
 
     #[must_use]
+    #[expect(
+        clippy::match_same_arms,
+        reason = "uv is None for a different reason than the legacy Python three; \
+                  merging the arms would lose that distinction"
+    )]
     pub const fn write_config_name(self) -> Option<&'static str> {
         match self {
             Self::Npm => Some(".npmrc"),

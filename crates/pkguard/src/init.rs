@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 const STARTER: &str = include_str!("config.default.toml");
 
-pub fn run(args: InitArgs) -> i32 {
+pub fn run(args: &InitArgs) -> i32 {
     let Some(target) = resolve_target(args.local) else {
         let _ = writeln!(io::stderr(), "could not resolve the user config directory");
         return 2;

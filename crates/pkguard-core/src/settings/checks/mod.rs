@@ -426,6 +426,10 @@ fn json_bool(value: Option<&serde_json::Value>, fallback: bool) -> bool {
 ///
 /// Named fields rather than a tuple: these are eight adjacent booleans, and
 /// positional destructuring let any two of them be swapped silently.
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "the eight booleans are the point; see the doc comment above"
+)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ComposerSecurity {
     pub allow_plugins_all: bool,

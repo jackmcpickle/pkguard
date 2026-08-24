@@ -254,6 +254,16 @@ fn walk_audit_roots(
 
 /// Walk an already-parsed audit payload. Takes the `Value` so the dispatcher
 /// can inspect the shape without this module parsing it twice.
+///
+/// # Errors
+///
+/// Currently infallible. The `Result` is part of the published signature and
+/// matches the other parsers, which do fail; narrowing it would be a breaking
+/// change for a promise this function may need again.
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "the Result is a published API contract; see the doc comment"
+)]
 pub fn parse_value(
     parsed: Value,
     lockfile_path: &str,

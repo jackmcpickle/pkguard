@@ -45,6 +45,10 @@ pub struct ScanSummary {
     pub exit: ExitCode,
 }
 
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "one field per CLI flag; the mapping from `ScanArgs` is deliberately flat"
+)]
 #[derive(Debug, Clone)]
 pub struct ScanOptions {
     pub preset_override: Option<Preset>,

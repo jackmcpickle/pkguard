@@ -31,7 +31,12 @@ pub fn as_str(value: &Yaml) -> Option<&str> {
     value.as_str()
 }
 
+/// Read a YAML scalar as `f64`, accepting an integer.
 #[must_use]
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "callers compare configured durations, not exact integers"
+)]
 pub fn as_f64(value: &Yaml) -> Option<f64> {
     value.as_f64().or_else(|| value.as_i64().map(|n| n as f64))
 }
