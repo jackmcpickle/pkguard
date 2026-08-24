@@ -1,6 +1,6 @@
 {
   "appName": "pkguard",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "configFileName": ".pkguard.toml",
   "cacheEnvVar": "PKGUARD_CACHE_DIR",
   "userConfigPaths": {
