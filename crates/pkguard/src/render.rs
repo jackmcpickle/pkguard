@@ -214,6 +214,14 @@ fn write_fixed_lines(out: &mut String, root: &Path, report: &ProjectReport, opts
     let Some(applied) = &report.applied else {
         return;
     };
+    for (file, reason) in &applied.skipped {
+        let path = file.strip_prefix(root).unwrap_or(file.as_path());
+        let line = format!("skipped  {}: {}", path.display(), reason.as_str());
+        out.push_str(&format!(
+            "  {}\n",
+            paint(&line, Style::new().yellow(), opts)
+        ));
+    }
     for change in &applied.changes {
         let file = change
             .file

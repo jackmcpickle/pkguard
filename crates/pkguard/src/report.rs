@@ -122,6 +122,9 @@ fn applied_json(applied: &ApplyResult) -> Value {
                 "next": change.next,
             })
         }).collect::<Vec<_>>(),
+        "skipped": applied.skipped.iter().map(|(file, reason)| {
+            json!({"file": file, "reason": reason.as_str()})
+        }).collect::<Vec<_>>(),
         "blocked": match &applied.blocked {
             Some(Blocked::DirtyGit(path)) => json!({"dirtyGit": path}),
             Some(Blocked::Nothing) => json!("nothing"),

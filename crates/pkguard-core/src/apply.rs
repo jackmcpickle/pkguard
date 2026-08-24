@@ -51,8 +51,24 @@ impl FixPlan {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SkipReason {
+    /// The target would be written outside the project root.
     Forbidden,
+    /// The existing file could not be parsed, so it was left alone.
     Unparseable,
+    /// The write itself failed (permissions, a directory in the way, a full
+    /// disk). Reported rather than swallowed, so `--fix` cannot silently
+    /// leave a setting unfixed.
+    WriteFailed,
+}
+
+impl SkipReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SkipReason::Forbidden => "forbidden",
+            SkipReason::Unparseable => "unparseable",
+            SkipReason::WriteFailed => "write failed",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -152,12 +168,16 @@ pub async fn apply_fixes(
     let mut written = Vec::new();
     let mut skipped = plan.skipped.clone();
     for (file, body) in &plan.files {
+        // Re-checked here as well as at plan time: the target could have been
+        // swapped in between. `write_inside_root` is what actually enforces
+        // containment; this only classifies the refusal for reporting.
         if is_forbidden_write(file, &project.root) {
             skipped.push((file.clone(), SkipReason::Forbidden));
             continue;
         }
-        if write_inside_root(file, body, &project.root) {
-            written.push(file.clone());
+        match write_inside_root(file, body, &project.root) {
+            Ok(()) => written.push(file.clone()),
+            Err(reason) => skipped.push((file.clone(), reason)),
         }
     }
     let changes = plan
@@ -184,12 +204,16 @@ pub async fn apply_fixes(
 ///
 /// The body lands in a fresh temp sibling opened `create_new` (`O_EXCL`, which
 /// never follows a symlink), then a sandboxed rename puts it in place.
-fn write_inside_root(file: &Path, body: &str, root: &Path) -> bool {
+///
+/// This is the authoritative containment check — `is_forbidden_write` runs
+/// earlier only so a refusal can be classified and reported before any write
+/// is attempted.
+fn write_inside_root(file: &Path, body: &str, root: &Path) -> Result<(), SkipReason> {
     let Some(relative) = relative_to_root(file, root) else {
-        return false;
+        return Err(SkipReason::Forbidden);
     };
     let Ok(dir) = Dir::open_ambient_dir(root, ambient_authority()) else {
-        return false;
+        return Err(SkipReason::WriteFailed);
     };
     if let Some(parent) = relative.parent().filter(|p| !p.as_os_str().is_empty()) {
         // A parent that is a symlink reports `AlreadyExists` rather than
@@ -198,27 +222,27 @@ fn write_inside_root(file: &Path, body: &str, root: &Path) -> bool {
         match dir.create_dir_all(parent) {
             Ok(()) => {}
             Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {}
-            Err(_) => return false,
+            Err(_) => return Err(SkipReason::WriteFailed),
         }
     }
     let Some(tmp) = create_temp_sibling(&dir, &relative) else {
-        return false;
+        return Err(SkipReason::WriteFailed);
     };
     let wrote = {
         let mut handle = match dir.open_with(&tmp, OpenOptions::new().write(true)) {
             Ok(handle) => handle,
             Err(_) => {
                 let _ = dir.remove_file(&tmp);
-                return false;
+                return Err(SkipReason::WriteFailed);
             }
         };
         handle.write_all(body.as_bytes()).is_ok()
     };
     if wrote && dir.rename(&tmp, &dir, &relative).is_ok() {
-        return true;
+        return Ok(());
     }
     let _ = dir.remove_file(&tmp);
-    false
+    Err(SkipReason::WriteFailed)
 }
 
 /// Lexical path of `file` beneath `root`, or `None` when it is not beneath it.
@@ -739,7 +763,7 @@ mod tests {
             // The body goes to a temp sibling and is renamed over the link.
             // Rename replaces the link rather than following it, so the write
             // lands inside the project and `outside` is never created.
-            assert!(write_inside_root(&npmrc, "ignore-scripts=true\n", &root));
+            assert!(write_inside_root(&npmrc, "ignore-scripts=true\n", &root).is_ok());
             assert!(!outside.exists(), "write followed the swapped destination");
             assert!(
                 !fs::symlink_metadata(&npmrc)
@@ -763,7 +787,7 @@ mod tests {
             std::os::unix::fs::symlink(&outside, &pkg).unwrap();
 
             let npmrc = pkg.join(".npmrc");
-            assert!(!write_inside_root(&npmrc, "ignore-scripts=true\n", &root));
+            assert!(write_inside_root(&npmrc, "ignore-scripts=true\n", &root).is_err());
             assert_eq!(
                 fs::read_dir(&outside).unwrap().count(),
                 0,
@@ -780,7 +804,7 @@ mod tests {
             std::os::unix::fs::symlink("real", root.join("pkg")).unwrap();
 
             let npmrc = root.join("pkg/.npmrc");
-            assert!(write_inside_root(&npmrc, "ignore-scripts=true\n", &root));
+            assert!(write_inside_root(&npmrc, "ignore-scripts=true\n", &root).is_ok());
             assert_eq!(
                 fs::read_to_string(real.join(".npmrc")).unwrap(),
                 "ignore-scripts=true\n"
@@ -800,7 +824,7 @@ mod tests {
             std::os::unix::fs::symlink(&real, root.join("pkg")).unwrap();
 
             let npmrc = root.join("pkg/.npmrc");
-            assert!(!write_inside_root(&npmrc, "ignore-scripts=true\n", &root));
+            assert!(write_inside_root(&npmrc, "ignore-scripts=true\n", &root).is_err());
             assert!(!real.join(".npmrc").exists());
             assert!(tmp_residue(&real).is_empty(), "temp file left behind");
         }
@@ -812,7 +836,7 @@ mod tests {
             fs::create_dir(&root).unwrap();
 
             let escaped = root.join("../outside/.npmrc");
-            assert!(!write_inside_root(&escaped, "ignore-scripts=true\n", &root));
+            assert!(write_inside_root(&escaped, "ignore-scripts=true\n", &root).is_err());
             assert!(!tmp.path().join("outside").exists());
         }
 
@@ -822,7 +846,7 @@ mod tests {
             let root = tmp.path().join("proj");
             fs::create_dir(&root).unwrap();
 
-            assert!(!write_inside_root(&root, "ignore-scripts=true\n", &root));
+            assert!(write_inside_root(&root, "ignore-scripts=true\n", &root).is_err());
         }
 
         #[test]
@@ -831,7 +855,7 @@ mod tests {
             let root = tmp.path();
             let npmrc = root.join("nested/deep/.npmrc");
 
-            assert!(write_inside_root(&npmrc, "ignore-scripts=true\n", root));
+            assert!(write_inside_root(&npmrc, "ignore-scripts=true\n", root).is_ok());
             assert_eq!(fs::read_to_string(&npmrc).unwrap(), "ignore-scripts=true\n");
             assert!(tmp_residue(root.join("nested/deep").as_path()).is_empty());
         }
@@ -1159,5 +1183,41 @@ mod tests {
         assert!(fs::read_to_string(root.join(".npmrc"))
             .unwrap()
             .contains("ignore-scripts=true"));
+    }
+
+    #[tokio::test]
+    async fn a_failed_write_is_reported_as_skipped_not_silently_dropped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        // A directory where the file should go makes the write fail.
+        fs::create_dir(root.join(".npmrc")).unwrap();
+        let findings = [npm_finding(
+            root,
+            vec![ConfigEdit::set("ignore-scripts", true)],
+        )];
+        let plan = plan_fixes(&project(root, None), &findings);
+        let result = apply_fixes(
+            &project(root, None),
+            &plan,
+            &CannedRunner::new(),
+            false,
+            ApplyMode::Write,
+        )
+        .await;
+
+        assert!(result.written.is_empty());
+        assert!(result.changes.is_empty(), "a failed write is not a fix");
+        assert_eq!(
+            result.skipped,
+            vec![(root.join(".npmrc"), SkipReason::WriteFailed)],
+            "the user must be told the write failed"
+        );
+    }
+
+    #[test]
+    fn every_skip_reason_has_a_label() {
+        assert_eq!(SkipReason::Forbidden.as_str(), "forbidden");
+        assert_eq!(SkipReason::Unparseable.as_str(), "unparseable");
+        assert_eq!(SkipReason::WriteFailed.as_str(), "write failed");
     }
 }
