@@ -1,8 +1,9 @@
 use crate::cli::{Format, PresetArg, ScanArgs};
+use pkguard_core::apply::{ApplyResult, Blocked};
 use pkguard_core::exec::TokioRunner;
 use pkguard_core::pipeline::{scan, AuditEvent, ScanOptions};
 use pkguard_core::policy::Preset;
-use serde_json::json;
+use serde_json::{json, Value};
 use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -41,9 +42,10 @@ pub async fn run(args: ScanArgs) -> i32 {
         no_cache: args.no_cache,
         cache_dir: cache_dir(),
         user_config: user_config_path(),
-        no_audit: false,
-        fix: false,
-        force: false,
+        no_audit: args.no_audit,
+        fix: args.fix,
+        force: args.force,
+        dry_run: args.dry_run,
     };
 
     let mut rx = scan(root, Arc::new(TokioRunner), opts);
@@ -61,6 +63,7 @@ pub async fn run(args: ScanArgs) -> i32 {
 
     let mut render_opts = crate::render::RenderOptions {
         color: color_enabled(),
+        audits_skipped: args.no_audit,
         ..Default::default()
     };
     let mut counts = crate::render::SeverityCounts::default();
@@ -92,6 +95,9 @@ pub async fn run(args: ScanArgs) -> i32 {
                 }
                 if let Some(applied) = &applied {
                     render_opts.settings_fixed += applied.changes.len();
+                    if matches!(applied.blocked, Some(Blocked::DirtyGit(_))) {
+                        eprintln!("refusing to write: dirty git tree (use --force)");
+                    }
                 }
                 if human {
                     render_opts.applied = applied;
@@ -110,13 +116,17 @@ pub async fn run(args: ScanArgs) -> i32 {
                         print!("{block}");
                     }
                 } else {
-                    projects_json.push(json!({
+                    let mut project = json!({
                         "root": root,
                         "incomplete": incomplete,
                         "preset": preset,
                         "configSources": config_sources,
                         "findings": findings,
-                    }));
+                    });
+                    if let Some(applied) = &applied {
+                        project["applied"] = applied_json(applied);
+                    }
+                    projects_json.push(project);
                 }
             }
             AuditEvent::Done(summary) => {
@@ -144,4 +154,23 @@ pub async fn run(args: ScanArgs) -> i32 {
         }
     }
     exit
+}
+
+fn applied_json(applied: &ApplyResult) -> Value {
+    json!({
+        "written": applied.written,
+        "changes": applied.changes.iter().map(|change| {
+            json!({
+                "file": change.file,
+                "setting": change.setting,
+                "current": change.current,
+                "next": change.next,
+            })
+        }).collect::<Vec<_>>(),
+        "blocked": match &applied.blocked {
+            Some(Blocked::DirtyGit(path)) => json!({"dirtyGit": path}),
+            Some(Blocked::Nothing) => json!("nothing"),
+            None => Value::Null,
+        },
+    })
 }

@@ -108,8 +108,10 @@ fn command_doc(cmd: &clap::Command) -> Value {
             "description": help_text(arg.get_help()),
         }));
     }
+    let aliases: Vec<String> = cmd.get_all_aliases().map(str::to_string).collect();
     json!({
         "name": cmd.get_name(),
+        "aliases": aliases,
         "summary": help_text(cmd.get_about()),
         "arguments": arguments,
         "flags": flags,
@@ -226,9 +228,20 @@ mod tests {
             "--refresh",
             "--no-cache",
             "--quiet",
+            "--fix",
+            "--force",
+            "--dry-run",
+            "--no-audit",
         ] {
             assert!(flags.contains(&expected), "missing {expected} in {flags:?}");
         }
+        let aliases: Vec<&str> = scan["aliases"]
+            .as_array()
+            .expect("scan aliases")
+            .iter()
+            .map(|a| a.as_str().unwrap())
+            .collect();
+        assert!(aliases.contains(&"audit"), "aliases: {aliases:?}");
     }
 
     #[test]

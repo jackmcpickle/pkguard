@@ -19,7 +19,7 @@ import {
     <DocsHeader
         eyebrow="Agentic checks"
         title="Agentic finding codes"
-        lead="Reported by default. Turn off with [agentic] enabled = false in config. Writes come with the future fix command and stay off unless [agentic] apply = true."
+        lead="Reported by default. Turn off with [agentic] enabled = false in config. --fix writes settings only. [agentic] apply stays off."
     />
     <SectionHeading id="catalog">Catalog</SectionHeading>
     <DocsBody>
@@ -35,8 +35,7 @@ import {
         }))}
     />
     <Note>
-        scan is read-only and never applies these. When the fix command lands, apply
-        writes only the safe edits. It never writes a home-dir store or deletes
-        overrides.
+        scan without --fix is read-only. --fix writes settings files only. It never
+        writes a home-dir store or deletes overrides. [agentic] apply is still off.
     </Note>
 </DocsLayout>

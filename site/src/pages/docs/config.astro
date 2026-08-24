@@ -20,6 +20,7 @@ import {
 const exampleConfig = `preset = "standard"          # relaxed | standard | strict
 managers = ["npm", "cargo"]  # limit which managers are audited
 jobs = 8
+audit = true                 # set false to skip live package-manager audits
 
 [policy]                     # overrides the preset's defaults
 ignore_scripts = true

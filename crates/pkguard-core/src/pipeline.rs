@@ -55,6 +55,7 @@ pub struct ScanOptions {
     pub no_audit: bool,
     pub fix: bool,
     pub force: bool,
+    pub dry_run: bool,
 }
 
 impl Default for ScanOptions {
@@ -69,6 +70,7 @@ impl Default for ScanOptions {
             no_audit: false,
             fix: false,
             force: false,
+            dry_run: false,
         }
     }
 }
@@ -138,9 +140,18 @@ async fn audit_project(
 
     let applied = if opts.fix {
         let plan = crate::apply::plan_fixes(project, &findings);
-        let result = crate::apply::apply_fixes(project, &plan, runner, opts.force).await;
-        findings = collect_settings_findings(project, &config);
-        Some(result)
+        if opts.dry_run {
+            Some(crate::apply::ApplyResult {
+                written: Vec::new(),
+                skipped: plan.skipped.clone(),
+                changes: plan.changes.clone(),
+                blocked: None,
+            })
+        } else {
+            let result = crate::apply::apply_fixes(project, &plan, runner, opts.force).await;
+            findings = collect_settings_findings(project, &config);
+            Some(result)
+        }
     } else {
         None
     };
