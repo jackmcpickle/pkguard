@@ -178,6 +178,7 @@ mod tests {
             kind: FindingKind::Settings,
             code: "scripts.unrestricted".into(),
             message: "m".into(),
+            detail: None,
             severity: Severity::High,
             path: "/p/.npmrc".into(),
             fixable: false,

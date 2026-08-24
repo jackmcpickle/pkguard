@@ -216,6 +216,20 @@ impl Manager {
     /// `settings::audit_manager_settings` and `advisories::parse_output`;
     /// `dump-catalog` reads it so the docs site cannot claim support the
     /// binary does not have.
+    /// The registry `--fix` pins when nothing else names one.
+    ///
+    /// Only the node managers get a default: they all share one well-known
+    /// public registry, so pinning it is a safe no-op that turns off
+    /// `registry.unpinned`. The others have no comparable single answer, so
+    /// their registry stays unfixable until it is configured.
+    #[must_use]
+    pub const fn default_registry(self) -> Option<&'static str> {
+        match self {
+            Self::Npm | Self::Pnpm | Self::Yarn | Self::Bun => Some("https://registry.npmjs.org"),
+            _ => None,
+        }
+    }
+
     #[must_use]
     pub const fn ported(self) -> bool {
         matches!(

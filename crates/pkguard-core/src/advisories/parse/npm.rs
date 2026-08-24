@@ -92,6 +92,9 @@ fn finding(
         kind: FindingKind::Advisory,
         code: super::advisory_code(id),
         message,
+        // npm-shaped reports already resolve the installed and fixed versions
+        // into the row itself, so there is nothing left to spell out below it.
+        detail: None,
         severity,
         path: path.to_string(),
         fixable: fix.is_some(),

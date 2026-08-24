@@ -7,7 +7,7 @@
 use crate::render::{self, RenderOptions, SeverityCounts};
 use pkguard_core::apply::{ApplyResult, Blocked};
 use pkguard_core::findings::Finding;
-use pkguard_core::pipeline::ScanSummary;
+use pkguard_core::pipeline::{ManagerOutcome, ScanSummary};
 use pkguard_core::policy::Preset;
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -16,6 +16,9 @@ use std::path::PathBuf;
 pub struct ProjectReport {
     pub root: PathBuf,
     pub findings: Vec<Finding>,
+    /// Every detected manager and the fate of its advisory audit, in discovery
+    /// order. Drives the per-manager tables and their empty states.
+    pub managers: Vec<ManagerOutcome>,
     pub incomplete: bool,
     pub preset: Preset,
     pub config_sources: Vec<PathBuf>,
@@ -100,6 +103,9 @@ impl Reporter for JsonReporter {
 fn project_json(report: &ProjectReport) -> Value {
     let mut project = json!({
         "root": report.root,
+        "managers": report.managers.iter().map(|outcome| {
+            json!({"manager": outcome.manager.name(), "audit": outcome.audit.as_str()})
+        }).collect::<Vec<_>>(),
         "incomplete": report.incomplete,
         "preset": report.preset,
         "configSources": report.config_sources,
@@ -139,6 +145,7 @@ mod tests {
     use pkguard_core::apply::PlannedChange;
     use pkguard_core::findings::{Finding, FindingKind, Severity};
     use pkguard_core::manager::Manager;
+    use pkguard_core::pipeline::AuditStatus;
     use pkguard_core::policy::ExitCode;
     use std::path::Path;
 
@@ -147,6 +154,7 @@ mod tests {
             kind: FindingKind::Settings,
             code: code.into(),
             message: format!("{code} message"),
+            detail: None,
             severity,
             path: "/p/.npmrc".into(),
             fixable: false,
@@ -162,6 +170,10 @@ mod tests {
         ProjectReport {
             root: PathBuf::from("/scan/app"),
             findings: vec![finding("scripts.enabled", Severity::High)],
+            managers: vec![ManagerOutcome {
+                manager: Manager::Npm,
+                audit: AuditStatus::Audited,
+            }],
             incomplete: false,
             preset: Preset::Standard,
             config_sources: vec![],

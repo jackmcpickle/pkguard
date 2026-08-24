@@ -1,5 +1,6 @@
-use super::{pin_severity, setting_finding};
+use super::{fixable_finding, pin_severity, setting_finding};
 use crate::findings::Finding;
+use crate::fix::SettingsFix;
 use crate::manager::{Manager, PackageManagerPin};
 use crate::policy::Preset;
 use std::path::Path;
@@ -37,6 +38,9 @@ fn requirement(manager: Manager) -> String {
 ///
 /// Takes the parsed pin rather than a pre-computed boolean, so the pin rule and
 /// the message it produces stay in one place.
+///
+/// `fix` is `None` when the caller could not determine which version to pin;
+/// the finding is then reported but not repairable.
 #[must_use]
 pub fn check(
     required: bool,
@@ -44,17 +48,30 @@ pub fn check(
     manager: Manager,
     preset: Preset,
     project_root: &Path,
+    fix: Option<SettingsFix>,
 ) -> Vec<Finding> {
     if !required || is_pinned(pin, manager) {
         return Vec::new();
     }
-    vec![setting_finding(
-        "pm.unpinned",
-        requirement(manager),
-        pin_severity(preset),
-        &project_root.join("package.json"),
-        manager,
-    )]
+    let manifest = project_root.join("package.json");
+    let severity = pin_severity(preset);
+    vec![match fix {
+        Some(fix) => fixable_finding(
+            "pm.unpinned",
+            requirement(manager),
+            severity,
+            &manifest,
+            manager,
+            fix,
+        ),
+        None => setting_finding(
+            "pm.unpinned",
+            requirement(manager),
+            severity,
+            &manifest,
+            manager,
+        ),
+    }]
 }
 
 #[cfg(test)]
@@ -100,14 +117,64 @@ mod tests {
 
     #[test]
     fn nothing_is_reported_when_the_pin_is_not_required() {
-        assert!(check(false, None, Manager::Npm, Preset::Strict, Path::new("/p")).is_empty());
+        assert!(check(
+            false,
+            None,
+            Manager::Npm,
+            Preset::Strict,
+            Path::new("/p"),
+            None
+        )
+        .is_empty());
     }
 
     #[test]
     fn the_finding_points_at_the_manifest() {
-        let findings = check(true, None, Manager::Npm, Preset::Standard, Path::new("/p"));
+        let findings = check(
+            true,
+            None,
+            Manager::Npm,
+            Preset::Standard,
+            Path::new("/p"),
+            None,
+        );
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].code, "pm.unpinned");
         assert!(findings[0].path.ends_with("package.json"));
+    }
+
+    /// Without a version to pin there is nothing to write, so the finding must
+    /// not claim to be fixable.
+    #[test]
+    fn an_unfixable_pin_is_reported_but_not_marked_fixable() {
+        let findings = check(
+            true,
+            None,
+            Manager::Bun,
+            Preset::Standard,
+            Path::new("/p"),
+            None,
+        );
+        assert!(!findings[0].fixable);
+        assert!(findings[0].fix.is_none());
+    }
+
+    #[test]
+    fn a_supplied_fix_makes_the_pin_repairable() {
+        let fix = SettingsFix::new(
+            Path::new("/p/package.json"),
+            crate::fix::ConfigFormat::Json,
+            vec![crate::fix::ConfigEdit::set("packageManager", "bun@1.3.13")],
+        );
+        let findings = check(
+            true,
+            None,
+            Manager::Bun,
+            Preset::Standard,
+            Path::new("/p"),
+            Some(fix.clone()),
+        );
+        assert!(findings[0].fixable);
+        assert_eq!(findings[0].fix.as_ref(), Some(&fix));
     }
 }

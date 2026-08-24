@@ -1,7 +1,8 @@
 use crate::report::ProjectReport;
 use owo_colors::{OwoColorize, Style};
 use pkguard_core::findings::{Finding, Severity};
-use pkguard_core::pipeline::ScanSummary;
+use pkguard_core::manager::Manager;
+use pkguard_core::pipeline::{AuditStatus, ScanSummary};
 use pkguard_core::policy::Preset;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -120,94 +121,237 @@ pub fn project_block(report: &ProjectReport, opts: &RenderOptions) -> String {
     );
     out.push_str(&config_line(preset, config_sources, opts));
 
-    let mut settings: Vec<&Finding> = findings.iter().filter(|f| !f.kind.is_advisory()).collect();
-    let mut advisories: Vec<&Finding> = findings.iter().filter(|f| f.kind.is_advisory()).collect();
-    sort_findings(&mut settings);
-    sort_findings(&mut advisories);
-
-    let setting_cells: Vec<RowCells> = settings.iter().map(|f| row_cells(f)).collect();
-    let advisory_cells: Vec<RowCells> = advisories.iter().map(|f| row_cells(f)).collect();
-    let widths = column_widths(setting_cells.iter().chain(advisory_cells.iter()));
-    let show_headers = !settings.is_empty() && !advisories.is_empty();
-
-    write_group(
-        &mut out,
-        "settings",
-        &settings,
-        &setting_cells,
-        widths,
-        show_headers,
-        opts,
-    );
-    write_group(
-        &mut out,
-        "advisories",
-        &advisories,
-        &advisory_cells,
-        widths,
-        show_headers,
-        opts,
-    );
+    for bucket in buckets(report) {
+        write_bucket(&mut out, &bucket, opts);
+    }
     write_fixed_lines(&mut out, root, report, opts);
     out
+}
+
+/// One manager's slice of a project: its settings table and its advisory
+/// table. Cross-manager findings (`pm.multiple-node` and friends) carry no
+/// manager, so they get a bucket of their own at the top.
+struct Bucket<'a> {
+    label: &'a str,
+    settings: Vec<&'a Finding>,
+    advisories: Vec<&'a Finding>,
+    /// `None` for the cross-manager bucket, which is never audited.
+    audit: Option<AuditStatus>,
+}
+
+impl Bucket<'_> {
+    const fn is_empty(&self) -> bool {
+        self.settings.is_empty() && self.advisories.is_empty()
+    }
+}
+
+/// Buckets in discovery order. A manager that somehow produced findings without
+/// being in `report.managers` still gets a bucket appended, so no finding can
+/// fall out of the report.
+fn buckets(report: &ProjectReport) -> Vec<Bucket<'_>> {
+    let mut named: Vec<Manager> = report.managers.iter().map(|m| m.manager).collect();
+    for finding in &report.findings {
+        if let Some(manager) = finding.manager {
+            if !named.contains(&manager) {
+                named.push(manager);
+            }
+        }
+    }
+
+    let cross = bucket_of(report, "project", None, None);
+    let mut out: Vec<Bucket<'_>> = if cross.is_empty() {
+        Vec::new()
+    } else {
+        vec![cross]
+    };
+    out.extend(named.into_iter().map(|manager| {
+        let audit = report
+            .managers
+            .iter()
+            .find(|m| m.manager == manager)
+            .map_or(AuditStatus::Skipped, |m| m.audit);
+        bucket_of(report, manager.name(), Some(manager), Some(audit))
+    }));
+    out
+}
+
+fn bucket_of<'a>(
+    report: &'a ProjectReport,
+    label: &'a str,
+    manager: Option<Manager>,
+    audit: Option<AuditStatus>,
+) -> Bucket<'a> {
+    let mine = report.findings.iter().filter(|f| f.manager == manager);
+    let (mut advisories, mut settings): (Vec<&Finding>, Vec<&Finding>) =
+        mine.partition(|f| f.kind.is_advisory());
+    sort_findings(&mut settings);
+    sort_findings(&mut advisories);
+    Bucket {
+        label,
+        settings,
+        advisories,
+        audit,
+    }
 }
 
 fn sort_findings(rows: &mut [&Finding]) {
     rows.sort_by(|a, b| b.severity.cmp(&a.severity).then(a.code.cmp(&b.code)));
 }
 
-type RowCells = (String, String, String, String, String);
-
-fn row_cells(finding: &Finding) -> RowCells {
-    (
-        finding.severity.as_str().to_string(),
-        finding
-            .manager
-            .map_or("-", pkguard_core::manager::Manager::name)
-            .to_string(),
-        finding.code.clone(),
-        package_cell(finding),
-        finding.message.clone(),
-    )
-}
-
-fn column_widths<'a>(cells: impl Iterator<Item = &'a RowCells>) -> (usize, usize, usize, usize) {
-    cells.fold((0, 0, 0, 0), |widths, cell| {
-        (
-            widths.0.max(cell.0.len()),
-            widths.1.max(cell.1.len()),
-            widths.2.max(cell.2.len()),
-            widths.3.max(cell.3.len()),
-        )
-    })
-}
-
-fn write_group(
-    out: &mut String,
-    header: &str,
-    findings: &[&Finding],
-    cells: &[RowCells],
-    widths: (usize, usize, usize, usize),
-    show_header: bool,
-    opts: &RenderOptions,
-) {
-    if findings.is_empty() {
-        return;
-    }
-    if show_header {
-        let _ = writeln!(out, "  {}", paint(header, Style::new().dimmed(), opts));
-    }
-    for (row, finding) in cells.iter().zip(findings.iter()) {
-        let severity = paint(
-            &format!("{:<w$}", row.0, w = widths.0),
-            severity_style(finding.severity),
+fn write_bucket(out: &mut String, bucket: &Bucket<'_>, opts: &RenderOptions) {
+    // The cross-manager bucket has no advisories to speak of; printing an empty
+    // advisory table under it would invite the reader to look for one.
+    let Some(audit) = bucket.audit else {
+        write_table(
+            out,
+            bucket.label,
+            "settings",
+            &bucket.settings,
+            SETTINGS_COLUMNS,
+            "none",
             opts,
         );
-        let manager = format!("{:<w$}", row.1, w = widths.1);
-        let code = format!("{:<w$}", row.2, w = widths.2);
-        let package = format!("{:<w$}", row.3, w = widths.3);
-        let _ = writeln!(out, "  {severity}  {manager}  {code}  {package}  {}", row.4);
+        return;
+    };
+    write_table(
+        out,
+        bucket.label,
+        "settings",
+        &bucket.settings,
+        SETTINGS_COLUMNS,
+        "none",
+        opts,
+    );
+    write_table(
+        out,
+        bucket.label,
+        "advisories",
+        &bucket.advisories,
+        ADVISORY_COLUMNS,
+        audit.empty_label(),
+        opts,
+    );
+}
+
+/// Settings findings always target the config file named in the group header,
+/// so they have no package column to fill.
+const SETTINGS_COLUMNS: &[Column] = &[Column::Severity, Column::Code, Column::Detail];
+const ADVISORY_COLUMNS: &[Column] = &[
+    Column::Severity,
+    Column::Code,
+    Column::Package,
+    Column::Detail,
+];
+
+#[derive(Clone, Copy)]
+enum Column {
+    Severity,
+    Code,
+    Package,
+    Detail,
+}
+
+impl Column {
+    const fn heading(self) -> &'static str {
+        match self {
+            Self::Severity => "SEVERITY",
+            Self::Code => "CODE",
+            Self::Package => "PACKAGE",
+            Self::Detail => "DETAIL",
+        }
     }
+
+    fn cell(self, finding: &Finding) -> String {
+        match self {
+            Self::Severity => finding.severity.as_str().to_string(),
+            Self::Code => finding.code.clone(),
+            Self::Package => package_cell(finding),
+            Self::Detail => finding.message.clone(),
+        }
+    }
+}
+
+/// A titled table with a header row, its own column widths, and an explicit
+/// empty state. Widths are per-table so a column of long GHSA ids cannot
+/// stretch the settings table sitting above it.
+fn write_table(
+    out: &mut String,
+    label: &str,
+    kind: &str,
+    findings: &[&Finding],
+    columns: &[Column],
+    empty_label: &str,
+    opts: &RenderOptions,
+) {
+    let title = format!("{label} · {kind} ({})", findings.len());
+    let _ = writeln!(out, "\n  {}", paint(&title, Style::new().bold(), opts));
+    if findings.is_empty() {
+        let _ = writeln!(out, "  {}", paint(empty_label, Style::new().dimmed(), opts));
+        return;
+    }
+
+    let rows: Vec<Vec<String>> = findings
+        .iter()
+        .map(|f| columns.iter().map(|c| c.cell(f)).collect())
+        .collect();
+    // The last column is never padded, so it is left out of the width scan.
+    let widths: Vec<usize> = (0..columns.len().saturating_sub(1))
+        .map(|i| {
+            rows.iter()
+                .map(|row| row[i].len())
+                .chain(std::iter::once(columns[i].heading().len()))
+                .max()
+                .unwrap_or(0)
+        })
+        .collect();
+
+    let headings: Vec<String> = columns
+        .iter()
+        .enumerate()
+        .map(|(i, column)| pad(column.heading(), widths.get(i).copied()))
+        .collect();
+    let _ = writeln!(
+        out,
+        "  {}",
+        paint(headings.join("  ").trim_end(), Style::new().dimmed(), opts)
+    );
+
+    for (row, finding) in rows.iter().zip(findings.iter()) {
+        let mut line = String::new();
+        for (i, cell) in row.iter().enumerate() {
+            if i > 0 {
+                line.push_str("  ");
+            }
+            let padded = pad(cell, widths.get(i).copied());
+            if i == 0 {
+                line.push_str(&paint(&padded, severity_style(finding.severity), opts));
+            } else {
+                line.push_str(&padded);
+            }
+        }
+        let _ = writeln!(out, "  {line}");
+        write_detail_line(out, finding, &widths, opts);
+    }
+}
+
+fn pad(cell: &str, width: Option<usize>) -> String {
+    width.map_or_else(|| cell.to_string(), |w| format!("{cell:<w$}"))
+}
+
+/// The raw upstream detail, indented to line up under the final column so it
+/// reads as a continuation of the row rather than a row of its own.
+fn write_detail_line(out: &mut String, finding: &Finding, widths: &[usize], opts: &RenderOptions) {
+    let Some(detail) = &finding.detail else {
+        return;
+    };
+    // Two leading spaces, then each padded column plus its two-space gap.
+    let indent = 2 + widths.iter().map(|w| w + 2).sum::<usize>();
+    let _ = writeln!(
+        out,
+        "{:indent$}{}",
+        "",
+        paint(detail, Style::new().dimmed(), opts)
+    );
 }
 
 fn write_fixed_lines(out: &mut String, root: &Path, report: &ProjectReport, opts: &RenderOptions) {
@@ -328,7 +472,7 @@ mod tests {
     use pkguard_core::apply::{ApplyResult, PlannedChange};
     use pkguard_core::findings::{Finding, FindingKind, Severity};
     use pkguard_core::manager::Manager;
-    use pkguard_core::pipeline::ScanSummary;
+    use pkguard_core::pipeline::{ManagerOutcome, ScanSummary};
     use pkguard_core::policy::{ExitCode, Preset};
     use std::path::{Path, PathBuf};
 
@@ -356,6 +500,7 @@ mod tests {
             kind,
             code: code.into(),
             message: format!("{code} message"),
+            detail: None,
             severity,
             path: "/p/package-lock.json".into(),
             fixable: fix.is_some(),
@@ -409,6 +554,7 @@ mod tests {
             &ProjectReport {
                 root: root.to_path_buf(),
                 findings: findings.to_vec(),
+                managers: vec![audited(Manager::Npm)],
                 incomplete,
                 preset,
                 config_sources: config_sources.to_vec(),
@@ -418,11 +564,40 @@ mod tests {
         )
     }
 
+    const fn audited(manager: Manager) -> ManagerOutcome {
+        ManagerOutcome {
+            manager,
+            audit: AuditStatus::Audited,
+        }
+    }
+
+    /// A block over an explicit manager list, for the multi-manager and
+    /// empty-state cases.
+    fn block_managers(findings: &[Finding], managers: Vec<ManagerOutcome>) -> String {
+        project_block(
+            &ProjectReport {
+                root: PathBuf::from("/scan/app"),
+                findings: findings.to_vec(),
+                managers,
+                incomplete: false,
+                preset: Preset::Standard,
+                config_sources: vec![],
+                applied: None,
+            },
+            &plain(),
+        )
+    }
+
+    fn for_manager(mut finding: Finding, manager: Manager) -> Finding {
+        finding.manager = Some(manager);
+        finding
+    }
+
     #[test]
     fn project_block_renders_header_config_line_and_aligned_columns() {
         let findings = vec![
             finding("GHSA-v7", Severity::High, Some("left-pad"), Some("1.3.0")),
-            finding("scripts.pin-missing", Severity::Info, None, None),
+            finding("GHSA-zz", Severity::Info, None, None),
         ];
         let block = block(
             Path::new("/scan/app"),
@@ -435,14 +610,17 @@ mod tests {
         let lines: Vec<&str> = block.lines().collect();
         assert_eq!(lines[0], "app  2 findings");
         assert_eq!(lines[1], "  preset standard · config .pkguard.toml");
-        // columns: severity, manager, code, package[@version -> fix], message
-        assert_eq!(
-            lines[2],
-            "  high  npm  GHSA-v7              left-pad@1.0.0 -> 1.3.0  GHSA-v7 message"
+        assert!(
+            lines.contains(&"  SEVERITY  CODE     PACKAGE                  DETAIL"),
+            "{block}"
         );
-        assert_eq!(
-            lines[3],
-            "  info  npm  scripts.pin-missing  -                        scripts.pin-missing message"
+        assert!(
+            lines.contains(&"  high      GHSA-v7  left-pad@1.0.0 -> 1.3.0  GHSA-v7 message"),
+            "{block}"
+        );
+        assert!(
+            lines.contains(&"  info      GHSA-zz  -                        GHSA-zz message"),
+            "{block}"
         );
     }
 
@@ -547,7 +725,7 @@ mod tests {
     }
 
     #[test]
-    fn mixed_project_renders_settings_then_advisories_headers() {
+    fn a_manager_gets_a_settings_table_then_an_advisories_table() {
         let findings = vec![
             finding("GHSA-v7", Severity::High, Some("left-pad"), Some("1.3.0")),
             settings_finding("scripts.pin-missing", Severity::Info),
@@ -566,93 +744,114 @@ mod tests {
             [
                 "app  2 findings",
                 "  preset standard · config .pkguard.toml",
-                "  settings",
-                "  info  npm  scripts.pin-missing  -                        scripts.pin-missing message",
-                "  advisories",
-                "  high  npm  GHSA-v7              left-pad@1.0.0 -> 1.3.0  GHSA-v7 message",
+                "",
+                "  npm · settings (1)",
+                "  SEVERITY  CODE                 DETAIL",
+                "  info      scripts.pin-missing  scripts.pin-missing message",
+                "",
+                "  npm · advisories (1)",
+                "  SEVERITY  CODE     PACKAGE                  DETAIL",
+                "  high      GHSA-v7  left-pad@1.0.0 -> 1.3.0  GHSA-v7 message",
             ]
         );
     }
 
+    /// Both tables render even when one of them is empty, so "nothing found"
+    /// can never be mistaken for "nothing looked at".
     #[test]
-    fn settings_only_project_omits_group_headers() {
+    fn an_empty_table_still_renders_with_a_count_and_an_empty_state() {
         let findings = vec![settings_finding("scripts.pin-missing", Severity::Info)];
-        let block = block(
-            Path::new("/scan/app"),
-            &findings,
-            false,
-            Preset::Standard,
-            &[],
-            &plain(),
-        );
+        let block = block_managers(&findings, vec![audited(Manager::Npm)]);
         let lines: Vec<&str> = block.lines().collect();
-        assert_eq!(
-            lines,
-            [
-                "app  1 finding",
-                "  preset standard",
-                "  info  npm  scripts.pin-missing  -  scripts.pin-missing message",
-            ]
-        );
+        assert!(lines.contains(&"  npm · advisories (0)"), "{block}");
+        assert!(lines.contains(&"  none"), "{block}");
     }
 
     #[test]
-    fn advisories_only_project_omits_group_headers() {
-        let findings = vec![finding(
-            "GHSA-v7",
-            Severity::High,
-            Some("left-pad"),
-            Some("1.3.0"),
-        )];
-        let block = block(
-            Path::new("/scan/app"),
-            &findings,
-            false,
-            Preset::Standard,
-            &[],
-            &plain(),
+    fn an_unaudited_manager_says_so_instead_of_claiming_none() {
+        let block = block_managers(
+            &[settings_finding("scripts.pin-missing", Severity::Info)],
+            vec![ManagerOutcome {
+                manager: Manager::Npm,
+                audit: AuditStatus::Skipped,
+            }],
         );
-        let lines: Vec<&str> = block.lines().collect();
-        assert_eq!(
-            lines,
-            [
-                "app  1 finding",
-                "  preset standard",
-                "  high  npm  GHSA-v7  left-pad@1.0.0 -> 1.3.0  GHSA-v7 message",
-            ]
-        );
-        assert!(!lines
-            .iter()
-            .any(|line| *line == "  settings" || *line == "  advisories"));
+        assert!(block.contains("  not audited"), "{block}");
+        assert!(!block.contains("\n  none\n"), "{block}");
     }
 
     #[test]
-    fn columns_align_across_settings_and_advisories_groups() {
+    fn a_failed_audit_says_so_instead_of_claiming_none() {
+        let block = block_managers(
+            &[settings_finding("scripts.pin-missing", Severity::Info)],
+            vec![ManagerOutcome {
+                manager: Manager::Npm,
+                audit: AuditStatus::Incomplete,
+            }],
+        );
+        assert!(block.contains("  audit incomplete"), "{block}");
+    }
+
+    #[test]
+    fn each_manager_in_a_project_gets_its_own_pair_of_tables() {
         let findings = vec![
-            finding("GHSA-v7", Severity::High, Some("left-pad"), Some("1.3.0")),
-            settings_finding("scripts.pin-missing", Severity::Info),
+            for_manager(
+                settings_finding("registry.unpinned", Severity::Info),
+                Manager::Npm,
+            ),
+            for_manager(
+                finding("GHSA-v7", Severity::High, Some("left-pad"), None),
+                Manager::Bun,
+            ),
         ];
-        let block = block(
-            Path::new("/scan/app"),
+        let block = block_managers(
             &findings,
-            false,
-            Preset::Standard,
-            &[],
-            &plain(),
+            vec![audited(Manager::Npm), audited(Manager::Bun)],
         );
-        let settings_msg = "scripts.pin-missing message";
-        let advisory_msg = "GHSA-v7 message";
-        let settings_line = block
+        let lines: Vec<&str> = block.lines().collect();
+        for expected in [
+            "  npm · settings (1)",
+            "  npm · advisories (0)",
+            "  bun · settings (0)",
+            "  bun · advisories (1)",
+        ] {
+            assert!(lines.contains(&expected), "missing {expected}: {block}");
+        }
+        // npm's tables come first because it was detected first.
+        assert!(block.find("npm · settings").unwrap() < block.find("bun · settings").unwrap());
+    }
+
+    /// A cross-manager finding carries no manager, so it must not be filed
+    /// under whichever manager happens to be listed first.
+    #[test]
+    fn cross_manager_findings_get_their_own_leading_table() {
+        let mut multiple = settings_finding("pm.multiple-node", Severity::High);
+        multiple.manager = None;
+        let block = block_managers(&[multiple], vec![audited(Manager::Npm)]);
+        let lines: Vec<&str> = block.lines().collect();
+        assert!(lines.contains(&"  project · settings (1)"), "{block}");
+        assert!(lines.contains(&"  npm · settings (0)"), "{block}");
+        assert!(block.find("project · settings").unwrap() < block.find("npm · settings").unwrap());
+    }
+
+    #[test]
+    fn the_raw_upstream_detail_renders_under_its_row() {
+        let mut advisory = finding("GHSA-v7", Severity::High, Some("left-pad"), None);
+        advisory.detail = Some("vulnerable <1.3.0".into());
+        let block = block_managers(&[advisory], vec![audited(Manager::Npm)]);
+        let row = block
             .lines()
-            .find(|line| line.contains(settings_msg))
-            .expect("settings row");
-        let advisory_line = block
+            .find(|line| line.contains("GHSA-v7 message"))
+            .unwrap();
+        let detail = block
             .lines()
-            .find(|line| line.contains(advisory_msg))
-            .expect("advisory row");
+            .find(|line| line.contains("vulnerable <1.3.0"))
+            .unwrap();
+        // The continuation lines up under the final column of its row.
         assert_eq!(
-            settings_line.find(settings_msg),
-            advisory_line.find(advisory_msg)
+            detail.find("vulnerable"),
+            row.find("GHSA-v7 message"),
+            "row: {row:?}, detail: {detail:?}"
         );
     }
 

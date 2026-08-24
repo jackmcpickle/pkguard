@@ -8,9 +8,56 @@ use crate::exec::CommandRunner;
 use crate::findings::{Finding, FindingKind, Severity};
 use crate::manager::Manager;
 use crate::policy::{exit_code_for, fails_gate, ExitCode, Preset};
+use crate::settings::ProjectFacts;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::{mpsc, Semaphore};
+
+/// What became of one manager's live advisory audit.
+///
+/// Without this the output cannot tell "audited, nothing found" from "never
+/// audited" — both used to render as no advisory rows at all, which reads as a
+/// clean project either way.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuditStatus {
+    /// Advisories came back, live or from the cache. Zero of them means clean.
+    Audited,
+    /// No audit was attempted: `--no-audit`, `audit = false`, a non-primary or
+    /// unported manager, or a package manager binary that is not on PATH.
+    Skipped,
+    /// The audit ran but its answer could not be trusted.
+    Incomplete,
+}
+
+impl AuditStatus {
+    /// How an advisory table with no rows describes itself.
+    #[must_use]
+    pub const fn empty_label(self) -> &'static str {
+        match self {
+            Self::Audited => "none",
+            Self::Skipped => "not audited",
+            Self::Incomplete => "audit incomplete",
+        }
+    }
+
+    /// Stable machine name for the JSON report.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Audited => "audited",
+            Self::Skipped => "skipped",
+            Self::Incomplete => "incomplete",
+        }
+    }
+}
+
+/// One detected manager and the fate of its audit, in discovery order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ManagerOutcome {
+    pub manager: Manager,
+    pub audit: AuditStatus,
+}
 
 #[derive(Debug, Clone)]
 pub enum AuditEvent {
@@ -27,6 +74,8 @@ pub enum AuditEvent {
     ProjectFinished {
         root: PathBuf,
         findings: Vec<Finding>,
+        /// Every detected manager and whether its advisories were audited.
+        managers: Vec<ManagerOutcome>,
         incomplete: bool,
         preset: Preset,
         /// Config files that were actually layered for this project, in
@@ -85,6 +134,49 @@ pub fn default_jobs() -> usize {
     std::thread::available_parallelism().map_or(8, |n| (n.get() * 2).min(16))
 }
 
+/// Installed version per package manager, probed once for the whole run.
+pub type PmVersions = BTreeMap<Manager, String>;
+
+/// The version a `<pm> --version` line reports, or `None` if it does not look
+/// like one. Managers print bare versions (`1.3.13`), sometimes `v`-prefixed;
+/// anything else is a banner or an error we must not pin.
+fn parse_version(stdout: &str) -> Option<String> {
+    let line = stdout.lines().next()?.trim().trim_start_matches('v');
+    let version = line.split_whitespace().next()?;
+    if version.starts_with(|c: char| c.is_ascii_digit()) && version.contains('.') {
+        Some(version.to_string())
+    } else {
+        None
+    }
+}
+
+/// `<binary> --version` for each manager in `wanted`.
+///
+/// Probed once per run rather than once per project: the answer is a property
+/// of the machine, and a monorepo would otherwise spawn one process per project
+/// to learn the same thing. The settings audit needs this to pin
+/// `packageManager`, and is deliberately not allowed to spawn anything itself.
+async fn probe_pm_versions(wanted: &[Manager], runner: &dyn CommandRunner) -> PmVersions {
+    let mut versions = PmVersions::new();
+    for manager in wanted {
+        let Some(binary) = manager.binary() else {
+            continue;
+        };
+        if !runner.which(binary) {
+            continue;
+        }
+        let argv = vec![binary.to_string(), "--version".to_string()];
+        if let Ok(output) = runner.run(&argv, Path::new(".")).await {
+            if output.code == 0 {
+                if let Some(version) = parse_version(&output.stdout) {
+                    versions.insert(*manager, version);
+                }
+            }
+        }
+    }
+    versions
+}
+
 fn read_config(path: &Path) -> Option<ConfigFile> {
     let raw = std::fs::read_to_string(path).ok()?;
     parse_config(&raw).ok()
@@ -95,6 +187,7 @@ fn missing_binary_finding(project_root: &Path, manager: Manager, binary: &str) -
         kind: FindingKind::MissingBinary,
         code: "pm.missing-binary".into(),
         message: format!("{binary} binary not found on PATH; live audit skipped"),
+        detail: None,
         severity: Severity::Info,
         path: project_root.to_string_lossy().into_owned(),
         fixable: false,
@@ -108,6 +201,7 @@ fn missing_binary_finding(project_root: &Path, manager: Manager, binary: &str) -
 
 struct ProjectResult {
     findings: Vec<Finding>,
+    managers: Vec<ManagerOutcome>,
     incomplete: bool,
     preset: Preset,
     config_sources: Vec<PathBuf>,
@@ -123,6 +217,7 @@ struct RunContext<'a> {
     cache: &'a AdvisoryCache,
     opts: &'a ScanOptions,
     clock: &'a dyn Clock,
+    versions: &'a PmVersions,
 }
 
 async fn audit_project(
@@ -137,6 +232,7 @@ async fn audit_project(
         cache,
         opts,
         clock,
+        versions,
     } = *ctx;
     let mut config_sources = base_sources.to_vec();
     let mut layers: Vec<ConfigFile> = vec![base_config.clone()];
@@ -150,7 +246,7 @@ async fn audit_project(
         config.preset = Some(preset);
     }
 
-    let mut findings = collect_settings_findings(project, &config, clock);
+    let mut findings = collect_settings_findings(project, &config, versions, clock);
     let mut incomplete = false;
     let advisory_opts = AdvisoryOptions {
         refresh: opts.refresh,
@@ -167,60 +263,41 @@ async fn audit_project(
         let result = crate::apply::apply_fixes(project, &plan, runner, opts.force, mode).await;
         if !opts.dry_run {
             // Fixed settings must stop being reported, so re-read them.
-            findings = collect_settings_findings(project, &config, clock);
+            findings = collect_settings_findings(project, &config, versions, clock);
         }
         Some(result)
     } else {
         None
     };
 
+    // Every detected manager gets an entry, audited or not, so the report can
+    // name the ones it never asked about instead of silently omitting them.
+    let mut managers: Vec<ManagerOutcome> = project
+        .managers
+        .iter()
+        .map(|detected| ManagerOutcome {
+            manager: detected.manager,
+            audit: AuditStatus::Skipped,
+        })
+        .collect();
+
     let audits_on = !opts.no_audit && config.audit.unwrap_or(true);
     if audits_on {
-        for manager in &project.managers {
-            // Live advisory audits run for ported primaries only. Leftover and
-            // unsupported managers still contribute the settings finding above.
-            if manager.role != Role::Primary || !manager.manager.ported() {
-                continue;
-            }
-            let binary = manager.manager.binary().unwrap_or_default();
-            if !runner.which(binary) {
-                let finding = missing_binary_finding(&project.root, manager.manager, binary);
-                findings.push(finding.clone());
-                let _ = events.send(AuditEvent::ManagerFinished {
-                    root: project.root.clone(),
-                    manager: manager.manager,
-                    findings: vec![finding],
-                    from_cache: false,
-                    incomplete: false,
-                });
-                continue;
-            }
-            if let Ok(outcome) =
-                run_manager_advisories(&project.root, manager, runner, cache, &advisory_opts).await
-            {
-                findings.extend(outcome.findings.clone());
-                let _ = events.send(AuditEvent::ManagerFinished {
-                    root: project.root.clone(),
-                    manager: manager.manager,
-                    findings: outcome.findings,
-                    from_cache: outcome.from_cache,
-                    incomplete: false,
-                });
-            } else {
-                incomplete = true;
-                let _ = events.send(AuditEvent::ManagerFinished {
-                    root: project.root.clone(),
-                    manager: manager.manager,
-                    findings: Vec::new(),
-                    from_cache: false,
-                    incomplete: true,
-                });
-            }
-        }
+        incomplete = run_advisories(
+            project,
+            &mut managers,
+            &mut findings,
+            runner,
+            cache,
+            &advisory_opts,
+            events,
+        )
+        .await;
     }
 
     ProjectResult {
         findings,
+        managers,
         incomplete,
         preset: config.preset.unwrap_or(Preset::Standard),
         config_sources,
@@ -228,18 +305,120 @@ async fn audit_project(
     }
 }
 
+/// Run each manager's live advisory audit, recording what became of it.
+///
+/// Appends advisory (and missing-binary) findings, updates each manager's
+/// `AuditStatus` in place, and returns whether any audit came back untrusted.
+async fn run_advisories(
+    project: &Project,
+    managers: &mut [ManagerOutcome],
+    findings: &mut Vec<Finding>,
+    runner: &dyn CommandRunner,
+    cache: &AdvisoryCache,
+    advisory_opts: &AdvisoryOptions,
+    events: &mpsc::UnboundedSender<AuditEvent>,
+) -> bool {
+    let mut incomplete = false;
+    for (outcome, manager) in managers.iter_mut().zip(&project.managers) {
+        // Live advisory audits run for ported primaries only. Leftover and
+        // unsupported managers still contribute their settings findings.
+        if manager.role != Role::Primary || !manager.manager.ported() {
+            continue;
+        }
+        let binary = manager.manager.binary().unwrap_or_default();
+        if !runner.which(binary) {
+            let finding = missing_binary_finding(&project.root, manager.manager, binary);
+            findings.push(finding.clone());
+            let _ = events.send(AuditEvent::ManagerFinished {
+                root: project.root.clone(),
+                manager: manager.manager,
+                findings: vec![finding],
+                from_cache: false,
+                incomplete: false,
+            });
+            continue;
+        }
+        if let Ok(result) =
+            run_manager_advisories(&project.root, manager, runner, cache, advisory_opts).await
+        {
+            outcome.audit = AuditStatus::Audited;
+            findings.extend(result.findings.clone());
+            let _ = events.send(AuditEvent::ManagerFinished {
+                root: project.root.clone(),
+                manager: manager.manager,
+                findings: result.findings,
+                from_cache: result.from_cache,
+                incomplete: false,
+            });
+        } else {
+            outcome.audit = AuditStatus::Incomplete;
+            incomplete = true;
+            let _ = events.send(AuditEvent::ManagerFinished {
+                root: project.root.clone(),
+                manager: manager.manager,
+                findings: Vec::new(),
+                from_cache: false,
+                incomplete: true,
+            });
+        }
+    }
+    incomplete
+}
+
+/// The run-wide config layers and the files they came from, in application
+/// order (user config, then `.pkguard.toml` at the scan root). Per-repo config
+/// is layered on top of this later, per project.
+fn base_config_for(root: &Path, user_config: Option<&Path>) -> (ConfigFile, Vec<PathBuf>) {
+    let mut layers = Vec::new();
+    let mut sources: Vec<PathBuf> = Vec::new();
+    if let Some(user_path) = user_config {
+        if let Some(user) = read_config(user_path) {
+            layers.push(user);
+            sources.push(user_path.to_path_buf());
+        }
+    }
+    let scan_root_path = root.join(".pkguard.toml");
+    if let Some(scan_root) = read_config(&scan_root_path) {
+        layers.push(scan_root);
+        sources.push(scan_root_path);
+    }
+    (layer_configs(layers.iter()), sources)
+}
+
+/// Distinct primary managers across the run, in first-seen order.
+fn primary_managers(projects: &[Project]) -> Vec<Manager> {
+    let mut wanted: Vec<Manager> = Vec::new();
+    for project in projects {
+        for detected in &project.managers {
+            if detected.role == Role::Primary && !wanted.contains(&detected.manager) {
+                wanted.push(detected.manager);
+            }
+        }
+    }
+    wanted
+}
+
 fn collect_settings_findings(
     project: &Project,
     config: &ConfigFile,
+    versions: &PmVersions,
     clock: &dyn Clock,
 ) -> Vec<Finding> {
     let mut findings = crate::settings::checks::multiple_pm_findings(project);
+    // One read of the project's configs, shared by every manager: whichever
+    // registry is already pinned is the one a fix should keep using.
+    let existing_registry = crate::settings::checks::existing_registry(&project.root, project);
     for manager in &project.managers {
         let settings = resolve_settings(config, manager.manager.name());
+        let facts = ProjectFacts {
+            pm_version: versions.get(&manager.manager).cloned(),
+            existing_registry: existing_registry.clone(),
+        };
         findings.extend(crate::settings::audit_manager_settings(
             &project.root,
             manager,
             &settings,
+            &facts,
             clock,
         ));
     }
@@ -270,20 +449,7 @@ pub fn scan_with_clock(
 ) -> mpsc::UnboundedReceiver<AuditEvent> {
     let (tx, rx) = mpsc::unbounded_channel();
     tokio::spawn(async move {
-        let mut base_layers = Vec::new();
-        let mut base_sources: Vec<PathBuf> = Vec::new();
-        if let Some(user_path) = opts.user_config.as_deref() {
-            if let Some(user) = read_config(user_path) {
-                base_layers.push(user);
-                base_sources.push(user_path.to_path_buf());
-            }
-        }
-        let scan_root_path = root.join(".pkguard.toml");
-        if let Some(scan_root) = read_config(&scan_root_path) {
-            base_layers.push(scan_root);
-            base_sources.push(scan_root_path);
-        }
-        let base_config = layer_configs(base_layers.iter());
+        let (base_config, base_sources) = base_config_for(&root, opts.user_config.as_deref());
 
         let discovery_root = root.clone();
         let projects = tokio::task::spawn_blocking(move || {
@@ -293,6 +459,18 @@ pub fn scan_with_clock(
         })
         .await
         .unwrap_or_default();
+
+        // Distinct primary managers across the whole run, probed once each.
+        //
+        // `--no-audit` promises an offline scan that spawns nothing, so the
+        // probe is skipped there unless `--fix` was asked for as well — a fix
+        // run has to spawn to learn which version to pin, and refusing would
+        // leave `--no-audit --fix` unable to repair `pm.unpinned`.
+        let versions = Arc::new(if opts.no_audit && !opts.fix {
+            PmVersions::new()
+        } else {
+            probe_pm_versions(&primary_managers(&projects), runner.as_ref()).await
+        });
 
         let jobs = if opts.jobs == 0 {
             default_jobs()
@@ -319,6 +497,7 @@ pub fn scan_with_clock(
             let base_sources = Arc::clone(&base_sources);
             let semaphore = Arc::clone(&semaphore);
             let clock = Arc::clone(&clock);
+            let versions = Arc::clone(&versions);
             handles.push(tokio::spawn(async move {
                 let _permit = semaphore.acquire_owned().await.unwrap();
                 let ctx = RunContext {
@@ -328,11 +507,13 @@ pub fn scan_with_clock(
                     cache: &cache,
                     opts: &opts,
                     clock: clock.as_ref(),
+                    versions: &versions,
                 };
                 let result = audit_project(&project, &ctx, &tx).await;
                 let _ = tx.send(AuditEvent::ProjectFinished {
                     root: project.root.clone(),
                     findings: result.findings.clone(),
+                    managers: result.managers.clone(),
                     incomplete: result.incomplete,
                     preset: result.preset,
                     config_sources: result.config_sources.clone(),
@@ -390,6 +571,28 @@ mod tests {
     }"#;
 
     const NPM_CLEAN: &str = r#"{"auditReportVersion": 2, "vulnerabilities": {}}"#;
+
+    #[test]
+    fn a_bare_version_line_is_the_version() {
+        assert_eq!(parse_version("1.3.13\n").as_deref(), Some("1.3.13"));
+        assert_eq!(parse_version("v10.2.0").as_deref(), Some("10.2.0"));
+    }
+
+    /// Pinning `packageManager` to a banner or an error message would be worse
+    /// than leaving it unpinned, so anything unrecognized yields no version.
+    #[test]
+    fn output_that_is_not_a_version_yields_nothing() {
+        assert_eq!(parse_version(""), None);
+        assert_eq!(parse_version("command not found"), None);
+        assert_eq!(parse_version("bun audit v1.3.13"), None);
+        // A bare major with no dot is not a pinnable version.
+        assert_eq!(parse_version("11"), None);
+    }
+
+    #[test]
+    fn a_version_with_trailing_noise_keeps_only_the_version() {
+        assert_eq!(parse_version("4.5.0 (stable)").as_deref(), Some("4.5.0"));
+    }
 
     fn npm_repo(root: &Path, name: &str) {
         let dir = root.join(name);

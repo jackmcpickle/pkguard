@@ -55,6 +55,12 @@ pub struct Finding {
     pub kind: FindingKind,
     pub code: String,
     pub message: String,
+    /// Extra context copied verbatim from the package manager's own audit
+    /// output — version ranges, advisory URL, CVSS vector. Kept raw rather than
+    /// reinterpreted so it stays correct as upstream formats change; rendered
+    /// on a continuation line under the row.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
     pub severity: Severity,
     pub path: String,
     pub fixable: bool,
