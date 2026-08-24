@@ -5,6 +5,7 @@ use serde_yaml::{Mapping, Value};
 pub type Yaml = Value;
 
 /// Parse a YAML mapping. Non-mappings and invalid input become an empty map.
+#[must_use]
 pub fn parse(raw: &str) -> Yaml {
     if raw.trim().is_empty() {
         return Value::Mapping(serde_yaml::Mapping::new());
@@ -15,18 +16,22 @@ pub fn parse(raw: &str) -> Yaml {
     }
 }
 
+#[must_use]
 pub fn get<'a>(value: &'a Yaml, key: &str) -> Option<&'a Yaml> {
     value.as_mapping()?.get(Value::String(key.to_string()))
 }
 
+#[must_use]
 pub fn first<'a>(value: &'a Yaml, keys: &[&str]) -> Option<&'a Yaml> {
     keys.iter().find_map(|key| get(value, key))
 }
 
+#[must_use]
 pub fn as_str(value: &Yaml) -> Option<&str> {
     value.as_str()
 }
 
+#[must_use]
 pub fn as_f64(value: &Yaml) -> Option<f64> {
     value.as_f64().or_else(|| value.as_i64().map(|n| n as f64))
 }
@@ -43,6 +48,7 @@ pub fn is_mapping(value: Option<&Yaml>) -> bool {
     value.is_some_and(Value::is_mapping)
 }
 
+#[must_use]
 pub fn is_star(value: &Yaml) -> bool {
     as_str(value) == Some("*")
 }
@@ -95,7 +101,7 @@ fn unset_path(map: &mut Mapping, key: &str) {
 
 /// Edit a YAML config (`.yarnrc.yml`, `pnpm-workspace.yaml`).
 ///
-/// Comments are lost: serde_yaml has no comment-preserving edit mode. This
+/// Comments are lost: `serde_yaml` has no comment-preserving edit mode. This
 /// matches the behaviour of the TypeScript implementation this was ported from.
 pub fn edit(raw: &str, edits: &[ConfigEdit]) -> Result<String, EditError> {
     let mut map = if raw.trim().is_empty() {

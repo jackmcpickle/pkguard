@@ -10,20 +10,22 @@ pub enum Preset {
 }
 
 impl Preset {
-    pub fn as_str(self) -> &'static str {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
         match self {
-            Preset::Relaxed => "relaxed",
-            Preset::Standard => "standard",
-            Preset::Strict => "strict",
+            Self::Relaxed => "relaxed",
+            Self::Standard => "standard",
+            Self::Strict => "strict",
         }
     }
 
     /// Findings at or above this severity fail the run (exit 1).
-    pub fn gate(self) -> Severity {
+    #[must_use]
+    pub const fn gate(self) -> Severity {
         match self {
-            Preset::Relaxed => Severity::Critical,
-            Preset::Standard => Severity::High,
-            Preset::Strict => Severity::Moderate,
+            Self::Relaxed => Severity::Critical,
+            Self::Standard => Severity::High,
+            Self::Strict => Severity::Moderate,
         }
     }
 }
@@ -34,6 +36,7 @@ impl std::fmt::Display for Preset {
     }
 }
 
+#[must_use]
 pub fn fails_gate(kind: FindingKind, severity: Severity, gate: Severity) -> bool {
     match kind {
         FindingKind::MissingBinary => false,
@@ -50,16 +53,18 @@ pub enum ExitCode {
 }
 
 impl ExitCode {
-    pub fn code(self) -> i32 {
+    #[must_use]
+    pub const fn code(self) -> i32 {
         match self {
-            ExitCode::Clean => 0,
-            ExitCode::PolicyFailure => 1,
-            ExitCode::Incomplete => 2,
+            Self::Clean => 0,
+            Self::PolicyFailure => 1,
+            Self::Incomplete => 2,
         }
     }
 }
 
-pub fn exit_code_for(
+#[must_use]
+pub const fn exit_code_for(
     project_count: usize,
     incomplete: bool,
     skipped_dirty: bool,

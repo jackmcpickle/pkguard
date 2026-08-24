@@ -43,11 +43,13 @@ pub struct FixedClock {
 }
 
 impl FixedClock {
-    pub fn at_secs(secs: u64) -> Self {
+    #[must_use]
+    pub const fn at_secs(secs: u64) -> Self {
         Self { secs }
     }
 
     /// Midnight on the given day since the Unix epoch.
+    #[must_use]
     pub fn at_day(day: i64) -> Self {
         Self {
             secs: (day.max(0) as u64) * SECS_PER_DAY,

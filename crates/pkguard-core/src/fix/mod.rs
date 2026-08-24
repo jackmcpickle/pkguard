@@ -15,30 +15,30 @@ pub enum ConfigValue {
     Int(i64),
     Str(String),
     List(Vec<String>),
-    Table(BTreeMap<String, ConfigValue>),
+    Table(BTreeMap<String, Self>),
 }
 
 impl From<bool> for ConfigValue {
     fn from(value: bool) -> Self {
-        ConfigValue::Bool(value)
+        Self::Bool(value)
     }
 }
 
 impl From<i64> for ConfigValue {
     fn from(value: i64) -> Self {
-        ConfigValue::Int(value)
+        Self::Int(value)
     }
 }
 
 impl From<&str> for ConfigValue {
     fn from(value: &str) -> Self {
-        ConfigValue::Str(value.to_string())
+        Self::Str(value.to_string())
     }
 }
 
 impl From<String> for ConfigValue {
     fn from(value: String) -> Self {
-        ConfigValue::Str(value)
+        Self::Str(value)
     }
 }
 
@@ -54,19 +54,20 @@ pub enum ConfigEdit {
 
 impl ConfigEdit {
     pub fn set(key: impl Into<String>, value: impl Into<ConfigValue>) -> Self {
-        ConfigEdit::Set {
+        Self::Set {
             key: key.into(),
             value: value.into(),
         }
     }
 
     pub fn unset(key: impl Into<String>) -> Self {
-        ConfigEdit::Unset { key: key.into() }
+        Self::Unset { key: key.into() }
     }
 
+    #[must_use]
     pub fn key(&self) -> &str {
         match self {
-            ConfigEdit::Set { key, .. } | ConfigEdit::Unset { key } => key,
+            Self::Set { key, .. } | Self::Unset { key } => key,
         }
     }
 }

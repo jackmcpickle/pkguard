@@ -3,7 +3,7 @@ use crate::findings::{Finding, FindingKind, Severity};
 use crate::manager::Manager;
 use serde_json::{Map, Value};
 
-pub(crate) fn parse_stdout(stdout: &str) -> Result<Value, serde_json::Error> {
+pub fn parse_stdout(stdout: &str) -> Result<Value, serde_json::Error> {
     if let Ok(value) = serde_json::from_str(stdout) {
         return Ok(value);
     }
@@ -27,7 +27,7 @@ pub(crate) fn parse_stdout(stdout: &str) -> Result<Value, serde_json::Error> {
 /// walker.
 ///
 /// The caller acts on this; `parse_output` is the only dispatcher.
-pub(crate) fn looks_like_npm_report(value: &Value) -> bool {
+pub fn looks_like_npm_report(value: &Value) -> bool {
     if value.get("advisories").is_some_and(Value::is_object)
         || value.get("auditReportVersion").is_some()
     {
@@ -55,9 +55,10 @@ fn yarn_tree_finding(item: &Value, path: &str, manager: Manager) -> Option<Findi
             .get("Severity")
             .or_else(|| children.get("severity")),
     );
-    let message = string_field(children, &["Issue", "issue"])
-        .map(ToOwned::to_owned)
-        .unwrap_or_else(|| format!("{name} {} advisory", severity.as_str()));
+    let message = string_field(children, &["Issue", "issue"]).map_or_else(
+        || format!("{name} {} advisory", severity.as_str()),
+        ToOwned::to_owned,
+    );
     let id = match children.get("ID") {
         Some(Value::String(s)) if !s.is_empty() => s.clone(),
         Some(Value::Number(n)) => n.to_string(),
@@ -251,7 +252,7 @@ fn walk_audit_roots(
 
 /// Walk an already-parsed audit payload. Takes the `Value` so the dispatcher
 /// can inspect the shape without this module parsing it twice.
-pub(crate) fn parse_value(
+pub fn parse_value(
     parsed: Value,
     lockfile_path: &str,
     manager: Manager,

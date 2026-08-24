@@ -9,6 +9,7 @@ use crate::policy::Preset;
 use std::collections::BTreeMap;
 use std::path::Path;
 
+#[must_use]
 pub fn npm_check(
     settings: &ResolvedSettings,
     npmrc: &BTreeMap<String, String>,
@@ -73,6 +74,7 @@ fn parse_pnpm_age_hours(value: &Yaml) -> Option<f64> {
     parse_age_hours_str(yaml::as_str(value)?)
 }
 
+#[must_use]
 pub fn pnpm_checks(
     settings: &ResolvedSettings,
     yaml: &Yaml,
@@ -151,6 +153,7 @@ pub fn pnpm_checks(
     findings
 }
 
+#[must_use]
 pub fn yarn_checks(
     settings: &ResolvedSettings,
     yarnrc: &Yaml,
@@ -203,6 +206,7 @@ pub fn yarn_checks(
     findings
 }
 
+#[must_use]
 pub fn bun_checks(
     settings: &ResolvedSettings,
     install: Option<&toml::Table>,
@@ -363,6 +367,7 @@ fn cargo_duration(days: u32) -> String {
     }
 }
 
+#[must_use]
 pub fn cargo_check(
     settings: &ResolvedSettings,
     install: Option<&toml::Table>,
@@ -403,6 +408,7 @@ pub fn cargo_check(
     }
 }
 
+#[must_use]
 pub fn bundler_check(
     settings: &ResolvedSettings,
     cooldown: Option<f64>,
@@ -530,7 +536,7 @@ mod tests {
             &clock()
         ));
         assert!(!uv_exclude_newer_meets(
-            Some(&toml::Value::String("".into())),
+            Some(&toml::Value::String(String::new())),
             7,
             &clock()
         ));

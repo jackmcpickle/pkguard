@@ -76,6 +76,7 @@ impl Default for ScanOptions {
     }
 }
 
+#[must_use]
 pub fn default_jobs() -> usize {
     std::thread::available_parallelism()
         .map(|n| (n.get() * 2).min(16))
@@ -192,29 +193,26 @@ async fn audit_project(
                 });
                 continue;
             }
-            match run_manager_advisories(&project.root, manager, runner, cache, &advisory_opts)
-                .await
+            if let Ok(outcome) =
+                run_manager_advisories(&project.root, manager, runner, cache, &advisory_opts).await
             {
-                Ok(outcome) => {
-                    findings.extend(outcome.findings.clone());
-                    let _ = events.send(AuditEvent::ManagerFinished {
-                        root: project.root.clone(),
-                        manager: manager.manager,
-                        findings: outcome.findings,
-                        from_cache: outcome.from_cache,
-                        incomplete: false,
-                    });
-                }
-                Err(_) => {
-                    incomplete = true;
-                    let _ = events.send(AuditEvent::ManagerFinished {
-                        root: project.root.clone(),
-                        manager: manager.manager,
-                        findings: Vec::new(),
-                        from_cache: false,
-                        incomplete: true,
-                    });
-                }
+                findings.extend(outcome.findings.clone());
+                let _ = events.send(AuditEvent::ManagerFinished {
+                    root: project.root.clone(),
+                    manager: manager.manager,
+                    findings: outcome.findings,
+                    from_cache: outcome.from_cache,
+                    incomplete: false,
+                });
+            } else {
+                incomplete = true;
+                let _ = events.send(AuditEvent::ManagerFinished {
+                    root: project.root.clone(),
+                    manager: manager.manager,
+                    findings: Vec::new(),
+                    from_cache: false,
+                    incomplete: true,
+                });
             }
         }
     }

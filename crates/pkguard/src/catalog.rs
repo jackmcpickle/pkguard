@@ -60,7 +60,8 @@ const AGENTIC_CATALOG: &[(&str, &str, &str, &str)] = &[
 ];
 
 fn help_text(help: Option<&clap::builder::StyledStr>) -> String {
-    help.map(|h| h.to_string()).unwrap_or_default()
+    help.map(std::string::ToString::to_string)
+        .unwrap_or_default()
 }
 
 fn flag_value(arg: &clap::Arg) -> Value {
@@ -78,8 +79,10 @@ fn flag_value(arg: &clap::Arg) -> Value {
     let name = arg
         .get_value_names()
         .and_then(|names| names.first())
-        .map(|n| n.to_string().to_lowercase())
-        .unwrap_or_else(|| arg.get_id().to_string());
+        .map_or_else(
+            || arg.get_id().to_string(),
+            |n| n.to_string().to_lowercase(),
+        );
     json!(name)
 }
 

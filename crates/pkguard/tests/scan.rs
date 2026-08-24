@@ -236,7 +236,7 @@ fn fixable_npm_repo(root: &Path) -> std::path::PathBuf {
     dir
 }
 
-fn clean_npm() -> &'static str {
+const fn clean_npm() -> &'static str {
     r#"{"auditReportVersion":2,"vulnerabilities":{}}"#
 }
 

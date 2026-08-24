@@ -7,6 +7,7 @@ use std::path::Path;
 
 /// The message names every lockfile the manager accepts, derived from
 /// `Manager::lockfile_required_message` rather than restated per caller.
+#[must_use]
 pub fn check(required: bool, present: bool, path: &Path, manager: Manager) -> Vec<Finding> {
     if !required || present {
         return Vec::new();
@@ -23,6 +24,7 @@ pub fn check(required: bool, present: bool, path: &Path, manager: Manager) -> Ve
     )]
 }
 
+#[must_use]
 pub fn leftover(path: &Path, manager: Manager) -> Finding {
     Finding {
         kind: FindingKind::LeftoverLockfile,
@@ -42,6 +44,7 @@ pub fn leftover(path: &Path, manager: Manager) -> Finding {
     }
 }
 
+#[must_use]
 pub fn unsupported(path: &Path, manager: Manager) -> Finding {
     Finding {
         kind: FindingKind::UnsupportedPm,
@@ -58,6 +61,7 @@ pub fn unsupported(path: &Path, manager: Manager) -> Finding {
     }
 }
 
+#[must_use]
 pub fn pnpm_trust_bypass(yaml: &Yaml, yaml_path: &Path) -> Vec<Finding> {
     if yaml::is_true(yaml::first(yaml, &["trustLockfile", "trust-lockfile"])) {
         vec![fixable_finding(

@@ -13,23 +13,24 @@ pub struct PresetDefaults {
 }
 
 impl PresetDefaults {
-    pub fn for_preset(preset: Preset) -> Self {
+    #[must_use]
+    pub const fn for_preset(preset: Preset) -> Self {
         match preset {
-            Preset::Relaxed => PresetDefaults {
+            Preset::Relaxed => Self {
                 audit_level: Severity::Critical,
                 ignore_scripts: false,
                 min_release_age_days: 0,
                 require_lockfile: true,
                 require_pm_pin: false,
             },
-            Preset::Standard => PresetDefaults {
+            Preset::Standard => Self {
                 audit_level: Severity::High,
                 ignore_scripts: true,
                 min_release_age_days: 1,
                 require_lockfile: true,
                 require_pm_pin: true,
             },
-            Preset::Strict => PresetDefaults {
+            Preset::Strict => Self {
                 audit_level: Severity::Moderate,
                 ignore_scripts: true,
                 min_release_age_days: 14,
@@ -134,6 +135,7 @@ pub struct ResolvedSettings {
 }
 
 /// Preset defaults < [policy] overrides < [manager.<name>] table.
+#[must_use]
 pub fn resolve_settings(cfg: &ConfigFile, manager: &str) -> ResolvedSettings {
     let preset = cfg.preset.unwrap_or(Preset::Standard);
     let defaults = PresetDefaults::for_preset(preset);

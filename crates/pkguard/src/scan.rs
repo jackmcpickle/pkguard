@@ -12,16 +12,17 @@ fn cache_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("PKGUARD_CACHE_DIR") {
         return PathBuf::from(dir);
     }
-    directories::ProjectDirs::from("dev", "pkguard", "pkguard")
-        .map(|dirs| dirs.cache_dir().to_path_buf())
-        .unwrap_or_else(|| std::env::temp_dir().join("pkguard-cache"))
+    directories::ProjectDirs::from("dev", "pkguard", "pkguard").map_or_else(
+        || std::env::temp_dir().join("pkguard-cache"),
+        |dirs| dirs.cache_dir().to_path_buf(),
+    )
 }
 
 fn user_config_path() -> Option<PathBuf> {
     crate::paths::user_config_if_present()
 }
 
-fn preset_of(arg: PresetArg) -> Preset {
+const fn preset_of(arg: PresetArg) -> Preset {
     match arg {
         PresetArg::Relaxed => Preset::Relaxed,
         PresetArg::Standard => Preset::Standard,

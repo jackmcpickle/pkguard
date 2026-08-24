@@ -21,7 +21,7 @@ fn paint(text: &str, style: Style, opts: &RenderOptions) -> String {
     }
 }
 
-fn severity_style(severity: Severity) -> Style {
+const fn severity_style(severity: Severity) -> Style {
     match severity {
         Severity::Critical => Style::new().red().bold(),
         Severity::High => Style::new().red(),
@@ -32,9 +32,10 @@ fn severity_style(severity: Severity) -> Style {
 }
 
 fn display_name(root: &Path) -> String {
-    root.file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| root.display().to_string())
+    root.file_name().map_or_else(
+        || root.display().to_string(),
+        |n| n.to_string_lossy().into_owned(),
+    )
 }
 
 fn package_cell(finding: &Finding) -> String {
@@ -158,7 +159,10 @@ type RowCells = (String, String, String, String, String);
 fn row_cells(finding: &Finding) -> RowCells {
     (
         finding.severity.as_str().to_string(),
-        finding.manager.map(|m| m.name()).unwrap_or("-").to_string(),
+        finding
+            .manager
+            .map_or("-", pkguard_core::manager::Manager::name)
+            .to_string(),
         finding.code.clone(),
         package_cell(finding),
         finding.message.clone(),
@@ -252,7 +256,7 @@ pub struct SeverityCounts {
 }
 
 impl SeverityCounts {
-    pub fn add(&mut self, severity: Severity) {
+    pub const fn add(&mut self, severity: Severity) {
         match severity {
             Severity::Critical => self.critical += 1,
             Severity::High => self.high += 1,

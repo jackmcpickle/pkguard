@@ -44,7 +44,8 @@ pub struct FixPlan {
 
 impl FixPlan {
     /// True when the plan would neither write nor report anything.
-    pub fn is_empty(&self) -> bool {
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
         self.files.is_empty() && self.changes.is_empty()
     }
 }
@@ -62,11 +63,12 @@ pub enum SkipReason {
 }
 
 impl SkipReason {
-    pub fn as_str(self) -> &'static str {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
         match self {
-            SkipReason::Forbidden => "forbidden",
-            SkipReason::Unparseable => "unparseable",
-            SkipReason::WriteFailed => "write failed",
+            Self::Forbidden => "forbidden",
+            Self::Unparseable => "unparseable",
+            Self::WriteFailed => "write failed",
         }
     }
 }
@@ -79,6 +81,7 @@ pub struct ApplyResult {
     pub blocked: Option<Blocked>,
 }
 
+#[must_use]
 pub fn plan_fixes(project: &Project, findings: &[Finding]) -> FixPlan {
     let mut by_file: BTreeMap<PathBuf, (ConfigFormat, Vec<ConfigEdit>)> = BTreeMap::new();
     let mut skipped = Vec::new();
@@ -229,12 +232,11 @@ fn write_inside_root(file: &Path, body: &str, root: &Path) -> Result<(), SkipRea
         return Err(SkipReason::WriteFailed);
     };
     let wrote = {
-        let mut handle = match dir.open_with(&tmp, OpenOptions::new().write(true)) {
-            Ok(handle) => handle,
-            Err(_) => {
-                let _ = dir.remove_file(&tmp);
-                return Err(SkipReason::WriteFailed);
-            }
+        let mut handle = if let Ok(handle) = dir.open_with(&tmp, OpenOptions::new().write(true)) {
+            handle
+        } else {
+            let _ = dir.remove_file(&tmp);
+            return Err(SkipReason::WriteFailed);
         };
         handle.write_all(body.as_bytes()).is_ok()
     };

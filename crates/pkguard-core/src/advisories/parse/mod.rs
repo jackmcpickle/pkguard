@@ -42,7 +42,7 @@ fn ghsa_from_url(url: &str) -> Option<String> {
     Some(id)
 }
 
-/// Precedence mirrors the TS rawAdvisoryId: github_advisory_id, id, cve,
+/// Precedence mirrors the TS rawAdvisoryId: `github_advisory_id`, id, cve,
 /// then a GHSA id sniffed out of the advisory URL. Empty string = unknown.
 pub fn advisory_id(
     github_advisory_id: Option<&Value>,

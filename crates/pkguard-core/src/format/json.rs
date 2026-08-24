@@ -1,10 +1,11 @@
 //! JSON config editing (`composer.json`, `package.json`). Key order is
-//! preserved via serde_json's `preserve_order` feature so diffs stay small.
+//! preserved via `serde_json`'s `preserve_order` feature so diffs stay small.
 
 use super::EditError;
 use crate::fix::{ConfigEdit, ConfigValue};
 use serde_json::{Map, Value};
 
+#[must_use]
 pub fn to_json(value: &ConfigValue) -> Value {
     match value {
         ConfigValue::Str(s) => Value::String(s.clone()),

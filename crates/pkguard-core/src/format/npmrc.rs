@@ -2,6 +2,7 @@ use crate::fix::{ConfigEdit, ConfigValue};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// npmrc / ini-style key=value parse; comments start with `#` or `;`.
+#[must_use]
 pub fn parse(raw: &str) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     for line in raw.lines() {
@@ -24,6 +25,7 @@ pub fn parse(raw: &str) -> BTreeMap<String, String> {
 
 /// npmrc is flat, so values are always scalars. Lists and tables are not
 /// expressible; JSON is the least-wrong fallback and no check emits one.
+#[must_use]
 pub fn scalar(value: &ConfigValue) -> String {
     match value {
         ConfigValue::Str(s) => s.clone(),
@@ -56,6 +58,7 @@ fn resolve(edits: &[ConfigEdit]) -> (Vec<(String, String)>, BTreeSet<String>) {
 
 /// Line-oriented rewrite: existing keys are replaced in place, unknown keys are
 /// appended, and everything else — comments, blanks, ordering — is untouched.
+#[must_use]
 pub fn edit(raw: &str, edits: &[ConfigEdit]) -> String {
     let (updates, removed) = resolve(edits);
     let lookup: BTreeMap<&str, &str> = updates

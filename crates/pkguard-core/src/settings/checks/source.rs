@@ -9,6 +9,7 @@ use std::path::Path;
 
 const NON_REGISTRY_KEYS: [&str; 4] = ["allow-git", "allow-remote", "allow-file", "allow-directory"];
 
+#[must_use]
 pub fn npm_check(
     settings: &ResolvedSettings,
     npmrc: &BTreeMap<String, String>,
@@ -40,6 +41,7 @@ pub fn npm_check(
     }
 }
 
+#[must_use]
 pub fn pnpm_check(yaml: &Yaml, yaml_path: &Path) -> Vec<Finding> {
     if yaml::is_false(yaml::get(yaml, "blockExoticSubdeps")) {
         vec![fixable_finding(
@@ -69,6 +71,7 @@ fn yarn_git_blocked(yarnrc: &Yaml) -> bool {
     items.is_empty() || !items.iter().any(yaml::is_star)
 }
 
+#[must_use]
 pub fn yarn_git_check(
     settings: &ResolvedSettings,
     yarnrc: &Yaml,
@@ -104,6 +107,7 @@ pub fn yarn_git_check(
     )]
 }
 
+#[must_use]
 pub fn composer_source_fallback(
     source_fallback: bool,
     preset: crate::policy::Preset,

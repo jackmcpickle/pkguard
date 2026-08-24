@@ -61,18 +61,21 @@ pub struct CannedRunner {
 }
 
 impl CannedRunner {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
+    #[must_use]
     pub fn with(self, argv: &[&str], output: CommandOutput) -> Self {
-        self.responses
-            .lock()
-            .unwrap()
-            .insert(argv.iter().map(|s| s.to_string()).collect(), output);
+        self.responses.lock().unwrap().insert(
+            argv.iter().map(std::string::ToString::to_string).collect(),
+            output,
+        );
         self
     }
 
+    #[must_use]
     pub fn run_calls(&self) -> Vec<Vec<String>> {
         self.calls.lock().unwrap().clone()
     }

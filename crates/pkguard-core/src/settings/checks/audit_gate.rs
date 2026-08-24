@@ -73,6 +73,7 @@ fn pnpm_audit_level(yaml: &Yaml) -> Option<&str> {
     yaml::first(yaml, &["auditLevel", "audit-level"]).and_then(yaml::as_str)
 }
 
+#[must_use]
 pub fn pnpm_check(
     settings: &ResolvedSettings,
     yaml: &Yaml,
@@ -102,6 +103,7 @@ pub fn pnpm_check(
     )]
 }
 
+#[must_use]
 pub fn yarn_check(yarnrc: &Yaml, yarnrc_path: &Path) -> Vec<Finding> {
     let disabled = ["audit", "npmAudit", "enableNpmAudit"]
         .into_iter()
@@ -170,6 +172,7 @@ pub fn uv_malware(
 
 /// Composer's audit-gate findings, read straight off the parsed manifest
 /// settings rather than from four positional booleans.
+#[must_use]
 pub fn composer_policy(security: &ComposerSecurity, config_path: &Path) -> Vec<Finding> {
     let mut findings = Vec::new();
     if security.policy_disabled || security.advisories_ignore {

@@ -9,6 +9,7 @@ fn normalize(url: &str) -> &str {
     url.trim().trim_end_matches('/')
 }
 
+#[must_use]
 pub fn same_registry(actual: &str, expected: &str) -> bool {
     normalize(actual) == normalize(expected)
 }
