@@ -1,6 +1,6 @@
 ---
 import BaseLayout from "@/layouts/BaseLayout.astro";
-import { APP_NAME, APP_VERSION } from "@/lib/catalog";
+import { APP_NAME, APP_VERSION, CONFIG_FILE_NAME } from "@/lib/catalog";
 import {
   AUTHOR_NAME,
   AUTHOR_URL,
@@ -47,6 +47,17 @@ const breadcrumbSchema = {
   ],
 };
 
+const facts = [
+  { label: "Price", value: "Free. No paid tier, no account, no telemetry." },
+  { label: "License", value: LICENSE_NAME, href: LICENSE_URL },
+  { label: "Latest version", value: APP_VERSION, href: RELEASES_URL },
+  { label: "Maintainer", value: AUTHOR_NAME, href: AUTHOR_URL },
+  { label: "Written in", value: "Rust. One binary, no runtime to install." },
+  { label: "Config file", value: CONFIG_FILE_NAME, href: "/docs/config" },
+  { label: "Release notes", value: "CHANGELOG.md", href: CHANGELOG_URL },
+  { label: "Support", value: "GitHub issues", href: ISSUES_URL },
+] as const;
+
 const contacts = [
   {
     label: "Bugs and feature requests",
@@ -89,6 +100,42 @@ const contacts = [
         Last updated <time datetime={SITE_UPDATED}>{SITE_UPDATED}</time>. Current
         version <span class="font-mono">{APP_VERSION}</span>.
       </p>
+
+      <section class="mt-12" aria-labelledby="facts">
+        <h2 id="facts" class="text-2xl leading-tight font-normal tracking-tight">
+          The project, in plain terms
+        </h2>
+        <p class="mt-4 text-base leading-6 text-body">
+          {APP_NAME} is open source. One person maintains it in the open, and every
+          release is public. Read the code, file a bug, or send a patch.
+        </p>
+        <table class="mt-6 w-full text-left text-sm">
+          <caption class="sr-only">Facts about the {APP_NAME} project</caption>
+          <tbody>
+            {
+              facts.map((fact) => (
+                <tr class="border-t border-hairline">
+                  <th
+                    scope="row"
+                    class="py-4 pr-6 align-top font-mono text-xs font-normal tracking-[1.2px] text-body-mid uppercase"
+                  >
+                    {fact.label}
+                  </th>
+                  <td class="py-4 leading-6 text-body">
+                    {"href" in fact ? (
+                      <a href={fact.href} class="text-ink underline" rel="noopener">
+                        {fact.value}
+                      </a>
+                    ) : (
+                      fact.value
+                    )}
+                  </td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </section>
 
       <section class="mt-12" aria-labelledby="why">
         <h2 id="why" class="text-2xl leading-tight font-normal tracking-tight">
