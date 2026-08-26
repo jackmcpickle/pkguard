@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [1.1.5](https://github.com/jackmcpickle/pkguard/compare/v1.1.4...v1.1.5) (2026-08-26)
+
+### Bug Fixes
+
+* **uv:** report one vulnerability once, not once per advisory database ([#36](https://github.com/jackmcpickle/pkguard/issues/36)) ([12230b3](https://github.com/jackmcpickle/pkguard/commit/12230b3580d41d04ef54e8f551d8770757926ac3))
 ## [1.1.4](https://github.com/jackmcpickle/pkguard/compare/v1.1.3...v1.1.4) (2026-08-26)
 ## [1.1.3](https://github.com/jackmcpickle/pkguard/compare/v1.1.2...v1.1.3) (2026-08-24)
 
