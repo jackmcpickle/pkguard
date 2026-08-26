@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [1.2.0](https://github.com/jackmcpickle/pkguard/compare/v1.1.5...v1.2.0) (2026-08-26)
+
+### Features
+
+* **release:** publish to crates.io on merge to main ([#37](https://github.com/jackmcpickle/pkguard/issues/37)) ([3198453](https://github.com/jackmcpickle/pkguard/commit/3198453fbae8d9f88f9321550dad13446bf73ea7))
 ## [1.1.5](https://github.com/jackmcpickle/pkguard/compare/v1.1.4...v1.1.5) (2026-08-26)
 
 ### Bug Fixes
