@@ -231,6 +231,8 @@ Relying on a safe default instead of pinning it is reported as `info` (`moderate
 
 When the manager binary is present, pkguard shells out to the native audit (`npm audit --json`, `pnpm audit --json`, `yarn npm audit --json`, `bun audit --json`, `uv audit`, `cargo audit --json`, `composer audit`, `bundle-audit check`) and reports advisories at or above the preset's gate. Results are cached by lockfile digest; pass `--refresh` or `--no-cache` to bypass.
 
+**uv counts differ from `uv audit`.** uv queries several advisory databases and does not merge them, so one vulnerability is listed twice — as its GHSA record, and as the PYSEC record naming that GHSA an alias. pkguard collapses the pair, so its count is the number of vulnerabilities where uv's is the number of database rows. uv also publishes no severity, so every uv advisory reports as `info` and none of them meet a preset gate on severity alone.
+
 ## Development
 
 Requires a stable Rust toolchain.
