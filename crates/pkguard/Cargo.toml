@@ -4,13 +4,18 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Guard your package manager: audit dependencies, lockfiles, and install scripts for supply-chain risk."
 
 [[bin]]
 name = "pkguard"
 path = "src/main.rs"
 
 [dependencies]
-pkguard-core = { path = "../pkguard-core" }
+pkguard-core = { workspace = true }
 directories = { workspace = true }
 clap = { workspace = true }
 tokio = { workspace = true }
