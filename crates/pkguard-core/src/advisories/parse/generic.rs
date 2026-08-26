@@ -252,8 +252,26 @@ fn message_was_generated(finding: &Finding) -> bool {
         )
 }
 
+/// Fold a twin into the record already kept.
+///
+/// Neither twin is wholly authoritative — they are separate databases
+/// describing one vulnerability, so one may name it while the other knows the
+/// fix. Taking the better of each field means collapsing the pair cannot lose
+/// remediation information the way discarding a whole row could. Everything not
+/// merged here is equal by construction: the code, package and installed
+/// version are the key, and uv reports one severity for all of them.
+fn merge_twin(kept: &mut Finding, twin: Finding) {
+    if message_was_generated(kept) && !message_was_generated(&twin) {
+        kept.message = twin.message;
+    }
+    if kept.fix_version.is_none() {
+        kept.fix_version = twin.fix_version;
+        kept.fixable = kept.fix_version.is_some();
+    }
+}
+
 /// Collapse entries describing the same advisory against the same installed
-/// package, keeping whichever carries a real summary.
+/// package into one, keeping the best of what each says about it.
 ///
 /// Scoped to uv because uv is the only manager that reports a vulnerability
 /// more than once. Elsewhere two rows sharing a code and a package are two
@@ -275,9 +293,7 @@ fn dedupe_alias_twins(findings: Vec<Finding>) -> Vec<Finding> {
             finding.current_version.clone(),
         );
         if let Some(&at) = seen.get(&key) {
-            if message_was_generated(&out[at]) && !message_was_generated(&finding) {
-                out[at] = finding;
-            }
+            merge_twin(&mut out[at], finding);
         } else {
             seen.insert(key, out.len());
             out.push(finding);
@@ -565,6 +581,38 @@ mod tests {
         let findings = parse_audit_json(reversed, "/p/uv.lock", Manager::Uv).unwrap();
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].message, "the real text");
+    }
+
+    /// Collapsing must not cost remediation information. uv's databases can
+    /// disagree about what they carry, so the twin that names the vulnerability
+    /// is not necessarily the one that knows the fix.
+    #[test]
+    fn a_collapsed_twin_keeps_the_fix_the_other_record_knew() {
+        let stdout = r#"{"vulnerabilities":[
+          {"dependency":{"name":"urllib3","version":"1.26.5"},"id":"GHSA-v845-jxx5-vc9f",
+           "aliases":["PYSEC-2023-192"],"summary":"the real text","fix_versions":[]},
+          {"dependency":{"name":"urllib3","version":"1.26.5"},"id":"PYSEC-2023-192",
+           "aliases":["GHSA-v845-jxx5-vc9f"],"fix_versions":["1.26.17"]}]}"#;
+        let findings = parse_audit_json(stdout, "/p/uv.lock", Manager::Uv).unwrap();
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].message, "the real text");
+        assert_eq!(findings[0].fix_version.as_deref(), Some("1.26.17"));
+        assert!(findings[0].fixable);
+    }
+
+    /// The same, with uv listing the records the other way round.
+    #[test]
+    fn the_summary_and_the_fix_survive_whichever_twin_arrives_first() {
+        let stdout = r#"{"vulnerabilities":[
+          {"dependency":{"name":"urllib3","version":"1.26.5"},"id":"PYSEC-2023-192",
+           "aliases":["GHSA-v845-jxx5-vc9f"],"fix_versions":["1.26.17"]},
+          {"dependency":{"name":"urllib3","version":"1.26.5"},"id":"GHSA-v845-jxx5-vc9f",
+           "aliases":["PYSEC-2023-192"],"summary":"the real text","fix_versions":[]}]}"#;
+        let findings = parse_audit_json(stdout, "/p/uv.lock", Manager::Uv).unwrap();
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].message, "the real text");
+        assert_eq!(findings[0].fix_version.as_deref(), Some("1.26.17"));
+        assert!(findings[0].fixable);
     }
 
     #[test]
