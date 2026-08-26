@@ -8,6 +8,9 @@ import { defineConfig } from "astro/config";
 const root = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
+  // Astro's HTML compressor eats the whitespace between a text node and an
+  // inline tag on the next line, gluing prose to links ("Read the<a>notes").
+  compressHTML: false,
   integrations: [sitemap()],
   output: "static",
   site: "https://pkguard.dev",
