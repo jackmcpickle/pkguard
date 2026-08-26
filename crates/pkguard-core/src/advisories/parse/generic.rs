@@ -55,6 +55,22 @@ fn fix_version(item: &Value) -> Option<String> {
         .find_map(concrete_version)
 }
 
+/// uv is the only manager that reports one vulnerability more than once. It
+/// queries several advisory databases and does not merge them, so a
+/// vulnerability arrives as its GHSA record and again as the PYSEC record that
+/// lists that GHSA among its aliases. Preferring the GHSA gives the twins a
+/// shared code, which is what lets them be collapsed — and keeps uv codes
+/// comparable with every other manager, the precedence `bun.rs` set for the
+/// same reason.
+fn ghsa_alias(item: &Value) -> Option<String> {
+    item.get("aliases")
+        .and_then(Value::as_array)?
+        .iter()
+        .filter_map(Value::as_str)
+        .find(|alias| alias.starts_with("GHSA-"))
+        .map(ToOwned::to_owned)
+}
+
 fn yarn_tree_finding(item: &Value, path: &str, manager: Manager) -> Option<Finding> {
     let name = item.get("value").and_then(Value::as_str)?;
     let children = item.get("children")?;
@@ -102,6 +118,51 @@ fn yarn_tree_finding(item: &Value, path: &str, manager: Manager) -> Option<Findi
     })
 }
 
+/// Every spelling a manager uses for the vulnerable package: `packageName` is
+/// composer's, `gem` is bundler's, `dependency` is uv's.
+fn package_name<'a>(item: &'a Value, source: &'a Value) -> Option<&'a str> {
+    string_field(item, &["name", "package", "module_name", "packageName"])
+        .or_else(|| string_field(source, &["package", "name"]))
+        .or_else(|| {
+            item.get("package")
+                .and_then(|pkg| pkg.get("name"))
+                .and_then(Value::as_str)
+        })
+        .or_else(|| {
+            item.get("gem").and_then(|gem| {
+                gem.as_str()
+                    .or_else(|| gem.get("name").and_then(Value::as_str))
+            })
+        })
+        .or_else(|| {
+            item.get("dependency")
+                .and_then(|dep| dep.get("name"))
+                .and_then(Value::as_str)
+        })
+}
+
+/// The resolved version in the lockfile, wherever the manager hangs it. A
+/// range is not a version, so `concrete_version` has the last word.
+fn installed_version(item: &Value) -> Option<String> {
+    string_field(item, &["version", "installedVersion"])
+        .or_else(|| {
+            item.get("gem")
+                .and_then(|gem| gem.get("version"))
+                .and_then(Value::as_str)
+        })
+        .or_else(|| {
+            item.get("package")
+                .and_then(|pkg| pkg.get("version"))
+                .and_then(Value::as_str)
+        })
+        .or_else(|| {
+            item.get("dependency")
+                .and_then(|dep| dep.get("version"))
+                .and_then(Value::as_str)
+        })
+        .and_then(concrete_version)
+}
+
 fn advisory_like(item: &Value, path: &str, manager: Manager) -> Option<Finding> {
     if item.get("value").is_some() && item.get("children").is_some() {
         return yarn_tree_finding(item, path, manager);
@@ -128,25 +189,7 @@ fn advisory_like(item: &Value, path: &str, manager: Manager) -> Option<Finding> 
             .or_else(|| item.get("severity"))
             .or_else(|| item.get("criticality")),
     );
-    // `packageName` is composer's spelling.
-    let package = string_field(item, &["name", "package", "module_name", "packageName"])
-        .or_else(|| string_field(source, &["package", "name"]))
-        .or_else(|| {
-            item.get("package")
-                .and_then(|pkg| pkg.get("name"))
-                .and_then(Value::as_str)
-        })
-        .or_else(|| {
-            item.get("gem").and_then(|gem| {
-                gem.as_str()
-                    .or_else(|| gem.get("name").and_then(Value::as_str))
-            })
-        })
-        .or_else(|| {
-            item.get("dependency")
-                .and_then(|dep| dep.get("name"))
-                .and_then(Value::as_str)
-        });
+    let package = package_name(item, source);
     let id = advisory_id(
         source
             .get("github_advisory_id")
@@ -161,6 +204,13 @@ fn advisory_like(item: &Value, path: &str, manager: Manager) -> Option<Finding> 
             .or_else(|| item.get("url"))
             .and_then(Value::as_str),
     );
+    // Only uv carries `aliases`, and only uv reports a vulnerability twice, so
+    // every other manager's id precedence is left alone.
+    let id = if uv_shaped && !id.starts_with("GHSA-") {
+        ghsa_alias(item).unwrap_or(id)
+    } else {
+        id
+    };
     let message = string_field(source, &["title", "summary", "Issue"])
         .or_else(|| string_field(item, &["title", "summary"]))
         .map_or_else(
@@ -184,26 +234,56 @@ fn advisory_like(item: &Value, path: &str, manager: Manager) -> Option<Finding> 
         fixable: fix.is_some(),
         manager: Some(manager),
         package: package.map(ToOwned::to_owned),
-        current_version: string_field(item, &["version", "installedVersion"])
-            .or_else(|| {
-                item.get("gem")
-                    .and_then(|gem| gem.get("version"))
-                    .and_then(Value::as_str)
-            })
-            .or_else(|| {
-                item.get("package")
-                    .and_then(|pkg| pkg.get("version"))
-                    .and_then(Value::as_str)
-            })
-            .or_else(|| {
-                item.get("dependency")
-                    .and_then(|dep| dep.get("version"))
-                    .and_then(Value::as_str)
-            })
-            .and_then(concrete_version),
+        current_version: installed_version(item),
         fix_version: fix,
         fix: None,
     })
+}
+
+/// The message `advisory_like` invents when a payload names no title or
+/// summary. uv's PYSEC records usually carry neither, so this is what marks the
+/// twin worth dropping in favour of its GHSA counterpart.
+fn message_was_generated(finding: &Finding) -> bool {
+    finding.message
+        == format!(
+            "{} {} advisory",
+            finding.package.as_deref().unwrap_or("unknown"),
+            finding.severity.as_str()
+        )
+}
+
+/// Collapse entries describing the same advisory against the same installed
+/// package, keeping whichever carries a real summary.
+///
+/// Scoped to uv because uv is the only manager that reports a vulnerability
+/// more than once. Elsewhere two rows sharing a code and a package are two
+/// genuine findings, and merging them would hide one.
+fn dedupe_alias_twins(findings: Vec<Finding>) -> Vec<Finding> {
+    let mut out: Vec<Finding> = Vec::with_capacity(findings.len());
+    let mut seen: std::collections::HashMap<(String, Option<String>, Option<String>), usize> =
+        std::collections::HashMap::new();
+    for finding in findings {
+        // An unidentified advisory has no id to match on, so it can never be
+        // shown to be the same as another and is always kept.
+        if finding.code == super::advisory_code(String::new()) {
+            out.push(finding);
+            continue;
+        }
+        let key = (
+            finding.code.clone(),
+            finding.package.clone(),
+            finding.current_version.clone(),
+        );
+        if let Some(&at) = seen.get(&key) {
+            if message_was_generated(&out[at]) && !message_was_generated(&finding) {
+                out[at] = finding;
+            }
+        } else {
+            seen.insert(key, out.len());
+            out.push(finding);
+        }
+    }
+    out
 }
 
 fn walk_item(value: &Value, path: &str, manager: Manager, out: &mut Vec<Finding>) {
@@ -311,6 +391,9 @@ pub fn parse_value(
         }
         Value::Object(map) => walk_audit_roots(&map, lockfile_path, manager, &mut findings),
         _ => {}
+    }
+    if manager == Manager::Uv {
+        findings = dedupe_alias_twins(findings);
     }
     Ok(findings)
 }
@@ -429,6 +512,88 @@ mod tests {
         let findings = parse_audit_json(UV_AUDIT, "/p/uv.lock", Manager::Uv).unwrap();
         assert_eq!(findings[1].fix_version, None);
         assert!(!findings[1].fixable);
+    }
+
+    /// uv queries several advisory databases and does not merge them, so one
+    /// vulnerability arrives twice: its GHSA record, and the PYSEC record that
+    /// lists that GHSA among its aliases. The PYSEC twin usually carries no
+    /// summary, so it used to render as a placeholder row directly beneath the
+    /// row that had the real text.
+    const UV_ALIAS_TWINS: &str = r#"{
+      "schema": {"version": "preview"},
+      "vulnerabilities": [
+        {
+          "dependency": {"name": "urllib3", "version": "1.26.5"},
+          "id": "GHSA-v845-jxx5-vc9f",
+          "aliases": ["CVE-2023-43804", "PYSEC-2023-192"],
+          "summary": "`Cookie` HTTP header isn't stripped on cross-origin redirects",
+          "fix_versions": ["1.26.17", "2.0.6"]
+        },
+        {
+          "dependency": {"name": "urllib3", "version": "1.26.5"},
+          "id": "PYSEC-2023-192",
+          "aliases": ["CVE-2023-43804", "GHSA-v845-jxx5-vc9f"],
+          "fix_versions": ["1.26.17", "2.0.6"]
+        }
+      ]
+    }"#;
+
+    #[test]
+    fn one_uv_vulnerability_listed_by_two_databases_is_reported_once() {
+        let findings = parse_audit_json(UV_ALIAS_TWINS, "/p/uv.lock", Manager::Uv).unwrap();
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].code, "GHSA-v845-jxx5-vc9f");
+    }
+
+    #[test]
+    fn the_surviving_uv_twin_is_the_one_carrying_the_summary() {
+        let findings = parse_audit_json(UV_ALIAS_TWINS, "/p/uv.lock", Manager::Uv).unwrap();
+        assert_eq!(
+            findings[0].message,
+            "`Cookie` HTTP header isn't stripped on cross-origin redirects"
+        );
+    }
+
+    /// Order is uv's, not ours: the twin without a summary may arrive first.
+    #[test]
+    fn the_summary_wins_whichever_twin_uv_lists_first() {
+        let reversed = r#"{"vulnerabilities":[
+          {"dependency":{"name":"urllib3","version":"1.26.5"},"id":"PYSEC-2023-192",
+           "aliases":["GHSA-v845-jxx5-vc9f"]},
+          {"dependency":{"name":"urllib3","version":"1.26.5"},"id":"GHSA-v845-jxx5-vc9f",
+           "aliases":["PYSEC-2023-192"],"summary":"the real text"}]}"#;
+        let findings = parse_audit_json(reversed, "/p/uv.lock", Manager::Uv).unwrap();
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].message, "the real text");
+    }
+
+    #[test]
+    fn a_uv_pysec_id_with_no_ghsa_alias_keeps_its_own_id() {
+        let stdout = r#"{"vulnerabilities":[
+          {"dependency":{"name":"foo","version":"1.0"},"id":"PYSEC-2023-112",
+           "aliases":["CVE-2023-1"],"summary":"s"}]}"#;
+        let findings = parse_audit_json(stdout, "/p/uv.lock", Manager::Uv).unwrap();
+        assert_eq!(findings[0].code, "PYSEC-2023-112");
+    }
+
+    #[test]
+    fn the_same_uv_advisory_against_two_packages_stays_two_findings() {
+        let stdout = r#"{"vulnerabilities":[
+          {"dependency":{"name":"foo","version":"1.0"},"id":"GHSA-a-b-c","summary":"s"},
+          {"dependency":{"name":"bar","version":"1.0"},"id":"GHSA-a-b-c","summary":"s"}]}"#;
+        let findings = parse_audit_json(stdout, "/p/uv.lock", Manager::Uv).unwrap();
+        assert_eq!(findings.len(), 2);
+    }
+
+    /// Only uv reports a vulnerability twice. Collapsing rows for any other
+    /// manager would hide a genuine second finding.
+    #[test]
+    fn other_managers_keep_every_row_even_when_a_code_repeats() {
+        let stdout = r#"{"vulnerabilities":{"list":[
+          {"advisory":{"id":"RUSTSEC-2024-0001","title":"bad"},"package":{"name":"foo","version":"0.1.0"}},
+          {"advisory":{"id":"RUSTSEC-2024-0001","title":"bad"},"package":{"name":"foo","version":"0.1.0"}}]}}"#;
+        let findings = parse_audit_json(stdout, "/p/Cargo.lock", Manager::Cargo).unwrap();
+        assert_eq!(findings.len(), 2);
     }
 
     #[test]
