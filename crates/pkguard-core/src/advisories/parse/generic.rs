@@ -44,6 +44,17 @@ fn string_field<'a>(item: &'a Value, keys: &[&str]) -> Option<&'a str> {
         .find_map(|key| item.get(*key).and_then(Value::as_str))
 }
 
+/// uv lists every release that clears the advisory in `fix_versions`, oldest
+/// first, so the first concrete entry is the nearest upgrade. An empty array
+/// means there is no fix yet.
+fn fix_version(item: &Value) -> Option<String> {
+    item.get("fix_versions")
+        .and_then(Value::as_array)?
+        .iter()
+        .filter_map(Value::as_str)
+        .find_map(concrete_version)
+}
+
 fn yarn_tree_finding(item: &Value, path: &str, manager: Manager) -> Option<Finding> {
     let name = item.get("value").and_then(Value::as_str)?;
     let children = item.get("children")?;
@@ -162,6 +173,7 @@ fn advisory_like(item: &Value, path: &str, manager: Manager) -> Option<Finding> 
             },
             ToOwned::to_owned,
         );
+    let fix = fix_version(item).or_else(|| fix_version(source));
     Some(Finding {
         kind: FindingKind::Advisory,
         code: super::advisory_code(id),
@@ -169,7 +181,7 @@ fn advisory_like(item: &Value, path: &str, manager: Manager) -> Option<Finding> 
         detail: None,
         severity,
         path: path.to_string(),
-        fixable: false,
+        fixable: fix.is_some(),
         manager: Some(manager),
         package: package.map(ToOwned::to_owned),
         current_version: string_field(item, &["version", "installedVersion"])
@@ -189,7 +201,7 @@ fn advisory_like(item: &Value, path: &str, manager: Manager) -> Option<Finding> 
                     .and_then(Value::as_str)
             })
             .and_then(concrete_version),
-        fix_version: None,
+        fix_version: fix,
         fix: None,
     })
 }
@@ -403,6 +415,20 @@ mod tests {
         assert_eq!(findings[0].current_version.as_deref(), Some("3.1.2"));
         assert_eq!(findings[0].manager, Some(Manager::Uv));
         assert_eq!(findings[0].path, "/p/uv.lock");
+    }
+
+    #[test]
+    fn a_uv_finding_keeps_the_first_fix_version() {
+        let findings = parse_audit_json(UV_AUDIT, "/p/uv.lock", Manager::Uv).unwrap();
+        assert_eq!(findings[0].fix_version.as_deref(), Some("3.1.6"));
+        assert!(findings[0].fixable);
+    }
+
+    #[test]
+    fn a_uv_finding_without_fix_versions_is_not_fixable() {
+        let findings = parse_audit_json(UV_AUDIT, "/p/uv.lock", Manager::Uv).unwrap();
+        assert_eq!(findings[1].fix_version, None);
+        assert!(!findings[1].fixable);
     }
 
     #[test]
