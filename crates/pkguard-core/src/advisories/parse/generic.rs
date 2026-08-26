@@ -44,6 +44,17 @@ fn string_field<'a>(item: &'a Value, keys: &[&str]) -> Option<&'a str> {
         .find_map(|key| item.get(*key).and_then(Value::as_str))
 }
 
+/// uv lists every release that clears the advisory in `fix_versions`, oldest
+/// first, so the first concrete entry is the nearest upgrade. An empty array
+/// means there is no fix yet.
+fn fix_version(item: &Value) -> Option<String> {
+    item.get("fix_versions")
+        .and_then(Value::as_array)?
+        .iter()
+        .filter_map(Value::as_str)
+        .find_map(concrete_version)
+}
+
 fn yarn_tree_finding(item: &Value, path: &str, manager: Manager) -> Option<Finding> {
     let name = item.get("value").and_then(Value::as_str)?;
     let children = item.get("children")?;
@@ -95,11 +106,16 @@ fn advisory_like(item: &Value, path: &str, manager: Manager) -> Option<Finding> 
     if item.get("value").is_some() && item.get("children").is_some() {
         return yarn_tree_finding(item, path, manager);
     }
+    // uv reports neither a severity nor a title: an entry is an advisory
+    // because it names a `dependency` and carries an id.
+    let uv_shaped =
+        item.get("dependency").is_some_and(Value::is_object) && item.get("id").is_some();
     let has_signal = item.get("severity").is_some()
         || item.get("title").is_some()
         || item.get("advisory").is_some()
         || item.get("github_advisory_id").is_some()
-        || item.get("advisoryId").is_some();
+        || item.get("advisoryId").is_some()
+        || uv_shaped;
     if !has_signal {
         return None;
     }
@@ -112,7 +128,8 @@ fn advisory_like(item: &Value, path: &str, manager: Manager) -> Option<Finding> 
             .or_else(|| item.get("severity"))
             .or_else(|| item.get("criticality")),
     );
-    let package = string_field(item, &["name", "package", "module_name"])
+    // `packageName` is composer's spelling.
+    let package = string_field(item, &["name", "package", "module_name", "packageName"])
         .or_else(|| string_field(source, &["package", "name"]))
         .or_else(|| {
             item.get("package")
@@ -124,6 +141,11 @@ fn advisory_like(item: &Value, path: &str, manager: Manager) -> Option<Finding> 
                 gem.as_str()
                     .or_else(|| gem.get("name").and_then(Value::as_str))
             })
+        })
+        .or_else(|| {
+            item.get("dependency")
+                .and_then(|dep| dep.get("name"))
+                .and_then(Value::as_str)
         });
     let id = advisory_id(
         source
@@ -151,6 +173,7 @@ fn advisory_like(item: &Value, path: &str, manager: Manager) -> Option<Finding> 
             },
             ToOwned::to_owned,
         );
+    let fix = fix_version(item).or_else(|| fix_version(source));
     Some(Finding {
         kind: FindingKind::Advisory,
         code: super::advisory_code(id),
@@ -158,7 +181,7 @@ fn advisory_like(item: &Value, path: &str, manager: Manager) -> Option<Finding> 
         detail: None,
         severity,
         path: path.to_string(),
-        fixable: false,
+        fixable: fix.is_some(),
         manager: Some(manager),
         package: package.map(ToOwned::to_owned),
         current_version: string_field(item, &["version", "installedVersion"])
@@ -172,8 +195,13 @@ fn advisory_like(item: &Value, path: &str, manager: Manager) -> Option<Finding> 
                     .and_then(|pkg| pkg.get("version"))
                     .and_then(Value::as_str)
             })
+            .or_else(|| {
+                item.get("dependency")
+                    .and_then(|dep| dep.get("version"))
+                    .and_then(Value::as_str)
+            })
             .and_then(concrete_version),
-        fix_version: None,
+        fix_version: fix,
         fix: None,
     })
 }
@@ -340,6 +368,113 @@ mod tests {
         assert_eq!(findings[0].package.as_deref(), Some("rails"));
         assert_eq!(findings[0].current_version.as_deref(), Some("4.2.0"));
         assert_eq!(findings[0].severity, Severity::High);
+    }
+
+    /// Trimmed from real `uv audit --output-format json --frozen` output.
+    /// uv reports no severity at all, and hangs the package name off a
+    /// `dependency` object rather than the advisory.
+    const UV_AUDIT: &str = r#"{
+      "schema": {"version": "preview"},
+      "summary": {"audited_packages": 2, "vulnerabilities": 2, "adverse_statuses": 0},
+      "vulnerabilities": [
+        {
+          "dependency": {"name": "jinja2", "version": "3.1.2"},
+          "id": "GHSA-cpwx-vrp4-4pq7",
+          "display_id": "GHSA-cpwx-vrp4-4pq7",
+          "aliases": ["CVE-2025-27516", "PYSEC-2026-1471"],
+          "summary": "Jinja2 vulnerable to sandbox breakout through attr filter",
+          "description": "long prose",
+          "link": "https://nvd.nist.gov/vuln/detail/CVE-2025-27516",
+          "fix_versions": ["3.1.6"]
+        },
+        {
+          "dependency": {"name": "jinja2", "version": "3.1.2"},
+          "id": "GHSA-gmj6-6f8f-6699",
+          "display_id": "GHSA-gmj6-6f8f-6699",
+          "aliases": ["CVE-2024-56201"],
+          "summary": "Jinja has a sandbox breakout through malicious filenames",
+          "description": "long prose",
+          "link": "https://example.test/2",
+          "fix_versions": []
+        }
+      ]
+    }"#;
+
+    #[test]
+    fn every_uv_vulnerability_becomes_a_finding() {
+        let findings = parse_audit_json(UV_AUDIT, "/p/uv.lock", Manager::Uv).unwrap();
+        assert_eq!(findings.len(), 2);
+        assert_eq!(findings[0].code, "GHSA-cpwx-vrp4-4pq7");
+        assert_eq!(findings[1].code, "GHSA-gmj6-6f8f-6699");
+    }
+
+    #[test]
+    fn a_uv_finding_carries_the_dependency_name_and_version() {
+        let findings = parse_audit_json(UV_AUDIT, "/p/uv.lock", Manager::Uv).unwrap();
+        assert_eq!(findings[0].package.as_deref(), Some("jinja2"));
+        assert_eq!(findings[0].current_version.as_deref(), Some("3.1.2"));
+        assert_eq!(findings[0].manager, Some(Manager::Uv));
+        assert_eq!(findings[0].path, "/p/uv.lock");
+    }
+
+    #[test]
+    fn a_uv_finding_keeps_the_first_fix_version() {
+        let findings = parse_audit_json(UV_AUDIT, "/p/uv.lock", Manager::Uv).unwrap();
+        assert_eq!(findings[0].fix_version.as_deref(), Some("3.1.6"));
+        assert!(findings[0].fixable);
+    }
+
+    #[test]
+    fn a_uv_finding_without_fix_versions_is_not_fixable() {
+        let findings = parse_audit_json(UV_AUDIT, "/p/uv.lock", Manager::Uv).unwrap();
+        assert_eq!(findings[1].fix_version, None);
+        assert!(!findings[1].fixable);
+    }
+
+    #[test]
+    fn a_uv_summary_is_the_message() {
+        let findings = parse_audit_json(UV_AUDIT, "/p/uv.lock", Manager::Uv).unwrap();
+        assert_eq!(
+            findings[0].message,
+            "Jinja2 vulnerable to sandbox breakout through attr filter"
+        );
+    }
+
+    #[test]
+    fn uv_reports_no_severity_so_findings_land_on_info() {
+        let findings = parse_audit_json(UV_AUDIT, "/p/uv.lock", Manager::Uv).unwrap();
+        assert_eq!(findings[0].severity, Severity::Info);
+    }
+
+    #[test]
+    fn the_uv_summary_block_is_not_mistaken_for_an_advisory() {
+        let findings = parse_audit_json(UV_AUDIT, "/p/uv.lock", Manager::Uv).unwrap();
+        assert!(findings
+            .iter()
+            .all(|f| f.package.as_deref() == Some("jinja2")));
+    }
+
+    #[test]
+    fn a_clean_uv_report_is_zero_findings() {
+        let stdout = r#"{"schema":{"version":"preview"},"summary":{"audited_packages":2,"vulnerabilities":0,"adverse_statuses":0},"vulnerabilities":[]}"#;
+        let findings = parse_audit_json(stdout, "/p/uv.lock", Manager::Uv).unwrap();
+        assert!(findings.is_empty(), "{findings:?}");
+    }
+
+    #[test]
+    fn parses_composer_advisories() {
+        let stdout = r#"{"advisories":{"acme/lib":[{
+            "advisoryId":"PKSA-1111-2222-3333","packageName":"acme/lib",
+            "affectedVersions":"<1.2.0","title":"Remote code execution",
+            "cve":"CVE-2024-0001","severity":"high",
+            "link":"https://example.test/a"}]}}"#;
+        let findings = parse_audit_json(stdout, "/p/composer.lock", Manager::Composer).unwrap();
+        assert_eq!(findings.len(), 1);
+        // composer's own advisory id wins over the CVE alias.
+        assert_eq!(findings[0].code, "PKSA-1111-2222-3333");
+        assert_eq!(findings[0].package.as_deref(), Some("acme/lib"));
+        assert_eq!(findings[0].severity, Severity::High);
+        assert_eq!(findings[0].message, "Remote code execution");
     }
 
     #[test]

@@ -880,6 +880,73 @@ mod tests {
     }
 
     #[test]
+    fn bun_lock_is_bun_primary_over_a_bare_package_json() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir(tmp.path().join(".git")).unwrap();
+        write(tmp.path(), "package.json", "{}");
+        write(tmp.path(), "bun.lock", "");
+
+        let projects = discover(tmp.path());
+        let found = roles(&projects);
+        assert_eq!(found, vec![(Manager::Bun, Role::Primary)]);
+        assert_eq!(
+            projects[0].managers[0].lockfile_path.as_deref(),
+            Some(tmp.path().join("bun.lock").as_path())
+        );
+    }
+
+    #[test]
+    fn legacy_bun_lockb_and_bunfig_are_still_bun() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir(tmp.path().join(".git")).unwrap();
+        write(tmp.path(), "package.json", "{}");
+        write(tmp.path(), "bun.lockb", "");
+        write(tmp.path(), "bunfig.toml", "");
+
+        let projects = discover(tmp.path());
+        let m = &projects[0].managers[0];
+        assert_eq!(m.manager, Manager::Bun);
+        assert_eq!(m.role, Role::Primary);
+        assert_eq!(
+            m.lockfile_path.as_deref(),
+            Some(tmp.path().join("bun.lockb").as_path())
+        );
+        assert_eq!(
+            m.config_path.as_deref(),
+            Some(tmp.path().join("bunfig.toml").as_path())
+        );
+    }
+
+    #[test]
+    fn pipfile_is_pipenv_primary() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir(tmp.path().join(".git")).unwrap();
+        write(tmp.path(), "Pipfile", "[packages]\n");
+        write(tmp.path(), "Pipfile.lock", "{}");
+
+        let projects = discover(tmp.path());
+        let m = &projects[0].managers[0];
+        assert_eq!(m.manager, Manager::Pipenv);
+        assert_eq!(m.role, Role::Primary);
+        assert_eq!(
+            m.lockfile_path.as_deref(),
+            Some(tmp.path().join("Pipfile.lock").as_path())
+        );
+    }
+
+    #[test]
+    fn poetry_alone_is_poetry_primary() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir(tmp.path().join(".git")).unwrap();
+        write(tmp.path(), "pyproject.toml", "[tool.poetry]\nname=\"x\"\n");
+        write(tmp.path(), "poetry.lock", "");
+
+        let found = roles(&discover(tmp.path()));
+        assert!(found.contains(&(Manager::Poetry, Role::Primary)));
+        assert!(!found.iter().any(|(m, _)| *m == Manager::Pip));
+    }
+
+    #[test]
     fn composer_and_bundler_and_pip_are_detected() {
         let tmp = tempfile::tempdir().unwrap();
         fs::create_dir(tmp.path().join(".git")).unwrap();
@@ -890,5 +957,237 @@ mod tests {
         assert!(found.contains(&(Manager::Composer, Role::Primary)));
         assert!(found.contains(&(Manager::Bundler, Role::Primary)));
         assert!(found.contains(&(Manager::Pip, Role::Primary)));
+    }
+
+    // --- monorepos -------------------------------------------------------
+    //
+    // A JS workspace resolves and audits from the repo root, so members that
+    // carry nothing but a `package.json` must not become their own projects.
+    // A member that ships its own manager config is a separate settings
+    // surface and does get its own project.
+
+    fn workspace_members(root: &Path) {
+        write(root, "packages/app/package.json", r#"{"name":"app"}"#);
+        write(root, "packages/ui/package.json", r#"{"name":"ui"}"#);
+    }
+
+    #[test]
+    fn npm_workspace_members_are_not_separate_projects() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir(tmp.path().join(".git")).unwrap();
+        write(
+            tmp.path(),
+            "package.json",
+            r#"{"workspaces":["packages/*"]}"#,
+        );
+        write(tmp.path(), "package-lock.json", "{}");
+        workspace_members(tmp.path());
+
+        assert_eq!(project_roots(tmp.path()), vec![tmp.path().to_path_buf()]);
+        assert_eq!(
+            roles(&discover(tmp.path())),
+            vec![(Manager::Npm, Role::Primary)]
+        );
+    }
+
+    #[test]
+    fn pnpm_workspace_members_are_not_separate_projects() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir(tmp.path().join(".git")).unwrap();
+        write(tmp.path(), "package.json", "{}");
+        write(tmp.path(), "pnpm-lock.yaml", "");
+        write(
+            tmp.path(),
+            "pnpm-workspace.yaml",
+            "packages:\n  - packages/*\n",
+        );
+        workspace_members(tmp.path());
+
+        let projects = discover(tmp.path());
+        assert_eq!(
+            projects.iter().map(|p| p.root.clone()).collect::<Vec<_>>(),
+            vec![tmp.path().to_path_buf()]
+        );
+        let m = &projects[0].managers[0];
+        assert_eq!(m.manager, Manager::Pnpm);
+        assert_eq!(m.role, Role::Primary);
+        assert_eq!(
+            m.config_path.as_deref(),
+            Some(tmp.path().join("pnpm-workspace.yaml").as_path())
+        );
+    }
+
+    #[test]
+    fn yarn_berry_workspace_members_are_not_separate_projects() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir(tmp.path().join(".git")).unwrap();
+        write(
+            tmp.path(),
+            "package.json",
+            r#"{"packageManager":"yarn@4.1.0","workspaces":["packages/*"]}"#,
+        );
+        write(tmp.path(), "yarn.lock", "");
+        write(tmp.path(), ".yarnrc.yml", "nodeLinker: node-modules\n");
+        workspace_members(tmp.path());
+
+        assert_eq!(project_roots(tmp.path()), vec![tmp.path().to_path_buf()]);
+        assert_eq!(
+            roles(&discover(tmp.path())),
+            vec![(Manager::Yarn, Role::Primary)]
+        );
+    }
+
+    #[test]
+    fn bun_workspace_members_are_not_separate_projects() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir(tmp.path().join(".git")).unwrap();
+        write(
+            tmp.path(),
+            "package.json",
+            r#"{"workspaces":["packages/*"]}"#,
+        );
+        write(tmp.path(), "bun.lock", "");
+        workspace_members(tmp.path());
+
+        assert_eq!(project_roots(tmp.path()), vec![tmp.path().to_path_buf()]);
+        assert_eq!(
+            roles(&discover(tmp.path())),
+            vec![(Manager::Bun, Role::Primary)]
+        );
+    }
+
+    #[test]
+    fn a_workspace_member_with_its_own_npmrc_is_its_own_project() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir(tmp.path().join(".git")).unwrap();
+        write(tmp.path(), "package.json", "{}");
+        write(tmp.path(), "pnpm-lock.yaml", "");
+        write(
+            tmp.path(),
+            "pnpm-workspace.yaml",
+            "packages:\n  - packages/*\n",
+        );
+        workspace_members(tmp.path());
+        write(
+            tmp.path(),
+            "packages/ui/.npmrc",
+            "registry=https://example.com\n",
+        );
+
+        assert_eq!(
+            project_roots(tmp.path()),
+            vec![tmp.path().to_path_buf(), tmp.path().join("packages/ui")]
+        );
+    }
+
+    #[test]
+    fn a_nested_manager_inside_a_js_monorepo_gets_its_own_project() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir(tmp.path().join(".git")).unwrap();
+        write(tmp.path(), "package.json", "{}");
+        write(tmp.path(), "pnpm-lock.yaml", "");
+        write(
+            tmp.path(),
+            "pnpm-workspace.yaml",
+            "packages:\n  - packages/*\n",
+        );
+        write(
+            tmp.path(),
+            "packages/api/pyproject.toml",
+            "[project]\nname=\"api\"\n",
+        );
+        write(tmp.path(), "packages/api/uv.lock", "");
+        write(
+            tmp.path(),
+            "packages/cli/Cargo.toml",
+            "[package]\nname=\"cli\"\n",
+        );
+
+        let projects = discover(tmp.path());
+        assert_eq!(
+            projects.iter().map(|p| p.root.clone()).collect::<Vec<_>>(),
+            vec![
+                tmp.path().to_path_buf(),
+                tmp.path().join("packages/api"),
+                tmp.path().join("packages/cli"),
+            ]
+        );
+        assert_eq!(projects[1].managers[0].manager, Manager::Uv);
+        assert_eq!(projects[1].managers[0].role, Role::Primary);
+        assert_eq!(projects[2].managers[0].manager, Manager::Cargo);
+        assert_eq!(projects[2].managers[0].role, Role::Primary);
+    }
+
+    #[test]
+    fn uv_workspace_members_are_separate_projects() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir(tmp.path().join(".git")).unwrap();
+        write(
+            tmp.path(),
+            "pyproject.toml",
+            "[project]\nname=\"root\"\n\n[tool.uv.workspace]\nmembers = [\"packages/*\"]\n",
+        );
+        write(tmp.path(), "uv.lock", "");
+        write(
+            tmp.path(),
+            "packages/lib/pyproject.toml",
+            "[project]\nname=\"lib\"\n",
+        );
+
+        let projects = discover(tmp.path());
+        assert_eq!(
+            projects.iter().map(|p| p.root.clone()).collect::<Vec<_>>(),
+            vec![tmp.path().to_path_buf(), tmp.path().join("packages/lib")]
+        );
+        assert_eq!(projects[0].managers[0].manager, Manager::Uv);
+        assert_eq!(
+            projects[0].managers[0].lockfile_path.as_deref(),
+            Some(tmp.path().join("uv.lock").as_path())
+        );
+        // The member has no uv.lock of its own, so it reads as a plain project.
+        assert_eq!(projects[1].managers[0].manager, Manager::Pip);
+    }
+
+    #[test]
+    fn composer_path_packages_are_separate_projects() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir(tmp.path().join(".git")).unwrap();
+        write(tmp.path(), "composer.json", r#"{"name":"acme/root"}"#);
+        write(tmp.path(), "composer.lock", "{}");
+        write(
+            tmp.path(),
+            "packages/core/composer.json",
+            r#"{"name":"acme/core"}"#,
+        );
+
+        let projects = discover(tmp.path());
+        assert_eq!(
+            projects.iter().map(|p| p.root.clone()).collect::<Vec<_>>(),
+            vec![tmp.path().to_path_buf(), tmp.path().join("packages/core")]
+        );
+        assert_eq!(projects[0].managers[0].manager, Manager::Composer);
+        assert_eq!(projects[1].managers[0].manager, Manager::Composer);
+        assert_eq!(projects[1].managers[0].role, Role::Primary);
+    }
+
+    #[test]
+    fn a_bundler_gemfile_beside_a_js_monorepo_is_its_own_project() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir(tmp.path().join(".git")).unwrap();
+        write(tmp.path(), "package.json", "{}");
+        write(tmp.path(), "package-lock.json", "{}");
+        write(
+            tmp.path(),
+            "apps/site/Gemfile",
+            "source 'https://rubygems.org'",
+        );
+        write(tmp.path(), "apps/site/Gemfile.lock", "");
+
+        let projects = discover(tmp.path());
+        assert_eq!(
+            projects.iter().map(|p| p.root.clone()).collect::<Vec<_>>(),
+            vec![tmp.path().to_path_buf(), tmp.path().join("apps/site")]
+        );
+        assert_eq!(projects[1].managers[0].manager, Manager::Bundler);
     }
 }
