@@ -28,7 +28,7 @@ option_if_let_else = "allow"
 [workspace.dependencies]
 # `version` is what crates.io resolves against; `path` is what local builds use.
 # Kept in step with [workspace.package] by scripts/cargo-version-updater.cjs.
-pkguard-core = { path = "crates/pkguard-core", version = "1.1.3" }
+pkguard-core = { path = "crates/pkguard-core", version = "1.1.4" }
 serde ={ version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 serde_yaml = "0.9"
