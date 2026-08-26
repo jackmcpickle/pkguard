@@ -45,7 +45,7 @@ tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
 clap = { version = "4", features = ["derive"] }
 indicatif = "0.17"
-anstream = "0.6"
+anstream = "1.0"
 anstyle = "1"
 owo-colors = "4"
 dialoguer = "0.11"
