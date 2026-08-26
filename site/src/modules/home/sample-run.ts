@@ -103,7 +103,7 @@ export const SAMPLE_PROJECTS: SampleProject[] = [
   },
   {
     name: "python-project",
-    headline: "49 findings",
+    headline: "91 findings",
     preset: "standard",
     sections: [
       {
@@ -124,8 +124,8 @@ export const SAMPLE_PROJECTS: SampleProject[] = [
       },
       {
         title: "uv · advisories",
-        count: 47,
-        omitted: 43,
+        count: 89,
+        omitted: 85,
         findings: [
           {
             severity: "info",
@@ -160,7 +160,7 @@ export const SAMPLE_PROJECTS: SampleProject[] = [
 ];
 
 export const SAMPLE_SUMMARY =
-  "2 projects · 1 critical, 21 high, 13 moderate, 3 low, 48 info · policy failed · exit 1";
+  "2 projects · 1 critical, 21 high, 13 moderate, 3 low, 90 info · policy failed · exit 1";
 
 /** Severity drives colour only; the CLI prints the word either way. */
 export const SEVERITY_CLASS: Record<Severity, string> = {
