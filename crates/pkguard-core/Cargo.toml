@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Core scanning, policy, and advisory engine behind the pkguard CLI."
 
 [dependencies]
 serde = { workspace = true }
