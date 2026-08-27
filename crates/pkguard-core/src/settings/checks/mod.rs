@@ -437,7 +437,7 @@ pub fn pnpm_settings(
 fn read_toml(path: &Path) -> toml::Value {
     std::fs::read_to_string(path)
         .ok()
-        .and_then(|raw| raw.parse().ok())
+        .and_then(|raw| toml::from_str(&raw).ok())
         .unwrap_or_else(|| toml::Value::Table(toml::map::Map::new()))
 }
 

@@ -110,7 +110,7 @@ fn has_requirements_txt(names: &BTreeSet<String>) -> bool {
 
 fn pyproject_table(dir: &Path) -> Option<toml::Table> {
     let raw = std::fs::read_to_string(dir.join("pyproject.toml")).ok()?;
-    raw.parse::<toml::Table>().ok()
+    toml::from_str::<toml::Table>(&raw).ok()
 }
 
 fn has_tool_table(dir: &Path, name: &str) -> bool {
