@@ -458,8 +458,7 @@ fn parse_structured(format: ConfigFormat, raw: &str) -> serde_json::Value {
         ConfigFormat::Yaml => {
             serde_json::to_value(format::yaml::parse(raw)).unwrap_or(serde_json::json!({}))
         }
-        ConfigFormat::Toml => raw
-            .parse::<toml::Value>()
+        ConfigFormat::Toml => toml::from_str::<toml::Value>(raw)
             .ok()
             .and_then(|value| serde_json::to_value(value).ok())
             .unwrap_or(serde_json::json!({})),

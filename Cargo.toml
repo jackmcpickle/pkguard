@@ -32,23 +32,23 @@ pkguard-core = { path = "crates/pkguard-core", version = "1.2.0" }
 serde ={ version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 serde_yaml = "0.9"
-toml = "0.8"
-toml_edit = "0.22"
+toml = "1"
+toml_edit = "0.25"
 thiserror = "2"
 semver = "1"
-sha2 = "0.10"
+sha2 = "0.11"
 hex = "0.4"
 directories = "6"
-cap-std = "3"
+cap-std = "4"
 ignore = "0.4"
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
 clap = { version = "4", features = ["derive"] }
-indicatif = "0.17"
-anstream = "0.6"
+indicatif = "0.18"
+anstream = "1"
 anstyle = "1"
 owo-colors = "4"
-dialoguer = "0.11"
+dialoguer = "0.12"
 insta = { version = "1", features = ["json"] }
 tempfile = "3"
 assert_cmd = "2"
