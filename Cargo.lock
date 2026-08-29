@@ -696,7 +696,7 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "pkguard"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "anstream",
  "anstyle",
@@ -716,7 +716,7 @@ dependencies = [
 
 [[package]]
 name = "pkguard-core"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "async-trait",
  "cap-std",
